@@ -4,11 +4,6 @@ import UniformTypeIdentifiers
 
 /// Turns screenshots into PNG data and PNG files.
 enum ScreenshotWriter {
-    /// The folder screenshots go to until there is a setting for it.
-    static var defaultDirectory: URL {
-        FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
-    }
-
     /// Encodes the screenshot and saves it into `directory`. Returns the
     /// file's URL.
     static func save(_ screenshot: Screenshot, in directory: URL) async throws -> URL {

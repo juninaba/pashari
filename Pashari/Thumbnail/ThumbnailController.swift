@@ -65,7 +65,7 @@ final class ThumbnailController {
                 let file = try await capture.file()
                 _ = try ScreenshotWriter.write(
                     file.data,
-                    in: ScreenshotWriter.defaultDirectory,
+                    in: Preferences.saveDirectory(),
                     capturedAt: capture.screenshot.capturedAt
                 )
                 dismiss(capture)

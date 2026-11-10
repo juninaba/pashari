@@ -155,7 +155,7 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
 
     private func saveToDisk() {
         deliver(errorTitle: String(localized: "The screenshot could not be saved")) { screenshot in
-            _ = try await ScreenshotWriter.save(screenshot, in: ScreenshotWriter.defaultDirectory)
+            _ = try await ScreenshotWriter.save(screenshot, in: Preferences.saveDirectory())
         }
     }
 
