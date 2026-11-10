@@ -9,9 +9,10 @@ options:
   developmentLanguage: en
   createIntermediateGroups: true
 
-# Signing, bundle ID and version live in the xcconfig so that they can be
-# overridden locally. Do not repeat them under `settings` below: values written
-# there end up in the project file and would win over the xcconfig.
+# Signing, the app's bundle ID and the version live in the xcconfig so that
+# they can be overridden locally. Do not set CODE_SIGN_* or DEVELOPMENT_TEAM
+# under `settings` below: values written there end up in the project file and
+# would win over the xcconfig.
 configFiles:
   Debug: Config/Base.xcconfig
   Release: Config/Base.xcconfig
@@ -33,5 +34,23 @@ targets:
       - path: Pashari
     settings:
       base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER)
         INFOPLIST_FILE: Pashari/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+    # A shared scheme, so `xcodebuild -scheme Pashari build` and `test` work
+    # from the command line.
+    scheme:
+      testTargets:
+        - PashariTests
+
+  PashariTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: PashariTests
+    dependencies:
+      - target: Pashari
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER).tests
+        GENERATE_INFOPLIST_FILE: YES

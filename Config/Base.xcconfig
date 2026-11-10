@@ -4,8 +4,9 @@
 // rather than in project.yml, because values in this file can be overridden
 // from Config/Local.xcconfig (which is git-ignored).
 
-PRODUCT_NAME = Pashari
-PRODUCT_BUNDLE_IDENTIFIER = io.github.juninaba.pashari
+// The app's bundle ID. project.yml derives each target's
+// PRODUCT_BUNDLE_IDENTIFIER from this (the test bundle appends ".tests").
+APP_BUNDLE_IDENTIFIER = io.github.juninaba.pashari
 MARKETING_VERSION = 0.1.0
 CURRENT_PROJECT_VERSION = 1
 
