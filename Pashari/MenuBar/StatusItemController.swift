@@ -1,12 +1,15 @@
 import AppKit
+import KeyboardShortcuts
 
 /// Owns the menu bar icon and the menu that drops down from it.
 final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private let captureCoordinator: CaptureCoordinator
+    private let settingsWindowController: SettingsWindowController
 
-    init(captureCoordinator: CaptureCoordinator) {
+    init(captureCoordinator: CaptureCoordinator, settingsWindowController: SettingsWindowController) {
         self.captureCoordinator = captureCoordinator
+        self.settingsWindowController = settingsWindowController
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
@@ -25,27 +28,25 @@ final class StatusItemController: NSObject {
 
         // AppKit menus use "target-action": when the item is chosen, AppKit
         // calls the method named by `action` on the object in `target`.
-        let captureItems = [
-            NSMenuItem(
-                title: String(localized: "Capture Area"),
-                action: #selector(captureArea),
-                keyEquivalent: ""
-            ),
-            NSMenuItem(
-                title: String(localized: "Capture Window"),
-                action: #selector(captureWindow),
-                keyEquivalent: ""
-            ),
-            NSMenuItem(
-                title: String(localized: "Capture Fullscreen"),
-                action: #selector(captureFullscreen),
-                keyEquivalent: ""
-            ),
-        ]
-        for item in captureItems {
-            item.target = self
-            menu.addItem(item)
-        }
+        menu.addItem(
+            makeItem(String(localized: "Capture Area"), #selector(captureArea), shortcut: .captureArea)
+        )
+        menu.addItem(
+            makeItem(String(localized: "Capture Window"), #selector(captureWindow), shortcut: .captureWindow)
+        )
+        menu.addItem(
+            makeItem(
+                String(localized: "Capture Fullscreen"),
+                #selector(captureFullscreen),
+                shortcut: .captureFullscreen
+            )
+        )
+
+        menu.addItem(.separator())
+
+        let settingsItem = makeItem(String(localized: "Settings…"), #selector(showSettings))
+        settingsItem.keyEquivalent = ","
+        menu.addItem(settingsItem)
 
         menu.addItem(.separator())
 
@@ -60,7 +61,20 @@ final class StatusItemController: NSObject {
         return menu
     }
 
-    // `@objc` exposes the method to the Objective-C runtime, which is how
+    private func makeItem(
+        _ title: String,
+        _ action: Selector,
+        shortcut: KeyboardShortcuts.Name? = nil
+    ) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        // Shows the global hotkey next to the title, and keeps it up to date
+        // when the user changes it in Settings.
+        item.setShortcut(for: shortcut)
+        return item
+    }
+
+    // `@objc` exposes a method to the Objective-C runtime, which is how
     // `#selector` finds it by name.
     @objc private func captureArea() {
         captureCoordinator.captureArea()
@@ -72,5 +86,9 @@ final class StatusItemController: NSObject {
 
     @objc private func captureFullscreen() {
         captureCoordinator.captureFullscreen()
+    }
+
+    @objc private func showSettings() {
+        settingsWindowController.show()
     }
 }

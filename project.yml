@@ -26,12 +26,21 @@ settings:
     # Required for notarization later; harmless during development.
     ENABLE_HARDENED_RUNTIME: YES
 
+# Swift packages. The version is pinned exactly because the generated project
+# (and with it Package.resolved) is not checked in.
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    exactVersion: 2.4.0
+
 targets:
   Pashari:
     type: application
     platform: macOS
     sources:
       - path: Pashari
+    dependencies:
+      - package: KeyboardShortcuts
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER)
