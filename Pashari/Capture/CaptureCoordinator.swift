@@ -1,9 +1,15 @@
 import AppKit
 
-/// Runs a capture from start to finish: permission check, capture, output.
-/// The menu (and later the hotkeys) call into this class.
+/// Runs a capture from start to finish: permission check, capture, and
+/// handing the result to the floating thumbnail. The menu and the hotkeys
+/// call into this class.
 final class CaptureCoordinator {
+    private let thumbnailController: ThumbnailController
     private var isCapturing = false
+
+    init(thumbnailController: ThumbnailController) {
+        self.thumbnailController = thumbnailController
+    }
 
     /// Captures the whole screen the pointer is on.
     func captureFullscreen() {
@@ -49,22 +55,10 @@ final class CaptureCoordinator {
             defer { isCapturing = false }
             do {
                 guard let screenshot = try await capture() else { return }
-                _ = try await ScreenshotWriter.save(
-                    screenshot,
-                    in: ScreenshotWriter.defaultDirectory
-                )
+                thumbnailController.show(screenshot)
             } catch {
-                show(error)
+                ErrorAlert.show(error, title: String(localized: "The screenshot could not be taken"))
             }
         }
-    }
-
-    private func show(_ error: Error) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = String(localized: "The screenshot could not be taken")
-        alert.informativeText = error.localizedDescription
-        NSApp.activate()
-        alert.runModal()
     }
 }
