@@ -1,16 +1,40 @@
 import AppKit
 import ScreenCaptureKit
 
+/// A still image of one whole screen, used as the backdrop for area selection.
+struct FrozenScreen {
+    let screen: NSScreen
+    let screenshot: Screenshot
+}
+
 /// Takes still images of the screen with ScreenCaptureKit.
 enum ScreenCapturer {
     /// Captures everything visible on one display.
     static func captureDisplay(_ screen: NSScreen) async throws -> Screenshot {
-        // Ask the system what can be captured right now: displays and windows.
-        let content = try await SCShareableContent.excludingDesktopWindows(
-            false,
-            onScreenWindowsOnly: true
-        )
+        let content = try await shareableContent()
+        return try await capture(screen, content: content)
+    }
 
+    /// Captures every connected display.
+    static func captureAllDisplays() async throws -> [FrozenScreen] {
+        let content = try await shareableContent()
+        var frozenScreens: [FrozenScreen] = []
+        for screen in NSScreen.screens {
+            let screenshot = try await capture(screen, content: content)
+            frozenScreens.append(FrozenScreen(screen: screen, screenshot: screenshot))
+        }
+        return frozenScreens
+    }
+
+    /// Asks the system what can be captured right now: displays and windows.
+    private static func shareableContent() async throws -> SCShareableContent {
+        try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+    }
+
+    private static func capture(
+        _ screen: NSScreen,
+        content: SCShareableContent
+    ) async throws -> Screenshot {
         guard
             let displayID = screen.displayID,
             let display = content.displays.first(where: { $0.displayID == displayID })

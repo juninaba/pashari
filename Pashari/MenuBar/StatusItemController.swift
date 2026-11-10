@@ -25,13 +25,22 @@ final class StatusItemController: NSObject {
 
         // AppKit menus use "target-action": when the item is chosen, AppKit
         // calls the method named by `action` on the object in `target`.
-        let fullscreenItem = NSMenuItem(
-            title: String(localized: "Capture Fullscreen"),
-            action: #selector(captureFullscreen),
-            keyEquivalent: ""
-        )
-        fullscreenItem.target = self
-        menu.addItem(fullscreenItem)
+        let captureItems = [
+            NSMenuItem(
+                title: String(localized: "Capture Area"),
+                action: #selector(captureArea),
+                keyEquivalent: ""
+            ),
+            NSMenuItem(
+                title: String(localized: "Capture Fullscreen"),
+                action: #selector(captureFullscreen),
+                keyEquivalent: ""
+            ),
+        ]
+        for item in captureItems {
+            item.target = self
+            menu.addItem(item)
+        }
 
         menu.addItem(.separator())
 
@@ -48,6 +57,10 @@ final class StatusItemController: NSObject {
 
     // `@objc` exposes the method to the Objective-C runtime, which is how
     // `#selector` finds it by name.
+    @objc private func captureArea() {
+        captureCoordinator.captureArea()
+    }
+
     @objc private func captureFullscreen() {
         captureCoordinator.captureFullscreen()
     }

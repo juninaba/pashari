@@ -11,6 +11,16 @@
         }
       }
     },
+    "Capture Area" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "範囲をキャプチャ"
+          }
+        }
+      }
+    },
     "Capture Fullscreen" : {
       "localizations" : {
         "ja" : {
