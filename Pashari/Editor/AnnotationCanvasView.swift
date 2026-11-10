@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 ///
 /// The view is exactly as large as the visible part of the image, one view
 /// unit per image point. Zooming is done by the scroll view around it.
-final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
+final class AnnotationCanvasView: NSView, NSTextViewDelegate {
     private let model: EditorModel
 
     /// The annotation being drawn right now, not yet part of the document.
@@ -21,9 +21,9 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
     private var moveStart: CGPoint?
     private var moveOffset = CGSize.zero
 
-    /// The field the user is typing into with the text tool, and where the
+    /// The view the user is typing into with the text tool, and where the
     /// text will go (in image points).
-    private var textField: NSTextField?
+    private var textView: NSTextView?
     private var textOrigin: CGPoint?
 
     init(model: EditorModel) {
@@ -121,7 +121,7 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
 
     override func mouseDown(with event: NSEvent) {
         // A click anywhere finishes text that was being typed.
-        if textField != nil {
+        if textView != nil {
             commitText()
             if model.tool == .text { return }
         }
@@ -236,43 +236,56 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
     private func beginText(at point: CGPoint) {
         let attributes = AnnotationRenderer.textAttributes(color: model.color, size: model.size)
         let font = attributes[.font] as? NSFont ?? .systemFont(ofSize: model.size.fontSize)
+        let color = attributes[.foregroundColor] as? NSColor ?? .red
         let visible = model.visibleRect
+        let lineHeight = ceil(NSLayoutManager().defaultLineHeight(for: font))
 
-        let field = NSTextField(frame: .zero)
-        field.isBordered = false
-        field.drawsBackground = false
-        field.focusRingType = .none
-        field.font = font
-        field.textColor = attributes[.foregroundColor] as? NSColor
-        field.delegate = self
-        field.cell?.isScrollable = true
-
-        // A text field keeps a small gap before its first character. Shift
-        // it left by that gap so the typed text sits where the final text
-        // will be drawn.
-        let textInset: CGFloat = 2
-        let x = point.x - visible.minX - textInset
-        let y = point.y - visible.minY
-        field.frame = CGRect(
-            x: x,
-            y: y,
-            width: max(bounds.maxX - x, 120),
-            height: ceil(font.ascender - font.descender + font.leading) + 2
+        // An NSTextView is a full multi-line editor: Return starts a new
+        // line, and it handles selection, copy and paste, and input methods
+        // such as Japanese.
+        let textView = NSTextView(
+            frame: CGRect(
+                x: point.x - visible.minX,
+                y: point.y - visible.minY,
+                width: 4,
+                height: lineHeight
+            )
         )
+        textView.delegate = self
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.drawsBackground = false
+        textView.font = font
+        textView.textColor = color
+        textView.insertionPointColor = color
+        textView.typingAttributes = attributes
+        // Type exactly what the user types: no curly quotes, no autocorrect.
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
 
-        addSubview(field)
-        window?.makeFirstResponder(field)
+        // No padding around the text, so the first character sits exactly
+        // where the finished text will be drawn.
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
 
-        // While a text field is being edited, the typing is actually done by
-        // a shared helper view called the field editor, laid over the field.
-        // Make it see-through and coloured like the final text, so typing
-        // looks the same as the result.
-        if let editor = field.currentEditor() as? NSTextView {
-            editor.drawsBackground = false
-            editor.insertionPointColor = field.textColor ?? .textColor
-        }
+        // Never wrap: lines break only where the user presses Return. The
+        // text is laid out in an area of unlimited size, and the view itself
+        // is resized to fit after every edit (see `fitTextViewToText`).
+        textView.textContainer?.widthTracksTextView = false
+        textView.textContainer?.containerSize = CGSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = false
+        textView.minSize = textView.frame.size
 
-        textField = field
+        addSubview(textView)
+        window?.makeFirstResponder(textView)
+        self.textView = textView
         textOrigin = point
     }
 
@@ -282,25 +295,81 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
         commitText()
     }
 
-    /// Turns what was typed into an annotation and removes the field.
+    /// Turns what was typed into an annotation and removes the text view.
     private func commitText() {
-        guard let field = textField, let origin = textOrigin else { return }
-        // Clear these first: removing the field ends its editing session,
+        guard let textView, let origin = textOrigin else { return }
+        // Clear these first: removing the view ends its editing session,
         // which calls back into this method.
-        textField = nil
+        self.textView = nil
         textOrigin = nil
 
-        let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        field.removeFromSuperview()
+        // Blank lines at either end are dropped; those in between are kept.
+        let text = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        textView.removeFromSuperview()
         if !text.isEmpty {
             model.add(.text(text, origin: origin))
         }
         window?.makeFirstResponder(self)
     }
 
-    // NSTextFieldDelegate: Return, Tab or a click elsewhere ended editing.
-    func controlTextDidEndEditing(_ notification: Notification) {
+    // NSTextViewDelegate: called after every edit. Resize the view to fit
+    // what it now holds, so no part of the text is cut off.
+    func textDidChange(_ notification: Notification) {
+        fitTextViewToText()
+    }
+
+    private func fitTextViewToText() {
+        guard
+            let textView,
+            let layoutManager = textView.layoutManager,
+            let container = textView.textContainer
+        else {
+            return
+        }
+
+        // Height: lay the text out now and ask how far down it reaches. The
+        // "extra line fragment" is the empty line after a trailing Return,
+        // where the cursor sits; it has no characters but still needs room.
+        layoutManager.ensureLayout(for: container)
+        let usedHeight = max(
+            layoutManager.usedRect(for: container).maxY,
+            layoutManager.extraLineFragmentUsedRect.maxY
+        )
+
+        // Width: the widest line, measured line by line. (The layout
+        // manager's own answer is no use here: for text with line breaks it
+        // reports the full width of the unlimited layout area.)
+        let attributes: [NSAttributedString.Key: Any] = [.font: textView.font as Any]
+        let widestLine = textView.string
+            .components(separatedBy: .newlines)
+            .map { ($0 as NSString).size(withAttributes: attributes).width }
+            .max() ?? 0
+
+        textView.setFrameSize(
+            CGSize(
+                // A little spare width so the cursor after the last
+                // character is not cut off.
+                width: max(ceil(widestLine) + 2, textView.minSize.width),
+                height: max(ceil(usedHeight), textView.minSize.height)
+            )
+        )
+    }
+
+    // NSTextViewDelegate: the text view lost keyboard focus, for example
+    // because the user clicked a toolbar button.
+    func textDidEndEditing(_ notification: Notification) {
         commitText()
+    }
+
+    // NSTextViewDelegate: asked before the text view carries out a key
+    // command. Return keeps its normal meaning (a new line), so Escape is
+    // the key that finishes typing.
+    func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            commitText()
+            return true
+        }
+        return false
     }
 
     // MARK: - Cursor
