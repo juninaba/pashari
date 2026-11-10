@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Testing
 
 @testable import Pashari
@@ -239,6 +240,28 @@ struct EditorWindowTests {
         )
 
         #expect(size == CGSize(width: 1700, height: 850))
+    }
+
+    @Test func theWindowIsNeverNarrowerThanItsToolbar() throws {
+        // A tiny image would otherwise get the smallest possible window.
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 40, height: 40),
+            scale: 2,
+            capturedAt: Date()
+        )
+        let editor = AnnotationEditorWindowController(screenshot: screenshot)
+        editor.onClose = nil
+
+        editor.window.layoutIfNeeded()
+
+        // The toolbar is the one SwiftUI-hosting view in the window. It must
+        // have been given at least the width it asks for, both now and at
+        // the smallest size the window can be resized to.
+        let toolbar = try #require(
+            editor.window.contentView?.subviews.first { $0 is NSHostingView<EditorToolbarView> }
+        )
+        #expect(toolbar.frame.width >= toolbar.fittingSize.width - 0.5)
+        #expect(editor.window.contentMinSize.width >= toolbar.fittingSize.width - 0.5)
     }
 
     @Test func closingWithoutCopyOrSaveHandsTheResultBack() {

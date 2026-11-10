@@ -12,10 +12,21 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     let window: EditorWindow
     private let canvas: AnnotationCanvasView
     private let scrollView = NSScrollView()
+    /// The SwiftUI toolbar, wrapped so it can live in an AppKit window.
+    /// `lazy` because building it needs `self` for the button actions.
+    private lazy var toolbar = NSHostingView(
+        rootView: EditorToolbarView(
+            model: model,
+            onCopy: { [weak self] in self?.copyToClipboard() },
+            onSave: { [weak self] in self?.saveToDisk() }
+        )
+    )
     /// True once Copy or Save has taken care of the result.
     private var isDelivered = false
 
-    /// Room for the whole toolbar.
+    /// A starting point for the narrowest the window may be. The real limit
+    /// is whatever the toolbar needs, which depends on the language and is
+    /// measured once the toolbar exists (see `init`).
     private static let minimumContentWidth: CGFloat = 900
     private static let minimumCanvasHeight: CGFloat = 280
     /// Empty space left around the image.
@@ -41,6 +52,16 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.onKeyCommand = { [weak self] command in self?.perform(command) }
         window.contentView = makeContentView()
+
+        // Never let the window get narrower than its toolbar, and widen it
+        // now if it already is.
+        let toolbarWidth = ceil(toolbar.fittingSize.width)
+        if toolbarWidth > window.contentMinSize.width {
+            window.contentMinSize.width = toolbarWidth
+        }
+        if let contentSize = window.contentView?.frame.size, contentSize.width < toolbarWidth {
+            window.setContentSize(CGSize(width: toolbarWidth, height: contentSize.height))
+        }
         window.center()
     }
 
@@ -69,14 +90,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     // MARK: - Building the window
 
     private func makeContentView() -> NSView {
-        let toolbar = NSHostingView(
-            rootView: EditorToolbarView(
-                model: model,
-                onCopy: { [weak self] in self?.copyToClipboard() },
-                onSave: { [weak self] in self?.saveToDisk() }
-            )
-        )
-
         scrollView.contentView = CenteringClipView()
         scrollView.documentView = canvas
         scrollView.hasVerticalScroller = true
