@@ -14,12 +14,20 @@ struct AnnotationDocument: Equatable {
         annotations.isEmpty && cropRect == nil
     }
 
-    /// The number the next badge gets: one more than the badges so far.
+    /// The number the next badge gets: one more than the highest so far.
+    /// Counting the badges instead would hand out a number twice after one
+    /// in the middle is deleted.
     var nextCounterNumber: Int {
-        let counters = annotations.filter {
-            if case .counter = $0.shape { true } else { false }
+        let numbers = annotations.compactMap { annotation -> Int? in
+            if case .counter(let number, _) = annotation.shape { number } else { nil }
         }
-        return counters.count + 1
+        return (numbers.max() ?? 0) + 1
+    }
+
+    /// The mark a click at `point` picks: the one drawn last, and so on
+    /// top, among those the point touches.
+    func topmostAnnotation(at point: CGPoint) -> Annotation? {
+        annotations.last { $0.isHit(at: point) }
     }
 }
 

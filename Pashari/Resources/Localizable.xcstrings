@@ -321,6 +321,16 @@
         }
       }
     },
+    "Select" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選択"
+          }
+        }
+      }
+    },
     "Settings…" : {
       "localizations" : {
         "ja" : {

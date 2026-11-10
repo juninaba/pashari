@@ -44,7 +44,7 @@ struct EditorToolTests {
     }
 
     @Test func otherToolsDoNotMakeAShapeFromADrag() {
-        for tool in [EditorTool.pen, .highlighter, .text, .counter, .crop] {
+        for tool in [EditorTool.select, .pen, .highlighter, .text, .counter, .crop] {
             #expect(tool.shape(from: start, to: end) == nil)
         }
     }
@@ -261,18 +261,18 @@ struct EditorWindowTests {
 // MARK: - Helpers
 
 @MainActor
-private func makeScreenshot() -> Screenshot {
+func makeScreenshot() -> Screenshot {
     // 200 x 120 pixels at 2x: 100 x 60 points.
     Screenshot(image: TestImages.make(width: 200, height: 120), scale: 2, capturedAt: Date())
 }
 
 @MainActor
-private func makeModel() -> EditorModel {
+func makeModel() -> EditorModel {
     EditorModel(screenshot: makeScreenshot())
 }
 
 @MainActor
-private final class CanvasHarness {
+final class CanvasHarness {
     let model = makeModel()
     let canvas: AnnotationCanvasView
     let window: NSWindow
@@ -313,6 +313,22 @@ private final class CanvasHarness {
     func click(at point: CGPoint) {
         canvas.mouseDown(with: event(.leftMouseDown, at: point))
         canvas.mouseUp(with: event(.leftMouseUp, at: point))
+    }
+
+    func press(keyCode: Int) {
+        let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: "",
+            charactersIgnoringModifiers: "",
+            isARepeat: false,
+            keyCode: UInt16(keyCode)
+        )!
+        canvas.keyDown(with: event)
     }
 
     private func event(_ type: NSEvent.EventType, at point: CGPoint) -> NSEvent {

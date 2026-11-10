@@ -130,6 +130,11 @@ enum AnnotationRenderer {
         ]
     }
 
+    /// The space the text tool's text takes up, line breaks included.
+    static func textSize(of string: String, size: StrokeSize) -> CGSize {
+        (string as NSString).size(withAttributes: textAttributes(color: .black, size: size))
+    }
+
     // MARK: - Geometry
 
     struct ArrowHead: Equatable {

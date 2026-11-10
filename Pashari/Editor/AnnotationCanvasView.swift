@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 /// The drawing surface of the editor: shows the screenshot with its
 /// annotations and turns mouse input into new annotations.
@@ -13,6 +14,12 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
     /// The crop rectangle being dragged out, in image points.
     private var cropDraft: CGRect?
     private var dragStart: CGPoint?
+
+    /// While the selected annotation is being dragged with the select tool:
+    /// where the drag began, and how far it has gone. The document is only
+    /// changed when the mouse is released, so a whole drag is one undo step.
+    private var moveStart: CGPoint?
+    private var moveOffset = CGSize.zero
 
     /// The field the user is typing into with the text tool, and where the
     /// text will go (in image points).
@@ -64,7 +71,11 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
         // would spill out around the canvas.
         context.clip(to: visible)
 
-        var annotations = model.document.annotations
+        // What to draw: the document, with the annotation being dragged
+        // shown at its new place and the one being drawn added on top.
+        var annotations = model.document.annotations.map { annotation in
+            annotation.id == model.selectedID ? annotation.translated(by: moveOffset) : annotation
+        }
         if let draft {
             annotations.append(draft)
         }
@@ -74,6 +85,10 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
             blurredImage: model.blurredImage,
             in: context
         )
+
+        if let selected = annotations.first(where: { $0.id == model.selectedID }) {
+            drawSelectionOutline(around: selected.bounds, in: context)
+        }
 
         if let cropDraft {
             // Dim what would be cut away.
@@ -85,6 +100,20 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
             context.setLineWidth(1)
             context.stroke(cropDraft)
         }
+        context.restoreGState()
+    }
+
+    /// A dashed frame around the selected annotation. Drawn in white first
+    /// and the accent colour on top, so it shows on any background.
+    private func drawSelectionOutline(around bounds: CGRect, in context: CGContext) {
+        let frame = bounds.insetBy(dx: -4, dy: -4)
+        context.saveGState()
+        context.setLineWidth(1.5)
+        context.setStrokeColor(NSColor.white.cgColor)
+        context.stroke(frame)
+        context.setStrokeColor(NSColor.controlAccentColor.cgColor)
+        context.setLineDash(phase: 0, lengths: [5, 4])
+        context.stroke(frame)
         context.restoreGState()
     }
 
@@ -100,6 +129,12 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
 
         let point = imagePoint(of: event)
         switch model.tool {
+        case .select:
+            // Clicking a mark selects it and readies it for dragging;
+            // clicking empty space clears the selection.
+            if model.select(at: point) {
+                moveStart = point
+            }
         case .text:
             beginText(at: point)
         case .counter:
@@ -120,6 +155,8 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
             draft?.shape = .pen(points + [point])
         } else if case .highlighter(let points) = draft?.shape {
             draft?.shape = .highlighter(points + [point])
+        } else if let moveStart {
+            moveOffset = CGSize(width: point.x - moveStart.x, height: point.y - moveStart.y)
         } else if let dragStart {
             if model.tool == .crop {
                 cropDraft = CGRect(corner: dragStart, oppositeCorner: point)
@@ -135,10 +172,14 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
             draft = nil
             cropDraft = nil
             dragStart = nil
+            moveStart = nil
+            moveOffset = .zero
             needsDisplay = true
         }
 
-        if let cropDraft {
+        if moveStart != nil {
+            model.moveSelected(by: moveOffset)
+        } else if let cropDraft {
             // Ignore a crop too small to be meant.
             if cropDraft.width >= 8, cropDraft.height >= 8 {
                 model.crop(to: cropDraft)
@@ -174,6 +215,19 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
             points.count >= 2
         case .text, .counter:
             true
+        }
+    }
+
+    // MARK: - Keyboard
+
+    override func keyDown(with event: NSEvent) {
+        switch Int(event.keyCode) {
+        case kVK_Delete, kVK_ForwardDelete:
+            model.deleteSelected()
+        case kVK_Escape:
+            model.deselect()
+        default:
+            super.keyDown(with: event)
         }
     }
 
@@ -252,6 +306,11 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
     // MARK: - Cursor
 
     override func resetCursorRects() {
-        addCursorRect(bounds, cursor: model.tool == .text ? .iBeam : .crosshair)
+        let cursor: NSCursor = switch model.tool {
+        case .select: .arrow
+        case .text: .iBeam
+        default: .crosshair
+        }
+        addCursorRect(bounds, cursor: cursor)
     }
 }

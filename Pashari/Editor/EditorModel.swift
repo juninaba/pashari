@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Observation
 
 /// The state of one editor window: the screenshot, what has been drawn on
@@ -6,18 +7,29 @@ import Observation
 ///
 /// `@Observable` makes SwiftUI views that read these properties redraw when
 /// they change. The AppKit canvas is not SwiftUI, so it is told through
-/// `onDocumentChange` and `onToolChange` instead.
+/// `onDocumentChange` (the document or the selection changed) and
+/// `onToolChange` instead.
 @Observable
 final class EditorModel {
     let screenshot: Screenshot
 
     var tool: EditorTool = .arrow {
-        didSet { onToolChange?() }
+        didSet {
+            // A selection only means something to the select tool.
+            if tool != .select {
+                deselect()
+            }
+            onToolChange?()
+        }
     }
     var color: AnnotationColor = .red
     var size: StrokeSize = .medium
 
     private var history = History(AnnotationDocument())
+
+    /// The mark picked with the select tool. Not part of the undo history:
+    /// selecting something is not a change to the picture.
+    private(set) var selectedID: UUID?
 
     @ObservationIgnored var onDocumentChange: (() -> Void)?
     @ObservationIgnored var onToolChange: (() -> Void)?
@@ -63,12 +75,64 @@ final class EditorModel {
 
     func undo() {
         history.undo()
+        dropStaleSelection()
         onDocumentChange?()
     }
 
     func redo() {
         history.redo()
+        dropStaleSelection()
         onDocumentChange?()
+    }
+
+    // MARK: - Selection
+
+    var selectedAnnotation: Annotation? {
+        document.annotations.first { $0.id == selectedID }
+    }
+
+    /// Selects the topmost mark at `point` (in image points), or clears the
+    /// selection when there is none. Returns whether something was hit.
+    @discardableResult
+    func select(at point: CGPoint) -> Bool {
+        setSelection(document.topmostAnnotation(at: point)?.id)
+        return selectedID != nil
+    }
+
+    func deselect() {
+        setSelection(nil)
+    }
+
+    /// Moves the selected mark. One call is one undo step.
+    func moveSelected(by offset: CGSize) {
+        guard offset != .zero else { return }
+        var document = history.current
+        guard let index = document.annotations.firstIndex(where: { $0.id == selectedID }) else {
+            return
+        }
+        document.annotations[index] = document.annotations[index].translated(by: offset)
+        apply(document)
+    }
+
+    func deleteSelected() {
+        guard selectedID != nil else { return }
+        var document = history.current
+        document.annotations.removeAll { $0.id == selectedID }
+        selectedID = nil
+        apply(document)
+    }
+
+    private func setSelection(_ id: UUID?) {
+        guard id != selectedID else { return }
+        selectedID = id
+        onDocumentChange?()
+    }
+
+    /// After undo or redo the selected mark may no longer exist.
+    private func dropStaleSelection() {
+        if selectedAnnotation == nil {
+            selectedID = nil
+        }
     }
 
     private func apply(_ document: AnnotationDocument) {
