@@ -4,11 +4,23 @@ A menu bar screenshot app for macOS, written in Swift.
 
 > **Status:** early development. Nothing is released yet.
 
-## Planned for v0.1
+## Features (v0.1, in progress)
 
-- Capture: area, window, full screen
-- Floating thumbnail after each capture (copy, save, annotate, drag and drop)
-- Annotation editor
+- Capture an area, a window or the full screen, from the menu bar or with
+  global hotkeys
+- A floating thumbnail after each capture: copy, save, annotate, drag it
+  into another app, or close it
+- An annotation editor: arrow, rectangle, ellipse, line, pen, highlighter,
+  text, numbered badges, blur, crop, with undo and redo
+- Saves PNG files at full Retina resolution
+
+Default hotkeys (change them under Settings):
+
+| Action             | Hotkey |
+| ------------------ | ------ |
+| Capture area       | ⌃⇧4    |
+| Capture window     | ⌃⇧5    |
+| Capture fullscreen | ⌃⇧3    |
 
 ## Requirements
 
@@ -25,7 +37,15 @@ xcodegen generate
 open Pashari.xcodeproj
 ```
 
-Then build and run the `Pashari` scheme.
+Then build and run the `Pashari` scheme. From the command line:
+
+```sh
+xcodebuild -scheme Pashari build
+xcodebuild -scheme Pashari test
+```
+
+The first capture asks for the Screen Recording permission. Grant it in
+System Settings, then quit and reopen Pashari.
 
 ### Signing
 
