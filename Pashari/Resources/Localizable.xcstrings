@@ -1,12 +1,92 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Cancel" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キャンセル"
+          }
+        }
+      }
+    },
+    "Capture Fullscreen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全画面をキャプチャ"
+          }
+        }
+      }
+    },
+    "Open System Settings" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム設定を開く"
+          }
+        }
+      }
+    },
+    "Pashari needs permission to record the screen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pashariには画面収録の許可が必要です"
+          }
+        }
+      }
+    },
     "Quit Pashari" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pashariを終了"
+          }
+        }
+      }
+    },
+    "The display to capture could not be found." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キャプチャするディスプレイが見つかりませんでした。"
+          }
+        }
+      }
+    },
+    "The screenshot could not be saved to %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクリーンショットを %@ に保存できませんでした。"
+          }
+        }
+      }
+    },
+    "The screenshot could not be taken" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクリーンショットを撮れませんでした"
+          }
+        }
+      }
+    },
+    "Turn on Pashari under Privacy & Security > Screen & System Audio Recording in System Settings, then quit and reopen Pashari." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム設定の「プライバシーとセキュリティ」>「画面収録とシステムオーディオ録音」でPashariをオンにしてから、Pashariを終了して開き直してください。"
           }
         }
       }
