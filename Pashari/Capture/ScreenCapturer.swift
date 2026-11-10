@@ -26,6 +26,69 @@ enum ScreenCapturer {
         return frozenScreens
     }
 
+    /// The windows the user can pick in window mode, ordered front to back.
+    static func selectableWindows() async throws -> [SCWindow] {
+        let content = try await shareableContent()
+        let ownProcessID = ProcessInfo.processInfo.processIdentifier
+
+        // ScreenCaptureKit does not promise any order, but the older window
+        // list API returns on-screen windows front to back. Use its order.
+        let stackingOrder = windowIDsFrontToBack()
+        let position = Dictionary(
+            stackingOrder.enumerated().map { ($1, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        return content.windows
+            .filter { window in
+                // Layer 0 holds ordinary app windows. The menu bar, the Dock,
+                // desktop icons and so on live on other layers.
+                window.windowLayer == 0
+                    && window.isOnScreen
+                    && window.owningApplication != nil
+                    && window.owningApplication?.processID != ownProcessID
+                    && window.frame.width >= minimumWindowSide
+                    && window.frame.height >= minimumWindowSide
+                    && position[window.windowID] != nil
+            }
+            .sorted { position[$0.windowID]! < position[$1.windowID]! }
+    }
+
+    /// Captures one window on its own, without whatever is in front of or
+    /// behind it. The corners outside the window's rounded shape stay
+    /// transparent.
+    static func captureWindow(_ window: SCWindow) async throws -> Screenshot {
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+
+        let scale = CGFloat(filter.pointPixelScale)
+        let configuration = SCStreamConfiguration()
+        configuration.width = Int((filter.contentRect.width * scale).rounded())
+        configuration.height = Int((filter.contentRect.height * scale).rounded())
+        configuration.captureResolution = .best
+        configuration.showsCursor = false
+        configuration.ignoreShadowsSingleWindow = true
+
+        let image = try await SCScreenshotManager.captureImage(
+            contentFilter: filter,
+            configuration: configuration
+        )
+        return Screenshot(image: image, scale: scale, capturedAt: Date())
+    }
+
+    /// Windows smaller than this are helpers (badges, invisible trackers),
+    /// not something a person would point at.
+    private static let minimumWindowSide: CGFloat = 40
+
+    private static func windowIDsFrontToBack() -> [CGWindowID] {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard
+            let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[CFString: Any]]
+        else {
+            return []
+        }
+        return list.compactMap { $0[kCGWindowNumber] as? CGWindowID }
+    }
+
     /// Asks the system what can be captured right now: displays and windows.
     private static func shareableContent() async throws -> SCShareableContent {
         try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)

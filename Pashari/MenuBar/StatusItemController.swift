@@ -32,6 +32,11 @@ final class StatusItemController: NSObject {
                 keyEquivalent: ""
             ),
             NSMenuItem(
+                title: String(localized: "Capture Window"),
+                action: #selector(captureWindow),
+                keyEquivalent: ""
+            ),
+            NSMenuItem(
                 title: String(localized: "Capture Fullscreen"),
                 action: #selector(captureFullscreen),
                 keyEquivalent: ""
@@ -59,6 +64,10 @@ final class StatusItemController: NSObject {
     // `#selector` finds it by name.
     @objc private func captureArea() {
         captureCoordinator.captureArea()
+    }
+
+    @objc private func captureWindow() {
+        captureCoordinator.captureWindow()
     }
 
     @objc private func captureFullscreen() {

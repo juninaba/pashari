@@ -13,7 +13,7 @@ struct AreaSelectionViewTests {
 
         harness.drag(from: CGPoint(x: 40, y: 30), to: CGPoint(x: 140, y: 90))
 
-        #expect(harness.results == [CGRect(x: 40, y: 30, width: 100, height: 60)])
+        #expect(harness.selections == [CGRect(x: 40, y: 30, width: 100, height: 60)])
     }
 
     @Test func draggingBackwardsGivesTheSameRectangle() {
@@ -21,7 +21,7 @@ struct AreaSelectionViewTests {
 
         harness.drag(from: CGPoint(x: 140, y: 90), to: CGPoint(x: 40, y: 30))
 
-        #expect(harness.results == [CGRect(x: 40, y: 30, width: 100, height: 60)])
+        #expect(harness.selections == [CGRect(x: 40, y: 30, width: 100, height: 60)])
     }
 
     @Test func selectionIsSnappedToWholePixels() {
@@ -30,7 +30,7 @@ struct AreaSelectionViewTests {
         harness.drag(from: CGPoint(x: 10.2, y: 10.3), to: CGPoint(x: 50.6, y: 40.8))
 
         // At 2 pixels per point, positions land on multiples of 0.5.
-        #expect(harness.results == [CGRect(x: 10, y: 10.5, width: 40.5, height: 30.5)])
+        #expect(harness.selections == [CGRect(x: 10, y: 10.5, width: 40.5, height: 30.5)])
     }
 
     @Test func selectionStopsAtTheEdgeOfTheScreen() {
@@ -38,7 +38,7 @@ struct AreaSelectionViewTests {
 
         harness.drag(from: CGPoint(x: 350, y: 250), to: CGPoint(x: 900, y: 900))
 
-        #expect(harness.results == [CGRect(x: 350, y: 250, width: 50, height: 50)])
+        #expect(harness.selections == [CGRect(x: 350, y: 250, width: 50, height: 50)])
     }
 
     @Test func clickWithoutDraggingKeepsTheOverlayOpen() {
@@ -46,7 +46,8 @@ struct AreaSelectionViewTests {
 
         harness.drag(from: CGPoint(x: 40, y: 30), to: CGPoint(x: 40, y: 30))
 
-        #expect(harness.results.isEmpty)
+        #expect(harness.selections.isEmpty)
+        #expect(harness.cancelCount == 0)
     }
 
     @Test func escapeCancels() {
@@ -54,7 +55,7 @@ struct AreaSelectionViewTests {
 
         harness.pressEscape()
 
-        #expect(harness.results == [nil])
+        #expect(harness.cancelCount == 1)
     }
 
     @Test func rightClickCancels() {
@@ -62,7 +63,7 @@ struct AreaSelectionViewTests {
 
         harness.view.rightMouseDown(with: harness.mouseEvent(.rightMouseDown, at: CGPoint(x: 5, y: 5)))
 
-        #expect(harness.results == [nil])
+        #expect(harness.cancelCount == 1)
     }
 }
 
@@ -72,7 +73,8 @@ struct AreaSelectionViewTests {
 private final class Harness {
     let window: NSWindow
     let view: AreaSelectionView
-    private(set) var results: [CGRect?] = []
+    private(set) var selections: [CGRect] = []
+    private(set) var cancelCount = 0
 
     init(scale: CGFloat = 1) {
         let frame = CGRect(x: 0, y: 0, width: 400, height: 300)
@@ -80,7 +82,8 @@ private final class Harness {
         window.isReleasedWhenClosed = false
         view = AreaSelectionView(frame: frame, scale: scale)
         window.contentView = view
-        view.onFinish = { [weak self] rect in self?.results.append(rect) }
+        view.onSelect = { [weak self] rect in self?.selections.append(rect) }
+        view.onCancel = { [weak self] in self?.cancelCount += 1 }
     }
 
     /// `from` and `to` are in the view's coordinates (origin top-left).

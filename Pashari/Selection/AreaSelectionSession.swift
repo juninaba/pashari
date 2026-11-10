@@ -8,7 +8,7 @@ final class AreaSelectionSession {
 
     /// Returns the selected part of the screen, or nil when the user cancelled.
     func run(with frozenScreens: [FrozenScreen]) async -> Screenshot? {
-        // The overlay reports its result through a callback. A continuation
+        // The overlay reports its result through callbacks. A continuation
         // turns that into something the caller can `await`.
         await withCheckedContinuation { continuation in
             self.continuation = continuation
@@ -32,9 +32,11 @@ final class AreaSelectionSession {
             // Top layer: dimming and the selection rectangle.
             let selectionView = AreaSelectionView(frame: bounds, scale: frozen.screenshot.scale)
             selectionView.autoresizingMask = [.width, .height]
-            selectionView.onFinish = { [weak self] rect in
-                let result = rect.flatMap { frozen.screenshot.cropped(to: $0) }
-                self?.finish(with: result)
+            selectionView.onSelect = { [weak self] rect in
+                self?.finish(with: frozen.screenshot.cropped(to: rect))
+            }
+            selectionView.onCancel = { [weak self] in
+                self?.finish(with: nil)
             }
             backdrop.addSubview(selectionView)
 

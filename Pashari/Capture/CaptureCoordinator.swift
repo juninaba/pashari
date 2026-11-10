@@ -23,6 +23,17 @@ final class CaptureCoordinator {
         }
     }
 
+    /// Lets the user click a window and captures just that window.
+    func captureWindow() {
+        run {
+            let windows = try await ScreenCapturer.selectableWindows()
+            guard let window = await WindowSelectionSession().run(with: windows) else {
+                return nil
+            }
+            return try await ScreenCapturer.captureWindow(window)
+        }
+    }
+
     /// Shared skeleton of every capture mode. `capture` returns the
     /// screenshot, or nil when the user cancelled.
     private func run(_ capture: @escaping () async throws -> Screenshot?) {

@@ -1,14 +1,13 @@
 import AppKit
-import Carbon.HIToolbox
 
 /// Dims the frozen screen and lets the user drag out a rectangle.
 ///
 /// The view only draws the dimming, the selection border and the size label.
 /// The frozen screenshot itself sits in the view underneath.
-final class AreaSelectionView: NSView {
-    /// Called once, with the selected rectangle in points (origin at the
-    /// top-left corner of the screen), or nil when the user cancelled.
-    var onFinish: ((CGRect?) -> Void)?
+final class AreaSelectionView: SelectionOverlayView {
+    /// Called with the selected rectangle, in points with the origin at the
+    /// top-left corner of the screen.
+    var onSelect: ((CGRect) -> Void)?
 
     /// Pixels per point of the screen this view covers.
     private let scale: CGFloat
@@ -29,10 +28,7 @@ final class AreaSelectionView: NSView {
     // AppKit's default is bottom-left with y growing upwards.
     override var isFlipped: Bool { true }
 
-    // Take keyboard input, and react to the very first click even though the
-    // panel was not focused before it.
-    override var acceptsFirstResponder: Bool { true }
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var cursor: NSCursor { .crosshair }
 
     // MARK: - Drawing
 
@@ -108,11 +104,7 @@ final class AreaSelectionView: NSView {
             needsDisplay = true
             return
         }
-        onFinish?(selection)
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        onFinish?(nil)
+        onSelect?(selection)
     }
 
     /// The event's position in this view, kept inside the view and snapped to
@@ -128,39 +120,5 @@ final class AreaSelectionView: NSView {
     /// The rectangle spanned by two corners, whichever direction the drag went.
     static func rect(from a: CGPoint, to b: CGPoint) -> CGRect {
         CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
-    }
-
-    // MARK: - Keyboard
-
-    override func keyDown(with event: NSEvent) {
-        if Int(event.keyCode) == kVK_Escape {
-            onFinish?(nil)
-        } else {
-            super.keyDown(with: event)
-        }
-    }
-
-    // MARK: - Cursor
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        // `.activeAlways`: deliver these events even though Pashari is not the
-        // active app.
-        addTrackingArea(
-            NSTrackingArea(
-                rect: .zero,
-                options: [.activeAlways, .inVisibleRect, .mouseMoved, .cursorUpdate],
-                owner: self
-            )
-        )
-    }
-
-    override func cursorUpdate(with event: NSEvent) {
-        NSCursor.crosshair.set()
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        NSCursor.crosshair.set()
     }
 }
