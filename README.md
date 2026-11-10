@@ -11,8 +11,11 @@ A menu bar screenshot app for macOS, written in Swift.
 - A floating thumbnail after each capture: copy, save, annotate, drag it
   into another app, or close it
 - An annotation editor: arrow, rectangle, ellipse, line, pen, highlighter,
-  text, numbered badges, blur, crop, with undo and redo
-- Saves PNG files at full Retina resolution
+  multi-line text, numbered badges, blur, crop, with undo and redo
+  - Select a mark to move or delete it
+  - Hold Shift for straight lines, squares and circles
+- Saves PNG files at full Retina resolution, to the Desktop or a folder of
+  your choice
 
 Default hotkeys (change them under Settings):
 
