@@ -298,16 +298,16 @@ final class CanvasHarness {
     }
 
     /// Points are in the canvas's own coordinates.
-    func drag(from: CGPoint, to: CGPoint) {
-        stroke(through: [from, to])
+    func drag(from: CGPoint, to: CGPoint, modifiers: NSEvent.ModifierFlags = []) {
+        stroke(through: [from, to], modifiers: modifiers)
     }
 
-    func stroke(through points: [CGPoint]) {
-        canvas.mouseDown(with: event(.leftMouseDown, at: points[0]))
+    func stroke(through points: [CGPoint], modifiers: NSEvent.ModifierFlags = []) {
+        canvas.mouseDown(with: event(.leftMouseDown, at: points[0], modifiers: modifiers))
         for point in points.dropFirst() {
-            canvas.mouseDragged(with: event(.leftMouseDragged, at: point))
+            canvas.mouseDragged(with: event(.leftMouseDragged, at: point, modifiers: modifiers))
         }
-        canvas.mouseUp(with: event(.leftMouseUp, at: points[points.count - 1]))
+        canvas.mouseUp(with: event(.leftMouseUp, at: points[points.count - 1], modifiers: modifiers))
     }
 
     func click(at point: CGPoint) {
@@ -331,11 +331,15 @@ final class CanvasHarness {
         canvas.keyDown(with: event)
     }
 
-    private func event(_ type: NSEvent.EventType, at point: CGPoint) -> NSEvent {
+    private func event(
+        _ type: NSEvent.EventType,
+        at point: CGPoint,
+        modifiers: NSEvent.ModifierFlags = []
+    ) -> NSEvent {
         NSEvent.mouseEvent(
             with: type,
             location: canvas.convert(point, to: nil),
-            modifierFlags: [],
+            modifierFlags: modifiers,
             timestamp: 0,
             windowNumber: window.windowNumber,
             context: nil,

@@ -160,8 +160,14 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         } else if let dragStart {
             if model.tool == .crop {
                 cropDraft = CGRect(corner: dragStart, oppositeCorner: point)
-            } else if let shape = model.tool.shape(from: dragStart, to: point) {
-                draft = makeDraft(shape)
+            } else {
+                // Holding Shift straightens lines and squares up shapes.
+                let end = event.modifierFlags.contains(.shift)
+                    ? model.tool.constrainedEnd(from: dragStart, to: point, within: model.visibleRect)
+                    : point
+                if let shape = model.tool.shape(from: dragStart, to: end) {
+                    draft = makeDraft(shape)
+                }
             }
         }
         needsDisplay = true

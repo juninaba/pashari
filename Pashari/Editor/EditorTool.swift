@@ -57,4 +57,54 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .select, .pen, .highlighter, .text, .counter, .crop: return nil
         }
     }
+
+    /// Where a drag from `start` ends while Shift is held: arrows and lines
+    /// snap to the nearest 45 degrees, rectangles and ellipses become
+    /// squares and circles. Other tools are left alone. The result never
+    /// leaves `bounds`.
+    func constrainedEnd(from start: CGPoint, to end: CGPoint, within bounds: CGRect) -> CGPoint {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+
+        switch self {
+        case .arrow, .line:
+            guard dx != 0 || dy != 0 else { return end }
+            // The eight allowed directions, as unit vectors. Picking from a
+            // table keeps "horizontal" exactly horizontal, with no rounding
+            // error creeping into the other axis.
+            let diagonal = CGFloat(0.5).squareRoot()
+            let directions: [CGPoint] = [
+                CGPoint(x: 1, y: 0), CGPoint(x: diagonal, y: diagonal),
+                CGPoint(x: 0, y: 1), CGPoint(x: -diagonal, y: diagonal),
+                CGPoint(x: -1, y: 0), CGPoint(x: -diagonal, y: -diagonal),
+                CGPoint(x: 0, y: -1), CGPoint(x: diagonal, y: -diagonal),
+            ]
+            let step = Int((atan2(dy, dx) / (.pi / 4)).rounded())
+            let direction = directions[((step % 8) + 8) % 8]
+
+            // How far the pointer has gone along that direction, cut short
+            // where the line would leave the image.
+            var length = dx * direction.x + dy * direction.y
+            if direction.x > 0 { length = min(length, (bounds.maxX - start.x) / direction.x) }
+            if direction.x < 0 { length = min(length, (bounds.minX - start.x) / direction.x) }
+            if direction.y > 0 { length = min(length, (bounds.maxY - start.y) / direction.y) }
+            if direction.y < 0 { length = min(length, (bounds.minY - start.y) / direction.y) }
+            length = max(length, 0)
+            return CGPoint(x: start.x + direction.x * length, y: start.y + direction.y * length)
+
+        case .rectangle, .ellipse:
+            // The longer side of the drag sets the size, limited by the room
+            // left in the direction of the drag.
+            let roomX = dx < 0 ? start.x - bounds.minX : bounds.maxX - start.x
+            let roomY = dy < 0 ? start.y - bounds.minY : bounds.maxY - start.y
+            let side = max(min(max(abs(dx), abs(dy)), roomX, roomY), 0)
+            return CGPoint(
+                x: start.x + (dx < 0 ? -side : side),
+                y: start.y + (dy < 0 ? -side : side)
+            )
+
+        case .select, .pen, .highlighter, .text, .counter, .blur, .crop:
+            return end
+        }
+    }
 }
