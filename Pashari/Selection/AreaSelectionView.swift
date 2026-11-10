@@ -91,7 +91,7 @@ final class AreaSelectionView: SelectionOverlayView {
 
     override func mouseDragged(with event: NSEvent) {
         guard let dragStart else { return }
-        selection = Self.rect(from: dragStart, to: location(of: event))
+        selection = CGRect(corner: dragStart, oppositeCorner: location(of: event))
         needsDisplay = true
     }
 
@@ -115,10 +115,5 @@ final class AreaSelectionView: SelectionOverlayView {
             x: (min(max(point.x, bounds.minX), bounds.maxX) * scale).rounded() / scale,
             y: (min(max(point.y, bounds.minY), bounds.maxY) * scale).rounded() / scale
         )
-    }
-
-    /// The rectangle spanned by two corners, whichever direction the drag went.
-    static func rect(from a: CGPoint, to b: CGPoint) -> CGRect {
-        CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
     }
 }

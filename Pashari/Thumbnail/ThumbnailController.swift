@@ -1,8 +1,12 @@
 import AppKit
 
 /// Shows a floating thumbnail for each new screenshot and carries out what
-/// the user does with it: copy, save, drag away, or close.
+/// the user does with it: copy, save, annotate, drag away, or close.
 final class ThumbnailController {
+    /// Called when the user asks to annotate a screenshot. The thumbnail is
+    /// already gone by then; the editor takes over.
+    var onAnnotate: ((Screenshot) -> Void)?
+
     private struct Entry {
         let capture: PendingCapture
         let panel: ThumbnailPanel
@@ -22,6 +26,7 @@ final class ThumbnailController {
         // alive; `capture` is held on purpose, it is the thing to act on.
         card.onCopy = { [weak self] in self?.copy(capture) }
         card.onSave = { [weak self] in self?.save(capture) }
+        card.onAnnotate = { [weak self] in self?.annotate(capture) }
         card.onClose = { [weak self] in self?.dismiss(capture) }
         card.previewView.fileURL = { capture.readyFile?.url }
         card.previewView.onDrop = { [weak self] in self?.dismiss(capture) }
@@ -68,6 +73,11 @@ final class ThumbnailController {
                 ErrorAlert.show(error, title: String(localized: "The screenshot could not be saved"))
             }
         }
+    }
+
+    private func annotate(_ capture: PendingCapture) {
+        dismiss(capture)
+        onAnnotate?(capture.screenshot)
     }
 
     private func dismiss(_ capture: PendingCapture) {

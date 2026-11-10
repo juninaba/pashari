@@ -4,6 +4,7 @@ import AppKit
 final class ThumbnailCardView: NSVisualEffectView {
     var onCopy: (() -> Void)?
     var onSave: (() -> Void)?
+    var onAnnotate: (() -> Void)?
     var onClose: (() -> Void)?
 
     let previewView: ThumbnailPreviewView
@@ -57,6 +58,11 @@ final class ThumbnailCardView: NSVisualEffectView {
                 symbolName: "square.and.arrow.down",
                 label: String(localized: "Save"),
                 action: { [weak self] in self?.onSave?() }
+            ),
+            ThumbnailButton(
+                symbolName: "pencil.and.outline",
+                label: String(localized: "Annotate"),
+                action: { [weak self] in self?.onAnnotate?() }
             ),
             ThumbnailButton(
                 symbolName: "xmark",
