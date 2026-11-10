@@ -1,0 +1,37 @@
+# XcodeGen spec. Run `xcodegen generate` to create Pashari.xcodeproj.
+# The generated project is git-ignored; this file is the source of truth.
+
+name: Pashari
+
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+
+# Signing, bundle ID and version live in the xcconfig so that they can be
+# overridden locally. Do not repeat them under `settings` below: values written
+# there end up in the project file and would win over the xcconfig.
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # UI code runs on the main thread unless a declaration opts out.
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    # Required for notarization later; harmless during development.
+    ENABLE_HARDENED_RUNTIME: YES
+
+targets:
+  Pashari:
+    type: application
+    platform: macOS
+    sources:
+      - path: Pashari
+    settings:
+      base:
+        INFOPLIST_FILE: Pashari/Info.plist
+        GENERATE_INFOPLIST_FILE: NO

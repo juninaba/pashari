@@ -1,0 +1,25 @@
+// Build settings shared by every configuration (Debug and Release).
+//
+// Anything a developer may need to change on their own machine lives here
+// rather than in project.yml, because values in this file can be overridden
+// from Config/Local.xcconfig (which is git-ignored).
+
+PRODUCT_NAME = Pashari
+PRODUCT_BUNDLE_IDENTIFIER = io.github.juninaba.pashari
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+
+// Signing. The default is ad-hoc ("Sign to Run Locally"), so a fresh clone
+// builds without an Apple ID. No team ID is ever committed.
+//
+// macOS ties the Screen Recording permission to the code signature. An ad-hoc
+// signature changes on every build, so the permission has to be granted again
+// each time. To avoid that, sign with a stable development certificate by
+// creating Config/Local.xcconfig (see Local.xcconfig.example).
+CODE_SIGN_STYLE = Automatic
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+
+// Optional per-developer overrides. "#include?" is silently skipped when the
+// file does not exist.
+#include? "Local.xcconfig"
