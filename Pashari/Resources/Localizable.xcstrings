@@ -1,0 +1,16 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Quit Pashari" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pashariを終了"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}
