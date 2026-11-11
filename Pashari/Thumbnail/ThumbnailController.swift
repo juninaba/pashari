@@ -18,7 +18,10 @@ final class ThumbnailController {
 
     /// Adds a thumbnail for `screenshot` on the screen the pointer is on.
     func show(_ screenshot: Screenshot) {
-        guard let screen = NSScreen.underMouse ?? NSScreen.main else { return }
+        guard let screen = NSScreen.underMouse ?? NSScreen.main else {
+            Log.thumbnail.error("No screen to show the thumbnail on")
+            return
+        }
         let capture = PendingCapture(screenshot: screenshot)
 
         let card = ThumbnailCardView(screenshot: screenshot)
@@ -43,6 +46,7 @@ final class ThumbnailController {
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         panel.animator().alphaValue = 1
+        Log.thumbnail.info("Thumbnail shown at \(panel.frame.debugDescription, privacy: .public)")
     }
 
     // MARK: - Actions

@@ -44,8 +44,15 @@ final class CaptureCoordinator {
     /// screenshot, or nil when the user cancelled.
     private func run(_ capture: @escaping () async throws -> Screenshot?) {
         // Ignore a second request while one is still running.
-        guard !isCapturing else { return }
-        guard ScreenRecordingPermission.ensureGranted() else { return }
+        guard !isCapturing else {
+            Log.capture.info("Ignored: a capture is already running")
+            return
+        }
+        guard ScreenRecordingPermission.ensureGranted() else {
+            Log.capture.info("Stopped: no Screen Recording permission")
+            return
+        }
+        Log.capture.info("Capture started")
 
         isCapturing = true
         // `Task` starts asynchronous work from a synchronous function. The
@@ -54,9 +61,14 @@ final class CaptureCoordinator {
         Task {
             defer { isCapturing = false }
             do {
-                guard let screenshot = try await capture() else { return }
+                guard let screenshot = try await capture() else {
+                    Log.capture.info("Capture cancelled")
+                    return
+                }
+                Log.capture.info("Captured \(screenshot.image.width)x\(screenshot.image.height) px")
                 thumbnailController.show(screenshot)
             } catch {
+                Log.capture.error("Capture failed: \(error.localizedDescription, privacy: .public)")
                 ErrorAlert.show(error, title: String(localized: "The screenshot could not be taken"))
             }
         }

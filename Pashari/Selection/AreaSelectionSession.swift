@@ -51,6 +51,7 @@ final class AreaSelectionSession {
         let keyPanel = panels.first { NSMouseInRect(pointer, $0.frame, false) } ?? panels.first
         keyPanel?.makeKey()
         NSCursor.crosshair.set()
+        Log.selection.info("Area overlay shown on \(self.panels.count) screen(s)")
     }
 
     private func finish(with result: Screenshot?) {
@@ -58,6 +59,7 @@ final class AreaSelectionSession {
         // makes a second call (say, Escape during mouse-up) a no-op.
         guard let continuation else { return }
         self.continuation = nil
+        Log.selection.info("Area selection finished: \(result == nil ? "cancelled" : "selected", privacy: .public)")
 
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()

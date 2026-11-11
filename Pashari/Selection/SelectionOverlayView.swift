@@ -18,6 +18,7 @@ class SelectionOverlayView: NSView {
 
     override func keyDown(with event: NSEvent) {
         if Int(event.keyCode) == kVK_Escape {
+            Log.selection.info("Cancelled with Escape")
             onCancel?()
         } else {
             super.keyDown(with: event)
@@ -25,6 +26,7 @@ class SelectionOverlayView: NSView {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        Log.selection.info("Cancelled with a right click")
         onCancel?()
     }
 
