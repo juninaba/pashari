@@ -132,6 +132,30 @@ struct TextToolTests {
         #expect(harness.shapes == [.text("kept", origin: CGPoint(x: 20, y: 15))])
     }
 
+    @Test func changingColourOrSizeWhileTypingRestylesTheText() throws {
+        let harness = CanvasHarness()
+        harness.model.tool = .text
+        harness.click(at: CGPoint(x: 20, y: 15))
+        harness.type("note")
+        let textView = try #require(harness.textView)
+        let sizeBefore = textView.frame.size
+
+        harness.model.color = .blue
+        harness.model.size = .large
+
+        // The text on screen changes straight away, and its box grows to fit.
+        let large = AnnotationRenderer.textAttributes(color: .blue, size: .large)
+        #expect(textView.font == large[.font] as? NSFont)
+        #expect(textView.textColor == large[.foregroundColor] as? NSColor)
+        #expect(textView.frame.width > sizeBefore.width)
+        #expect(textView.frame.height > sizeBefore.height)
+        // And the finished text looks the way it did while being typed.
+        harness.canvas.finishEditing()
+        let annotation = harness.model.document.annotations.last
+        #expect(annotation?.color == .blue)
+        #expect(annotation?.size == .large)
+    }
+
     @Test func textUsesTheSelectedColourAndSize() {
         let harness = CanvasHarness()
         harness.model.tool = .text

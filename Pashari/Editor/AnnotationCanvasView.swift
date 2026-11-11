@@ -32,6 +32,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         clipsToBounds = true
         model.onDocumentChange = { [weak self] in self?.documentDidChange() }
         model.onToolChange = { [weak self] in self?.toolDidChange() }
+        model.onStyleChange = { [weak self] in self?.applyTextStyle() }
     }
 
     @available(*, unavailable)
@@ -240,31 +241,18 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
     // MARK: - Text tool
 
     private func beginText(at point: CGPoint) {
-        let attributes = AnnotationRenderer.textAttributes(color: model.color, size: model.size)
-        let font = attributes[.font] as? NSFont ?? .systemFont(ofSize: model.size.fontSize)
-        let color = attributes[.foregroundColor] as? NSColor ?? .red
         let visible = model.visibleRect
-        let lineHeight = ceil(NSLayoutManager().defaultLineHeight(for: font))
 
         // An NSTextView is a full multi-line editor: Return starts a new
         // line, and it handles selection, copy and paste, and input methods
-        // such as Japanese.
+        // such as Japanese. Its size is set by `applyTextStyle` below.
         let textView = NSTextView(
-            frame: CGRect(
-                x: point.x - visible.minX,
-                y: point.y - visible.minY,
-                width: 4,
-                height: lineHeight
-            )
+            frame: CGRect(origin: CGPoint(x: point.x - visible.minX, y: point.y - visible.minY), size: .zero)
         )
         textView.delegate = self
         textView.isRichText = false
         textView.allowsUndo = true
         textView.drawsBackground = false
-        textView.font = font
-        textView.textColor = color
-        textView.insertionPointColor = color
-        textView.typingAttributes = attributes
         // Type exactly what the user types: no curly quotes, no autocorrect.
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -287,12 +275,35 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         )
         textView.isHorizontallyResizable = false
         textView.isVerticallyResizable = false
-        textView.minSize = textView.frame.size
 
         addSubview(textView)
-        window?.makeFirstResponder(textView)
         self.textView = textView
         textOrigin = point
+        applyTextStyle()
+        window?.makeFirstResponder(textView)
+    }
+
+    /// Gives the text being typed the selected colour and size, in the same
+    /// font and colour the finished text is drawn with, so that nothing
+    /// shifts when typing ends. Runs when typing starts, and again whenever
+    /// the colour or size is changed in the middle of typing.
+    private func applyTextStyle() {
+        guard let textView else { return }
+        let attributes = AnnotationRenderer.textAttributes(color: model.color, size: model.size)
+        let font = attributes[.font] as? NSFont ?? .systemFont(ofSize: model.size.fontSize)
+        let color = attributes[.foregroundColor] as? NSColor ?? .red
+
+        // A plain-text view has one font and one colour for all its text.
+        textView.font = font
+        textView.textColor = color
+        textView.insertionPointColor = color
+        // What the characters typed next get.
+        textView.typingAttributes = attributes
+        // At least one line tall, so the cursor shows before anything is
+        // typed.
+        let lineHeight = ceil(NSLayoutManager().defaultLineHeight(for: font))
+        textView.minSize = CGSize(width: 4, height: lineHeight)
+        fitTextViewToText()
     }
 
     /// Finishes whatever is half done, so the document is complete before it

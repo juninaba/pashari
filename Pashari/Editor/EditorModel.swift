@@ -7,8 +7,8 @@ import Observation
 ///
 /// `@Observable` makes SwiftUI views that read these properties redraw when
 /// they change. The AppKit canvas is not SwiftUI, so it is told through
-/// `onDocumentChange` (the document or the selection changed) and
-/// `onToolChange` instead.
+/// `onDocumentChange` (the document or the selection changed),
+/// `onToolChange` and `onStyleChange` instead.
 @Observable
 final class EditorModel {
     let screenshot: Screenshot
@@ -22,8 +22,12 @@ final class EditorModel {
             onToolChange?()
         }
     }
-    var color: AnnotationColor = .red
-    var size: StrokeSize = .medium
+    var color: AnnotationColor = .red {
+        didSet { onStyleChange?() }
+    }
+    var size: StrokeSize = .medium {
+        didSet { onStyleChange?() }
+    }
 
     private var history = History(AnnotationDocument())
 
@@ -33,6 +37,8 @@ final class EditorModel {
 
     @ObservationIgnored var onDocumentChange: (() -> Void)?
     @ObservationIgnored var onToolChange: (() -> Void)?
+    /// The colour or the size changed.
+    @ObservationIgnored var onStyleChange: (() -> Void)?
 
     /// Made the first time the blur tool needs it, then reused.
     @ObservationIgnored private var cachedBlurredImage: CGImage?
