@@ -34,6 +34,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Hotkeys.register(with: captureCoordinator)
     }
 
+    /// Called when Pashari is opened again while it is already running, for
+    /// example from Spotlight or with a double-click in the Finder. macOS
+    /// does not start a second copy; it tells the running one instead.
+    ///
+    /// Pashari answers by showing Settings. Otherwise the menu bar icon would
+    /// be the only way in, and macOS hides that icon when the menu bar is too
+    /// full to show it, for example next to the notch.
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        Log.app.info("Opened again while running: showing Settings")
+        settingsWindowController.show()
+        // false tells AppKit that the event is handled.
+        return false
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         PendingCapture.removeTemporaryFiles()
     }

@@ -25,6 +25,10 @@ Default hotkeys (change them under Settings):
 | Capture window     | ⌃⌥5    |
 | Capture fullscreen | ⌃⌥3    |
 
+Settings opens from the menu bar icon. If the icon is hidden, for example
+behind the notch, open Pashari again from Spotlight or the Finder and
+Settings appears.
+
 ## Requirements
 
 - macOS 14 or later
