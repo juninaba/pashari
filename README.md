@@ -16,6 +16,8 @@ A menu bar screenshot app for macOS, written in Swift.
   - Hold Shift for straight lines, squares and circles
 - Saves PNG files at full Retina resolution, to the Desktop or a folder of
   your choice
+- Names files like `pashari-20260728-bnan.png`: the date, then the time of
+  day as four letters, so sorting by name keeps them in the order taken
 
 Default hotkeys (change them under Settings):
 

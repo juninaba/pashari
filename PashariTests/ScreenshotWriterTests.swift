@@ -13,7 +13,7 @@ struct ScreenshotWriterTests {
 
         let url = ScreenshotWriter.availableURL(in: directory, capturedAt: sampleDate)
 
-        #expect(url.lastPathComponent == "Pashari 2026-11-10 at 13.08.19.png")
+        #expect(url.lastPathComponent == "pashari-20261110-ktwu.png")
         #expect(url.deletingLastPathComponent().path == directory.path)
     }
 
@@ -27,8 +27,57 @@ struct ScreenshotWriterTests {
         try Data().write(to: second)
         let third = ScreenshotWriter.availableURL(in: directory, capturedAt: sampleDate)
 
-        #expect(second.lastPathComponent == "Pashari 2026-11-10 at 13.08.19 (2).png")
-        #expect(third.lastPathComponent == "Pashari 2026-11-10 at 13.08.19 (3).png")
+        #expect(second.lastPathComponent == "pashari-20261110-ktwu-2.png")
+        #expect(third.lastPathComponent == "pashari-20261110-ktwu-3.png")
+    }
+
+    @Test func timeCodeCountsQuarterSecondsSinceMidnight() {
+        let calendar = utcCalendar
+        let midnight = calendar.date(from: DateComponents(year: 2026, month: 11, day: 10))!
+        func code(_ seconds: TimeInterval) -> String {
+            ScreenshotWriter.timeCode(for: midnight + seconds, in: calendar)
+        }
+
+        #expect(code(0) == "aaaa")
+        #expect(code(0.2) == "aaaa")
+        #expect(code(0.25) == "aaab")
+        // 26 quarter seconds carry over into the next letter, as 9 + 1 = 10.
+        #expect(code(6.5) == "aaba")
+        #expect(code(13 * 3600 + 8 * 60 + 19) == "ktwu")
+        #expect(code(86_399.75) == "trgh")
+    }
+
+    @Test func fileNamesSortInTheOrderTheyWereTaken() {
+        let start = sampleDate
+        // A capture every 97.25 seconds, for two days.
+        let names = stride(from: 0, to: 2 * 86_400, by: 97.25).map {
+            ScreenshotWriter.fileName(capturedAt: start + $0)
+        }
+
+        #expect(names == names.sorted())
+        #expect(Set(names).count == names.count)
+    }
+
+    @Test func timeCodeKeepsRisingWhenTheClocksGoBack() throws {
+        var london = Calendar(identifier: .gregorian)
+        london.timeZone = try #require(TimeZone(identifier: "Europe/London"))
+        // On 25 October 2026 the UK clocks go back from 2:00 to 1:00, so they
+        // show 1:30 twice: at 0:30 UTC and again at 1:30 UTC.
+        let first = utcCalendar.date(
+            from: DateComponents(year: 2026, month: 10, day: 25, hour: 0, minute: 30)
+        )!
+        let second = utcCalendar.date(
+            from: DateComponents(year: 2026, month: 10, day: 25, hour: 1, minute: 30)
+        )!
+        #expect(
+            london.dateComponents([.hour, .minute], from: first)
+                == london.dateComponents([.hour, .minute], from: second)
+        )
+
+        #expect(
+            ScreenshotWriter.timeCode(for: first, in: london)
+                < ScreenshotWriter.timeCode(for: second, in: london)
+        )
     }
 
     @Test func savesPNGAtFullResolutionWithRetinaDensity() async throws {
@@ -78,6 +127,13 @@ struct ScreenshotWriterTests {
             year: 2026, month: 11, day: 10, hour: 13, minute: 8, second: 19
         )
         return calendar.date(from: components)!
+    }
+
+    /// A calendar in UTC, so the expected codes are the same on any machine.
+    private var utcCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
     }
 
     private func makeTemporaryDirectory() throws -> URL {
