@@ -59,11 +59,15 @@ extension Annotation {
             let inner = rect.insetBy(dx: reach, dy: reach)
             return outer.contains(point) && !inner.contains(point)
         case .ellipse(let rect):
-            return Self.distance(from: point, toEllipseIn: rect) <= reach
+            return Self.isPoint(point, within: reach, of: CGPath(ellipseIn: rect, transform: nil))
         case .pen(let points):
-            return Self.distance(from: point, toPath: points) <= reach
+            return Self.isPoint(point, within: reach, of: AnnotationRenderer.smoothPath(through: points))
         case .highlighter(let points):
-            return Self.distance(from: point, toPath: points) <= size.highlighterWidth / 2 + Self.hitSlop
+            return Self.isPoint(
+                point,
+                within: size.highlighterWidth / 2 + Self.hitSlop,
+                of: AnnotationRenderer.smoothPath(through: points)
+            )
         case .text, .blur, .counter:
             return bounds.insetBy(dx: -Self.hitSlop, dy: -Self.hitSlop).contains(point)
         }
@@ -121,34 +125,15 @@ extension Annotation {
         return hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy))
     }
 
-    /// Shortest distance from `point` to a path drawn through `points`.
-    static func distance(from point: CGPoint, toPath points: [CGPoint]) -> CGFloat {
-        guard let first = points.first else { return .infinity }
-        guard points.count > 1 else { return hypot(point.x - first.x, point.y - first.y) }
-
-        var shortest = CGFloat.infinity
-        for index in 1..<points.count {
-            shortest = min(shortest, distance(from: point, toSegment: points[index - 1], points[index]))
-        }
-        return shortest
-    }
-
-    /// Approximate distance from `point` to the outline of the ellipse that
-    /// fills `rect`. Exact on the axes and close enough elsewhere for
-    /// deciding whether a click hit the outline.
-    static func distance(from point: CGPoint, toEllipseIn rect: CGRect) -> CGFloat {
-        let radiusX = rect.width / 2
-        let radiusY = rect.height / 2
-        guard radiusX > 0, radiusY > 0 else {
-            return distance(
-                from: point,
-                toSegment: CGPoint(x: rect.minX, y: rect.minY),
-                CGPoint(x: rect.maxX, y: rect.maxY)
-            )
-        }
-        // Stretch space so the ellipse becomes a unit circle; the outline is
-        // then where the distance from the centre equals 1.
-        let normalized = hypot((point.x - rect.midX) / radiusX, (point.y - rect.midY) / radiusY)
-        return abs(normalized - 1) * min(radiusX, radiusY)
+    /// Whether `point` is within `reach` of the line drawn along `path`.
+    ///
+    /// Core Graphics can turn a path into the outline of its stroke: the
+    /// shape that drawing it with a pen `reach * 2` wide would paint. The
+    /// point is close enough exactly when it falls inside that shape. This
+    /// follows curves precisely, where measuring the distance to a curve by
+    /// hand is hard (for an ellipse it has no simple formula).
+    static func isPoint(_ point: CGPoint, within reach: CGFloat, of path: CGPath) -> Bool {
+        path.copy(strokingWithWidth: reach * 2, lineCap: .round, lineJoin: .round, miterLimit: 10)
+            .contains(point)
     }
 }

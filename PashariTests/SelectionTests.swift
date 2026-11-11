@@ -43,6 +43,29 @@ struct AnnotationGeometryTests {
         #expect(!annotation.isHit(at: CGPoint(x: 0, y: 0)))
     }
 
+    @Test func aLongThinEllipseIsHitOnlyNearItsOutline() {
+        // The ends are 200 points from the centre, the sides only 10.
+        let annotation = make(.ellipse(CGRect(x: 0, y: 0, width: 400, height: 20)))
+
+        #expect(annotation.isHit(at: CGPoint(x: 0, y: 10)))
+        #expect(annotation.isHit(at: CGPoint(x: 200, y: 0)))
+        // 100 points and 50 points past the ends.
+        #expect(!annotation.isHit(at: CGPoint(x: -100, y: 10)))
+        #expect(!annotation.isHit(at: CGPoint(x: 450, y: 10)))
+    }
+
+    @Test func aPenStrokeIsHitWhereItsCurveIsDrawn() {
+        // The pen draws a smooth curve that cuts the corner at (120, 20).
+        let annotation = make(
+            .pen([CGPoint(x: 20, y: 20), CGPoint(x: 120, y: 20), CGPoint(x: 120, y: 120)])
+        )
+
+        // On the curve, 12.5 points in from the corner.
+        #expect(annotation.isHit(at: CGPoint(x: 95, y: 32.5)))
+        // The corner itself is about 24 points away from the ink.
+        #expect(!annotation.isHit(at: CGPoint(x: 120, y: 20)))
+    }
+
     @Test func aPenStrokeIsHitAlongItsPath() {
         let annotation = make(.pen([CGPoint(x: 0, y: 0), CGPoint(x: 50, y: 0), CGPoint(x: 50, y: 50)]))
 

@@ -71,7 +71,7 @@ enum AnnotationRenderer {
             context.strokeEllipse(in: rect)
 
         case .pen(let points):
-            addSmoothPath(through: points, to: context)
+            context.addPath(smoothPath(through: points))
             context.strokePath()
 
         case .highlighter(let points):
@@ -81,7 +81,7 @@ enum AnnotationRenderer {
             context.setAlpha(0.45)
             context.setLineWidth(annotation.size.highlighterWidth)
             context.setLineCap(.butt)
-            addSmoothPath(through: points, to: context)
+            context.addPath(smoothPath(through: points))
             context.strokePath()
 
         case .text(let string, let origin):
@@ -165,23 +165,26 @@ enum AnnotationRenderer {
         )
     }
 
-    /// Adds a curve through the points. Joining the raw points with straight
-    /// lines looks jagged; instead each point becomes the control point of a
-    /// curve between the midpoints on either side of it.
-    private static func addSmoothPath(through points: [CGPoint], to context: CGContext) {
-        guard let first = points.first else { return }
-        context.move(to: first)
+    /// A curve through the points, for the pen and the highlighter. Joining
+    /// the raw points with straight lines looks jagged; instead each point
+    /// becomes the control point of a curve between the midpoints on either
+    /// side of it. The select tool tests clicks against this same curve.
+    static func smoothPath(through points: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        guard let first = points.first else { return path }
+        path.move(to: first)
         guard points.count > 2 else {
-            if let last = points.last { context.addLine(to: last) }
-            return
+            if let last = points.last { path.addLine(to: last) }
+            return path
         }
         for index in 1..<(points.count - 1) {
             let current = points[index]
             let next = points[index + 1]
             let midpoint = CGPoint(x: (current.x + next.x) / 2, y: (current.y + next.y) / 2)
-            context.addQuadCurve(to: midpoint, control: current)
+            path.addQuadCurve(to: midpoint, control: current)
         }
-        context.addLine(to: points[points.count - 1])
+        path.addLine(to: points[points.count - 1])
+        return path
     }
 
     // MARK: - Drawing helpers
