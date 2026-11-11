@@ -21,9 +21,9 @@ Default hotkeys (change them under Settings):
 
 | Action             | Hotkey |
 | ------------------ | ------ |
-| Capture area       | ⌃⇧4    |
-| Capture window     | ⌃⇧5    |
-| Capture fullscreen | ⌃⇧3    |
+| Capture area       | ⌃⌥4    |
+| Capture window     | ⌃⌥5    |
+| Capture fullscreen | ⌃⌥3    |
 
 ## Requirements
 
