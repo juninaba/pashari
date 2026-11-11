@@ -121,6 +121,8 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
     // MARK: - Mouse
 
     override func mouseDown(with event: NSEvent) {
+        // Nothing can be drawn while Copy or Save is running.
+        guard !model.isExporting else { return }
         // A click anywhere finishes text that was being typed.
         if textView != nil {
             commitText()

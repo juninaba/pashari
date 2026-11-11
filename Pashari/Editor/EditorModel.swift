@@ -29,6 +29,11 @@ final class EditorModel {
         didSet { onStyleChange?() }
     }
 
+    /// True while Copy or Save turns the picture into a PNG. The picture
+    /// cannot change meanwhile: a change would be missing from the result,
+    /// and lost when the window closes after it.
+    var isExporting = false
+
     private var history = History(AnnotationDocument())
 
     /// The mark picked with the select tool. Not part of the undo history:
@@ -88,12 +93,14 @@ final class EditorModel {
     }
 
     func undo() {
+        guard !isExporting else { return }
         history.undo()
         dropStaleSelection()
         onDocumentChange?()
     }
 
     func redo() {
+        guard !isExporting else { return }
         history.redo()
         dropStaleSelection()
         onDocumentChange?()
@@ -149,7 +156,9 @@ final class EditorModel {
         }
     }
 
+    /// Every change to the document goes through here (or undo and redo).
     private func apply(_ document: AnnotationDocument) {
+        guard !isExporting else { return }
         history.apply(document)
         onDocumentChange?()
     }

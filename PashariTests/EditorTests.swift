@@ -149,6 +149,22 @@ struct EditorModelTests {
         #expect(model.blurredImage(for: [arrow, blur]) != nil)
     }
 
+    @Test func nothingChangesWhileExporting() {
+        let model = makeModel()
+        model.add(.counter(1, center: CGPoint(x: 20, y: 20)))
+        let before = model.document
+
+        model.isExporting = true
+        model.add(.counter(2, center: CGPoint(x: 40, y: 20)))
+        model.crop(to: CGRect(x: 10, y: 10, width: 40, height: 30))
+        model.undo()
+
+        #expect(model.document == before)
+        model.isExporting = false
+        model.undo()
+        #expect(model.document.annotations.isEmpty)
+    }
+
     @Test func flattenedIsTheOriginalWhenNothingChanged() throws {
         let model = makeModel()
 
@@ -288,6 +304,17 @@ struct EditorWindowTests {
         )
         #expect(toolbar.frame.width >= toolbar.fittingSize.width - 0.5)
         #expect(editor.window.contentMinSize.width >= toolbar.fittingSize.width - 0.5)
+    }
+
+    @Test func theWindowStaysOpenUntilCopyOrSaveIsDone() {
+        let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
+        editor.onClose = nil
+
+        editor.model.isExporting = true
+        #expect(!editor.windowShouldClose(editor.window))
+
+        editor.model.isExporting = false
+        #expect(editor.windowShouldClose(editor.window))
     }
 
     @Test func closingWithoutCopyOrSaveHandsTheResultBack() {

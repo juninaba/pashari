@@ -16,6 +16,10 @@ final class ThumbnailController {
     /// Newest first.
     private var entries: [Entry] = []
 
+    /// The captures whose Copy or Save is under way. `ObjectIdentifier`
+    /// stands for one particular object, the way `===` compares them.
+    private var capturesBeingDelivered: Set<ObjectIdentifier> = []
+
     /// Adds a thumbnail for `screenshot` on the screen the pointer is on.
     func show(_ screenshot: Screenshot) {
         guard let screen = NSScreen.underMouse ?? NSScreen.main else {
@@ -52,29 +56,41 @@ final class ThumbnailController {
     // MARK: - Actions
 
     private func copy(_ capture: PendingCapture) {
-        Task {
-            do {
-                let file = try await capture.file()
-                Clipboard.copy(pngData: file.data)
-                dismiss(capture)
-            } catch {
-                ErrorAlert.show(error, title: String(localized: "The screenshot could not be copied"))
-            }
+        deliver(capture, errorTitle: String(localized: "The screenshot could not be copied")) { file in
+            Clipboard.copy(pngData: file.data)
         }
     }
 
     private func save(_ capture: PendingCapture) {
+        deliver(capture, errorTitle: String(localized: "The screenshot could not be saved")) { file in
+            _ = try ScreenshotWriter.write(
+                file.data,
+                in: Preferences.saveDirectory(),
+                capturedAt: capture.screenshot.capturedAt
+            )
+        }
+    }
+
+    /// Hands the screenshot's PNG to `output` once it is ready, then removes
+    /// the thumbnail.
+    ///
+    /// Right after a capture the PNG may still be encoding. Clicks on Copy
+    /// or Save in that time are ignored while the first one waits, so that
+    /// a double-click does not save the same screenshot twice.
+    private func deliver(
+        _ capture: PendingCapture,
+        errorTitle: String,
+        to output: @escaping (PendingCapture.File) throws -> Void
+    ) {
+        // `insert` reports whether the capture was not in the set yet.
+        guard capturesBeingDelivered.insert(ObjectIdentifier(capture)).inserted else { return }
         Task {
+            defer { capturesBeingDelivered.remove(ObjectIdentifier(capture)) }
             do {
-                let file = try await capture.file()
-                _ = try ScreenshotWriter.write(
-                    file.data,
-                    in: Preferences.saveDirectory(),
-                    capturedAt: capture.screenshot.capturedAt
-                )
+                try output(try await capture.file())
                 dismiss(capture)
             } catch {
-                ErrorAlert.show(error, title: String(localized: "The screenshot could not be saved"))
+                ErrorAlert.show(error, title: errorTitle)
             }
         }
     }

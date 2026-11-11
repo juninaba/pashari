@@ -54,6 +54,8 @@ struct EditorToolbarView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: Self.height)
+        // Greyed out while Copy or Save is running.
+        .disabled(model.isExporting)
     }
 
     private var separator: some View {

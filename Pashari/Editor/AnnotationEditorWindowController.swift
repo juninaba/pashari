@@ -178,6 +178,9 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         errorTitle: String,
         to output: @escaping (Screenshot) async throws -> Void
     ) {
+        // Encoding a large screenshot takes a moment. A second click on Save
+        // (or a held-down ⌘S) in that time would save it twice.
+        guard !model.isExporting else { return }
         canvas.finishEditing()
         let screenshot: Screenshot
         do {
@@ -187,18 +190,29 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
             ErrorAlert.show(error, title: errorTitle)
             return
         }
+
+        model.isExporting = true
         Task {
             do {
                 try await output(screenshot)
                 isDelivered = true
                 window.close()
             } catch {
+                model.isExporting = false
                 ErrorAlert.show(error, title: errorTitle)
             }
         }
     }
 
     // MARK: - NSWindowDelegate
+
+    /// Asked when the user closes the window. While Copy or Save is still
+    /// running the answer is no: the window closes itself once that is done,
+    /// and closing it earlier would also hand the picture back as a
+    /// thumbnail.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        !model.isExporting
+    }
 
     func windowWillClose(_ notification: Notification) {
         canvas.finishEditing()
