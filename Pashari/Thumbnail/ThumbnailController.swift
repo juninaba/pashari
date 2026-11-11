@@ -36,7 +36,7 @@ final class ThumbnailController {
         card.onAnnotate = { [weak self] in self?.annotate(capture) }
         card.onClose = { [weak self] in self?.dismiss(capture) }
         card.previewView.fileURL = { capture.readyFile?.url }
-        card.previewView.onDrop = { [weak self] in self?.dismiss(capture) }
+        card.previewView.onDrop = { [weak self] in self?.dismiss(capture, keepingFile: true) }
 
         let panel = ThumbnailPanel(contentView: card)
         entries.insert(Entry(capture: capture, panel: panel, screen: screen), at: 0)
@@ -96,10 +96,15 @@ final class ThumbnailController {
         onAnnotate?(capture.screenshot)
     }
 
-    private func dismiss(_ capture: PendingCapture) {
+    /// Removes the thumbnail, and its temporary file unless `keepingFile`:
+    /// after a drag and drop the receiving app may still need the file.
+    private func dismiss(_ capture: PendingCapture, keepingFile: Bool = false) {
         // `===` compares identity: is this the very same object?
         guard let index = entries.firstIndex(where: { $0.capture === capture }) else { return }
         entries.remove(at: index).panel.orderOut(nil)
+        if !keepingFile {
+            Task { await capture.removeFile() }
+        }
         layout()
     }
 

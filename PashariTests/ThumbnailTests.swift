@@ -119,6 +119,39 @@ struct PendingCaptureTests {
         #expect(first.url != second.url)
         #expect(first.url.lastPathComponent == second.url.lastPathComponent)
     }
+
+    @Test func removingTheFileDeletesItsFolder() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "pashari-tests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 10, height: 10),
+            scale: 1,
+            capturedAt: Date()
+        )
+        let capture = PendingCapture(screenshot: screenshot, temporaryDirectory: directory)
+        let file = try await capture.file()
+
+        await capture.removeFile()
+
+        #expect(!FileManager.default.fileExists(atPath: file.url.deletingLastPathComponent().path))
+    }
+
+    @Test func aFileRemovedBeforeItIsWrittenDoesNotAppearLater() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "pashari-tests-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 10, height: 10),
+            scale: 1,
+            capturedAt: Date()
+        )
+
+        // Closed straight away, while the PNG may still be encoding.
+        await PendingCapture(screenshot: screenshot, temporaryDirectory: directory).removeFile()
+
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+    }
 }
 
 @MainActor
