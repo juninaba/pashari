@@ -50,6 +50,7 @@ final class WindowSelectionSession {
         let keyPanel = panels.first { NSMouseInRect(pointer, $0.frame, false) } ?? panels.first
         keyPanel?.makeKey()
         updateHighlight()
+        Log.selection.info("Window overlay shown on \(self.panels.count) screen(s), \(self.windows.count) window(s) to pick from")
     }
 
     /// Finds the frontmost window under the pointer and shows it on every
@@ -70,13 +71,17 @@ final class WindowSelectionSession {
 
     private func click() {
         // A click on the bare desktop picks nothing; keep waiting.
-        guard let highlightedIndex else { return }
+        guard let highlightedIndex else {
+            Log.selection.info("Clicked outside every window: still waiting")
+            return
+        }
         finish(with: highlightedIndex)
     }
 
     private func finish(with result: Int?) {
         guard let continuation else { return }
         self.continuation = nil
+        Log.selection.info("Window selection finished: \(result == nil ? "cancelled" : "selected", privacy: .public)")
 
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
