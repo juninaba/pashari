@@ -236,11 +236,17 @@ enum AnnotationRenderer {
 
     /// Bakes the document into a new screenshot at full resolution: the
     /// annotations become pixels and the crop is applied.
+    ///
+    /// Fails rather than leave anything out. A blur that went missing, say,
+    /// would give away what it was put there to hide.
     static func flatten(
         _ screenshot: Screenshot,
         with document: AnnotationDocument,
         blurredImage: CGImage?
-    ) -> Screenshot? {
+    ) throws -> Screenshot {
+        if blurredImage == nil, document.annotations.contains(where: \.isBlur) {
+            throw CaptureError.cannotApplyEdits
+        }
         let scale = screenshot.scale
         let imageBounds = CGRect(origin: .zero, size: screenshot.pointSize)
         let crop = (document.cropRect ?? imageBounds).intersection(imageBounds)
@@ -252,7 +258,7 @@ enum AnnotationRenderer {
         let top = (crop.minY * scale).rounded()
         let pixelWidth = Int((crop.maxX * scale).rounded() - left)
         let pixelHeight = Int((crop.maxY * scale).rounded() - top)
-        guard pixelWidth > 0, pixelHeight > 0 else { return nil }
+        guard pixelWidth > 0, pixelHeight > 0 else { throw CaptureError.cannotApplyEdits }
 
         // Keep the screenshot's own colour space when it is an RGB one.
         var colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -270,7 +276,7 @@ enum AnnotationRenderer {
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
             )
         else {
-            return nil
+            throw CaptureError.cannotApplyEdits
         }
 
         // A bitmap context starts out in pixels with y growing upwards.
@@ -287,7 +293,7 @@ enum AnnotationRenderer {
 
         draw(document.annotations, over: screenshot, blurredImage: blurredImage, in: context)
 
-        guard let image = context.makeImage() else { return nil }
+        guard let image = context.makeImage() else { throw CaptureError.cannotApplyEdits }
         return Screenshot(image: image, scale: scale, capturedAt: screenshot.capturedAt)
     }
 }

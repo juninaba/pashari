@@ -179,7 +179,14 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         to output: @escaping (Screenshot) async throws -> Void
     ) {
         canvas.finishEditing()
-        let screenshot = model.flattened()
+        let screenshot: Screenshot
+        do {
+            screenshot = try model.flattened()
+        } catch {
+            // The window stays open, with the work in it.
+            ErrorAlert.show(error, title: errorTitle)
+            return
+        }
         Task {
             do {
                 try await output(screenshot)
@@ -197,7 +204,25 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         canvas.finishEditing()
         // Closing without Copy or Save does not throw the work away: the
         // result goes back to a floating thumbnail.
-        onClose?(isDelivered ? nil : model.flattened())
+        onClose?(isDelivered ? nil : resultForThumbnail())
         onClose = nil
+    }
+
+    /// The edited screenshot, or the original if the changes cannot be
+    /// applied. Then the user is told, since the thumbnail would otherwise
+    /// look like the finished work at a glance.
+    private func resultForThumbnail() -> Screenshot {
+        do {
+            return try model.flattened()
+        } catch {
+            // After the window has finished closing, not in the middle of it.
+            DispatchQueue.main.async {
+                ErrorAlert.show(
+                    error,
+                    title: String(localized: "The thumbnail holds the screenshot without your changes")
+                )
+            }
+            return model.screenshot
+        }
     }
 }

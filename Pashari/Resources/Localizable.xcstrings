@@ -411,6 +411,16 @@
         }
       }
     },
+    "The annotations and crop could not be applied to the screenshot." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "注釈と切り抜きをスクリーンショットに反映できませんでした。"
+          }
+        }
+      }
+    },
     "The display to capture could not be found." : {
       "localizations" : {
         "ja" : {
@@ -467,6 +477,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "スクリーンショットを撮れませんでした"
+          }
+        }
+      }
+    },
+    "The thumbnail holds the screenshot without your changes" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サムネイルには変更前のスクリーンショットが入っています"
           }
         }
       }

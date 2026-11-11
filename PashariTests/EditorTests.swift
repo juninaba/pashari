@@ -132,17 +132,17 @@ struct EditorModelTests {
         #expect(toolChanges == 1)
     }
 
-    @Test func flattenedIsTheOriginalWhenNothingChanged() {
+    @Test func flattenedIsTheOriginalWhenNothingChanged() throws {
         let model = makeModel()
 
-        #expect(model.flattened().image === model.screenshot.image)
+        #expect(try model.flattened().image === model.screenshot.image)
     }
 
-    @Test func flattenedHasTheCroppedSize() {
+    @Test func flattenedHasTheCroppedSize() throws {
         let model = makeModel()
         model.crop(to: CGRect(x: 10, y: 10, width: 40, height: 20))
 
-        let result = model.flattened()
+        let result = try model.flattened()
 
         #expect(result.image.width == 80)
         #expect(result.image.height == 40)

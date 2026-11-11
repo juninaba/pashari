@@ -116,8 +116,10 @@ struct AnnotationRendererTests {
         )
         let screenshot = Screenshot(image: image, scale: 2, capturedAt: Date())
 
-        let result = try #require(
-            AnnotationRenderer.flatten(screenshot, with: AnnotationDocument(), blurredImage: nil)
+        let result = try AnnotationRenderer.flatten(
+            screenshot,
+            with: AnnotationDocument(),
+            blurredImage: nil
         )
 
         #expect(result.image.width == 200)
@@ -144,9 +146,7 @@ struct AnnotationRendererTests {
             )
         )
 
-        let result = try #require(
-            AnnotationRenderer.flatten(screenshot, with: document, blurredImage: nil)
-        )
+        let result = try AnnotationRenderer.flatten(screenshot, with: document, blurredImage: nil)
 
         let white = TestImages.RGBA(red: 255, green: 255, blue: 255, alpha: 255)
         #expect(TestImages.pixel(of: result.image, x: 100, y: 60) == white)
@@ -166,9 +166,7 @@ struct AnnotationRendererTests {
         var document = AnnotationDocument()
         document.cropRect = CGRect(x: 10, y: 5, width: 20, height: 10)
 
-        let result = try #require(
-            AnnotationRenderer.flatten(screenshot, with: document, blurredImage: nil)
-        )
+        let result = try AnnotationRenderer.flatten(screenshot, with: document, blurredImage: nil)
 
         #expect(result.image.width == 40)
         #expect(result.image.height == 20)
@@ -188,9 +186,7 @@ struct AnnotationRendererTests {
         // A fifth of a pixel past the patch's top-left corner.
         document.cropRect = CGRect(x: 10.1, y: 5.1, width: 20, height: 10)
 
-        let result = try #require(
-            AnnotationRenderer.flatten(screenshot, with: document, blurredImage: nil)
-        )
+        let result = try AnnotationRenderer.flatten(screenshot, with: document, blurredImage: nil)
 
         #expect(result.image.width == 40)
         #expect(result.image.height == 20)
@@ -198,6 +194,24 @@ struct AnnotationRendererTests {
         // the blue around the patch.
         #expect(TestImages.pixel(of: result.image, x: 0, y: 0) == .red)
         #expect(TestImages.pixel(of: result.image, x: 39, y: 19) == .red)
+    }
+
+    @Test func flattenFailsRatherThanLeaveABlurOut() {
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 200, height: 120),
+            scale: 2,
+            capturedAt: Date()
+        )
+        var document = AnnotationDocument()
+        document.annotations.append(
+            Annotation(shape: .blur(CGRect(x: 10, y: 10, width: 40, height: 20)), color: .red, size: .medium)
+        )
+
+        // No blurred copy of the screenshot to draw the blur with: exporting
+        // without it would show what the blur was meant to hide.
+        #expect(throws: CaptureError.self) {
+            try AnnotationRenderer.flatten(screenshot, with: document, blurredImage: nil)
+        }
     }
 
     @Test func blurChangesOnlyTheInsideOfItsRectangle() throws {
@@ -219,9 +233,7 @@ struct AnnotationRendererTests {
             )
         )
 
-        let result = try #require(
-            AnnotationRenderer.flatten(screenshot, with: document, blurredImage: blurred)
-        )
+        let result = try AnnotationRenderer.flatten(screenshot, with: document, blurredImage: blurred)
 
         #expect(blurred.width == 200)
         #expect(blurred.height == 120)

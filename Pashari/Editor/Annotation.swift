@@ -34,6 +34,11 @@ struct Annotation: Equatable, Identifiable {
         self.color = color
         self.size = size
     }
+
+    /// Blur marks are drawn from a blurred copy of the whole screenshot.
+    var isBlur: Bool {
+        if case .blur = shape { true } else { false }
+    }
 }
 
 /// The palette offered in the editor.

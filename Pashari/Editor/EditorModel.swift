@@ -161,9 +161,8 @@ final class EditorModel {
 
     /// The screenshot with everything baked in, ready to copy or save.
     /// Returns the untouched original when nothing was changed.
-    func flattened() -> Screenshot {
+    func flattened() throws -> Screenshot {
         guard !document.isEmpty else { return screenshot }
-        return AnnotationRenderer.flatten(screenshot, with: document, blurredImage: blurredImage)
-            ?? screenshot
+        return try AnnotationRenderer.flatten(screenshot, with: document, blurredImage: blurredImage)
     }
 }
