@@ -11,15 +11,15 @@ final class WindowSelectionSession {
     private var panels: [OverlayPanel] = []
     private var views: [WindowSelectionView] = []
     private var continuation: CheckedContinuation<Int?, Never>?
+    private var spaceObserver: NSObjectProtocol?
+    /// Counts Space changes, so a window list that arrives late, after the
+    /// user has already moved on to yet another Space, can be told apart.
+    private var spaceChanges = 0
 
     /// `windows` must be ordered front to back. Returns the window the user
     /// clicked, or nil when they cancelled.
     func run(with windows: [SCWindow]) async -> SCWindow? {
-        self.windows = windows
-        let primaryScreenHeight = ScreenGeometry.primaryScreenHeight
-        frames = windows.map {
-            ScreenGeometry.flipped($0.frame, primaryScreenHeight: primaryScreenHeight)
-        }
+        setWindows(windows)
 
         // The continuation carries the window's position in `windows` rather
         // than the window itself: `SCWindow` is not marked as safe to hand
@@ -28,7 +28,17 @@ final class WindowSelectionSession {
             self.continuation = continuation
             show()
         }
-        return selectedIndex.map { windows[$0] }
+        // `self.windows`, not the argument: the list is replaced when the
+        // user moves to another Space.
+        return selectedIndex.map { self.windows[$0] }
+    }
+
+    private func setWindows(_ windows: [SCWindow]) {
+        self.windows = windows
+        let primaryScreenHeight = ScreenGeometry.primaryScreenHeight
+        frames = windows.map {
+            ScreenGeometry.flipped($0.frame, primaryScreenHeight: primaryScreenHeight)
+        }
     }
 
     private func show() {
@@ -46,11 +56,59 @@ final class WindowSelectionSession {
             views.append(view)
         }
 
+        focusPanelUnderPointer()
+        updateHighlight()
+        observeSpaceChanges()
+        Log.selection.info("Window overlay shown on \(self.panels.count) screen(s), \(self.windows.count) window(s) to pick from")
+    }
+
+    /// Gives keyboard focus to the overlay under the pointer, so Escape works.
+    private func focusPanelUnderPointer() {
         let pointer = NSEvent.mouseLocation
         let keyPanel = panels.first { NSMouseInRect(pointer, $0.frame, false) } ?? panels.first
         keyPanel?.makeKey()
+    }
+
+    /// Every full-screen app, and every desktop, is a Space of its own. The
+    /// overlay follows the user to another Space, but the windows found at
+    /// the start belong to the Space they left, so they are looked up again.
+    private func observeSpaceChanges() {
+        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            // `queue: .main` runs this on the main thread; this tells Swift so.
+            MainActor.assumeIsolated {
+                self.spaceDidChange()
+            }
+        }
+    }
+
+    private func spaceDidChange() {
+        // A notification can still arrive just after the user finished.
+        guard continuation != nil else { return }
+
+        // Pick nothing until the new list arrives. A click in the meantime
+        // would otherwise capture a window of the Space the user left.
+        setWindows([])
         updateHighlight()
-        Log.selection.info("Window overlay shown on \(self.panels.count) screen(s), \(self.windows.count) window(s) to pick from")
+        spaceChanges += 1
+        let change = spaceChanges
+
+        Task {
+            let windows = (try? await ScreenCapturer.selectableWindows()) ?? []
+            // Drop the list if the user finished, or moved on to yet another
+            // Space, while it was loading.
+            guard continuation != nil, change == spaceChanges else { return }
+            setWindows(windows)
+            updateHighlight()
+            // The app on the new Space has become active and taken the
+            // keyboard. Take it back, so Escape still cancels.
+            focusPanelUnderPointer()
+            Log.selection.info("Moved to another Space: \(windows.count) window(s) to pick from")
+        }
     }
 
     /// Finds the frontmost window under the pointer and shows it on every
@@ -83,6 +141,10 @@ final class WindowSelectionSession {
         self.continuation = nil
         Log.selection.info("Window selection finished: \(result == nil ? "cancelled" : "selected", privacy: .public)")
 
+        if let spaceObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver)
+            self.spaceObserver = nil
+        }
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
         views.removeAll()
