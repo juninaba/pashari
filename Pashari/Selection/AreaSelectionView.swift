@@ -81,6 +81,13 @@ final class AreaSelectionView: SelectionOverlayView {
         )
     }
 
+    /// Removes the rectangle, ready for a new drag.
+    func clearSelection() {
+        dragStart = nil
+        selection = nil
+        needsDisplay = true
+    }
+
     // MARK: - Mouse
 
     override func mouseDown(with event: NSEvent) {

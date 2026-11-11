@@ -50,6 +50,17 @@ struct AreaSelectionViewTests {
         #expect(harness.cancelCount == 0)
     }
 
+    @Test func aClearedSelectionIsNotReported() {
+        let harness = Harness()
+        harness.view.mouseDown(with: harness.mouseEvent(.leftMouseDown, at: CGPoint(x: 40, y: 30)))
+        harness.view.mouseDragged(with: harness.mouseEvent(.leftMouseDragged, at: CGPoint(x: 140, y: 90)))
+
+        harness.view.clearSelection()
+        harness.view.mouseUp(with: harness.mouseEvent(.leftMouseUp, at: CGPoint(x: 140, y: 90)))
+
+        #expect(harness.selections.isEmpty)
+    }
+
     @Test func escapeCancels() {
         let harness = Harness()
 

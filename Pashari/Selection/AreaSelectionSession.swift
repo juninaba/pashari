@@ -3,8 +3,23 @@ import AppKit
 /// Shows the frozen screens, waits for the user to drag out a rectangle, and
 /// hands back the selected part.
 final class AreaSelectionSession {
-    private var panels: [OverlayPanel] = []
+    /// The overlay covering one screen.
+    private struct Overlay {
+        let panel: OverlayPanel
+        /// Shows the frozen screenshot.
+        let backdrop: NSView
+        let selectionView: AreaSelectionView
+        var frozen: FrozenScreen
+    }
+
+    private var overlays: [Overlay] = []
     private var continuation: CheckedContinuation<Screenshot?, Never>?
+    private var spaceObserver: SpaceChangeObserver?
+    /// Counts Space changes, so screenshots that arrive late, after the user
+    /// has already moved on to yet another Space, can be told apart.
+    private var spaceChanges = 0
+    /// True from a Space change until the screens are captured again.
+    private var isCatchingUp = false
 
     /// Returns the selected part of the screen, or nil when the user cancelled.
     func run(with frozenScreens: [FrozenScreen]) async -> Screenshot? {
@@ -32,8 +47,9 @@ final class AreaSelectionSession {
             // Top layer: dimming and the selection rectangle.
             let selectionView = AreaSelectionView(frame: bounds, scale: frozen.screenshot.scale)
             selectionView.autoresizingMask = [.width, .height]
+            let index = overlays.count
             selectionView.onSelect = { [weak self] rect in
-                self?.finish(with: frozen.screenshot.cropped(to: rect))
+                self?.select(rect, onScreenAt: index)
             }
             selectionView.onCancel = { [weak self] in
                 self?.finish(with: nil)
@@ -43,15 +59,76 @@ final class AreaSelectionSession {
             panel.contentView = backdrop
             panel.makeFirstResponder(selectionView)
             panel.orderFrontRegardless()
-            panels.append(panel)
+            overlays.append(
+                Overlay(panel: panel, backdrop: backdrop, selectionView: selectionView, frozen: frozen)
+            )
         }
 
-        // Give keyboard focus to the overlay under the pointer, so Escape works.
-        let pointer = NSEvent.mouseLocation
-        let keyPanel = panels.first { NSMouseInRect(pointer, $0.frame, false) } ?? panels.first
-        keyPanel?.makeKey()
+        OverlayPanel.focus(overlays.map(\.panel))
         NSCursor.crosshair.set()
-        Log.selection.info("Area overlay shown on \(self.panels.count) screen(s)")
+        spaceObserver = SpaceChangeObserver { [weak self] in
+            self?.spaceDidChange()
+        }
+        Log.selection.info("Area overlay shown on \(self.overlays.count) screen(s)")
+    }
+
+    private func select(_ rect: CGRect, onScreenAt index: Int) {
+        // Right after a Space change the frozen screenshot is still the one
+        // of the Space the user left. Let them drag again instead.
+        guard !isCatchingUp else {
+            overlays[index].selectionView.clearSelection()
+            return
+        }
+        finish(with: overlays[index].frozen.screenshot.cropped(to: rect))
+    }
+
+    /// The frozen screenshots show the Space the user left, so the screens
+    /// are captured again.
+    private func spaceDidChange() {
+        // A notification can still arrive just after the user finished.
+        guard continuation != nil else { return }
+
+        // Until the new screenshots arrive, show the screen as it is now,
+        // under the dimming, and let no selection through.
+        isCatchingUp = true
+        for overlay in overlays {
+            overlay.backdrop.layer?.contents = nil
+        }
+        spaceChanges += 1
+        let change = spaceChanges
+
+        Task {
+            // Pashari's own windows, this overlay among them, are left out of
+            // the capture.
+            let frozenScreens = (try? await ScreenCapturer.captureAllDisplays()) ?? []
+            // Drop them if the user finished, or moved on to yet another
+            // Space, while they were being taken.
+            guard continuation != nil, change == spaceChanges else { return }
+            guard replaceFrozenScreens(with: frozenScreens) else {
+                Log.selection.error("The screens could not be captured again after a Space change")
+                finish(with: nil)
+                return
+            }
+            isCatchingUp = false
+            // The app on the new Space has become active and taken the
+            // keyboard. Take it back, so Escape still cancels.
+            OverlayPanel.focus(overlays.map(\.panel))
+            Log.selection.info("Moved to another Space: screens captured again")
+        }
+    }
+
+    /// Puts each screen's new screenshot in place. Returns false when a
+    /// screen has none.
+    private func replaceFrozenScreens(with frozenScreens: [FrozenScreen]) -> Bool {
+        for index in overlays.indices {
+            let displayID = overlays[index].frozen.screen.displayID
+            guard let frozen = frozenScreens.first(where: { $0.screen.displayID == displayID }) else {
+                return false
+            }
+            overlays[index].frozen = frozen
+            overlays[index].backdrop.layer?.contents = frozen.screenshot.image
+        }
+        return true
     }
 
     private func finish(with result: Screenshot?) {
@@ -61,8 +138,10 @@ final class AreaSelectionSession {
         self.continuation = nil
         Log.selection.info("Area selection finished: \(result == nil ? "cancelled" : "selected", privacy: .public)")
 
-        panels.forEach { $0.orderOut(nil) }
-        panels.removeAll()
+        spaceObserver?.stop()
+        spaceObserver = nil
+        overlays.forEach { $0.panel.orderOut(nil) }
+        overlays.removeAll()
         NSCursor.arrow.set()
         continuation.resume(returning: result)
     }
