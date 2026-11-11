@@ -50,6 +50,27 @@ struct ThumbnailLayoutTests {
         ])
     }
 
+    @Test func onlyTheCardsThatFitTheScreenHeightStay() {
+        // Five 16:10 captures: cards 184 points tall, 10 apart, and 16 from
+        // the edges of the screen.
+        let sizes = Array(repeating: CGSize(width: 240, height: 184), count: 5)
+
+        // 16 + 3 × 184 + 2 × 10 = 588 fits below 700 - 16; a fourth card
+        // would reach 782.
+        let small = CGRect(x: 0, y: 0, width: 1000, height: 700)
+        #expect(ThumbnailLayout.fittingCount(for: sizes, in: small) == 3)
+        // 16 + 5 × 184 + 4 × 10 = 976 fits below 1000 - 16.
+        let large = CGRect(x: 0, y: 0, width: 1000, height: 1000)
+        #expect(ThumbnailLayout.fittingCount(for: sizes, in: large) == 5)
+    }
+
+    @Test func theNewestCardStaysEvenWhenNothingFits() {
+        let sizes = [CGSize(width: 240, height: 184)]
+        let tiny = CGRect(x: 0, y: 0, width: 300, height: 100)
+
+        #expect(ThumbnailLayout.fittingCount(for: sizes, in: tiny) == 1)
+    }
+
     @Test func aspectFitCentresThePicture() {
         let fitted = ThumbnailPreviewView.aspectFit(
             CGSize(width: 400, height: 100),

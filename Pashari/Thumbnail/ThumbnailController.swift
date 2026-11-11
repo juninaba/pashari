@@ -40,11 +40,7 @@ final class ThumbnailController {
 
         let panel = ThumbnailPanel(contentView: card)
         entries.insert(Entry(capture: capture, panel: panel, screen: screen), at: 0)
-
-        // Too many to fit: the oldest ones make room.
-        while entries.count > ThumbnailLayout.maximumCount, let oldest = entries.last {
-            dismiss(oldest.capture)
-        }
+        makeRoom(on: screen)
 
         layout()
         panel.alphaValue = 0
@@ -108,6 +104,21 @@ final class ThumbnailController {
     }
 
     // MARK: - Layout
+
+    /// Removes the oldest thumbnails on `screen` that no longer fit: those
+    /// that would stick out of the top of the screen, and any beyond
+    /// `ThumbnailLayout.maximumCount`. Other screens keep theirs.
+    private func makeRoom(on screen: NSScreen) {
+        // `entries` is newest first, and so is this.
+        let stack = entries.filter { $0.screen == screen }
+        let fitting = ThumbnailLayout.fittingCount(
+            for: stack.map(\.panel.frame.size),
+            in: screen.visibleFrame
+        )
+        for entry in stack.dropFirst(min(fitting, ThumbnailLayout.maximumCount)) {
+            dismiss(entry.capture)
+        }
+    }
 
     /// Stacks the thumbnails in the bottom-left corner of their screen,
     /// newest at the bottom.

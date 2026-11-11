@@ -13,7 +13,7 @@ enum ThumbnailLayout {
     static let margin: CGFloat = 16
     /// Gap between stacked thumbnails.
     static let spacing: CGFloat = 10
-    /// More than this and the oldest thumbnail gives way to the newest.
+    /// At most this many on one screen, even when more would fit.
     static let maximumCount = 5
 
     /// The size of the preview for a screenshot of `imageSize` (in points):
@@ -47,5 +47,21 @@ enum ThumbnailLayout {
             y += size.height + spacing
             return frame
         }
+    }
+
+    /// How many cards of such a stack fit inside `area`, counting from the
+    /// newest (the first size). The rest would stick out of the top of the
+    /// screen. Never less than one: the newest card always stays.
+    static func fittingCount(for cardSizes: [CGSize], in area: CGRect) -> Int {
+        var top = area.minY + margin
+        var count = 0
+        for size in cardSizes {
+            top += size.height
+            // The same margin at the top as at the bottom.
+            guard top <= area.maxY - margin else { break }
+            count += 1
+            top += spacing
+        }
+        return max(count, 1)
     }
 }
