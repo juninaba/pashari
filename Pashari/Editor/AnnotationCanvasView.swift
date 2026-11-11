@@ -83,7 +83,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         AnnotationRenderer.draw(
             annotations,
             over: model.screenshot,
-            blurredImage: model.blurredImage,
+            blurredImage: model.blurredImage(for: annotations),
             in: context
         )
 

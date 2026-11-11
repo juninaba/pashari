@@ -132,6 +132,23 @@ struct EditorModelTests {
         #expect(toolChanges == 1)
     }
 
+    @Test func theBlurredCopyIsOnlyForBlurMarks() {
+        let model = makeModel()
+        let arrow = Annotation(
+            shape: .arrow(from: .zero, to: CGPoint(x: 30, y: 20)),
+            color: .red,
+            size: .medium
+        )
+        let blur = Annotation(
+            shape: .blur(CGRect(x: 10, y: 10, width: 30, height: 20)),
+            color: .red,
+            size: .medium
+        )
+
+        #expect(model.blurredImage(for: [arrow]) == nil)
+        #expect(model.blurredImage(for: [arrow, blur]) != nil)
+    }
+
     @Test func flattenedIsTheOriginalWhenNothingChanged() throws {
         let model = makeModel()
 

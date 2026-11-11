@@ -40,8 +40,12 @@ final class EditorModel {
     /// The colour or the size changed.
     @ObservationIgnored var onStyleChange: (() -> Void)?
 
-    /// Made the first time the blur tool needs it, then reused.
-    @ObservationIgnored private var cachedBlurredImage: CGImage?
+    /// See `blurredImage(for:)`. `lazy` means it is worked out on first use.
+    /// A lazy property runs its initial value only once, even when that
+    /// gives nil, so a blur that fails is not tried again at every redraw.
+    @ObservationIgnored private lazy var cachedBlurredImage = AnnotationRenderer.blurredImage(
+        of: screenshot
+    )
 
     init(screenshot: Screenshot) {
         self.screenshot = screenshot
@@ -152,17 +156,22 @@ final class EditorModel {
 
     // MARK: - Rendering
 
-    var blurredImage: CGImage? {
-        if cachedBlurredImage == nil {
-            cachedBlurredImage = AnnotationRenderer.blurredImage(of: screenshot)
-        }
-        return cachedBlurredImage
+    /// The blurred copy of the screenshot that blur marks show, or nil when
+    /// `annotations` holds no blur mark. Blurring a whole Retina screenshot
+    /// takes a moment, and as much memory again as the screenshot, so it is
+    /// done only once a blur mark needs it, and then kept.
+    func blurredImage(for annotations: [Annotation]) -> CGImage? {
+        annotations.contains(where: \.isBlur) ? cachedBlurredImage : nil
     }
 
     /// The screenshot with everything baked in, ready to copy or save.
     /// Returns the untouched original when nothing was changed.
     func flattened() throws -> Screenshot {
         guard !document.isEmpty else { return screenshot }
-        return try AnnotationRenderer.flatten(screenshot, with: document, blurredImage: blurredImage)
+        return try AnnotationRenderer.flatten(
+            screenshot,
+            with: document,
+            blurredImage: blurredImage(for: document.annotations)
+        )
     }
 }
