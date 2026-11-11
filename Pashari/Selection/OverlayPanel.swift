@@ -43,4 +43,12 @@ final class OverlayPanel: NSPanel {
     // Borderless windows refuse keyboard focus by default. The overlay needs
     // it to hear the Escape key.
     override var canBecomeKey: Bool { true }
+
+    /// Gives keyboard focus to whichever of `panels` is under the pointer
+    /// (or else the first), so that Escape reaches the overlay.
+    static func focus(_ panels: [OverlayPanel]) {
+        let pointer = NSEvent.mouseLocation
+        let panel = panels.first { NSMouseInRect(pointer, $0.frame, false) } ?? panels.first
+        panel?.makeKey()
+    }
 }

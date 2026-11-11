@@ -95,3 +95,39 @@ struct WindowSelectionTests {
         #expect(events == ["move", "click"])
     }
 }
+
+@MainActor
+struct SpaceChangeObserverTests {
+    @Test func callsBackOnASpaceChangeUntilStopped() async throws {
+        let counter = Counter()
+        let observer = SpaceChangeObserver { counter.value += 1 }
+
+        postSpaceChange()
+        try await waitUntil { counter.value == 1 }
+
+        observer.stop()
+        postSpaceChange()
+        // Long enough for a call that should not come to arrive.
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(counter.value == 1)
+    }
+
+    /// Only this test process hears it; the real Spaces are left alone.
+    private func postSpaceChange() {
+        NSWorkspace.shared.notificationCenter.post(
+            name: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil
+        )
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<100 where !condition() {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(condition())
+    }
+
+    private final class Counter {
+        var value = 0
+    }
+}

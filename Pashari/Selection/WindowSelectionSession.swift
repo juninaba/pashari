@@ -11,7 +11,7 @@ final class WindowSelectionSession {
     private var panels: [OverlayPanel] = []
     private var views: [WindowSelectionView] = []
     private var continuation: CheckedContinuation<Int?, Never>?
-    private var spaceObserver: NSObjectProtocol?
+    private var spaceObserver: SpaceChangeObserver?
     /// Counts Space changes, so a window list that arrives late, after the
     /// user has already moved on to yet another Space, can be told apart.
     private var spaceChanges = 0
@@ -56,36 +56,16 @@ final class WindowSelectionSession {
             views.append(view)
         }
 
-        focusPanelUnderPointer()
+        OverlayPanel.focus(panels)
         updateHighlight()
-        observeSpaceChanges()
+        spaceObserver = SpaceChangeObserver { [weak self] in
+            self?.spaceDidChange()
+        }
         Log.selection.info("Window overlay shown on \(self.panels.count) screen(s), \(self.windows.count) window(s) to pick from")
     }
 
-    /// Gives keyboard focus to the overlay under the pointer, so Escape works.
-    private func focusPanelUnderPointer() {
-        let pointer = NSEvent.mouseLocation
-        let keyPanel = panels.first { NSMouseInRect(pointer, $0.frame, false) } ?? panels.first
-        keyPanel?.makeKey()
-    }
-
-    /// Every full-screen app, and every desktop, is a Space of its own. The
-    /// overlay follows the user to another Space, but the windows found at
-    /// the start belong to the Space they left, so they are looked up again.
-    private func observeSpaceChanges() {
-        spaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            // `queue: .main` runs this on the main thread; this tells Swift so.
-            MainActor.assumeIsolated {
-                self.spaceDidChange()
-            }
-        }
-    }
-
+    /// The windows found at the start belong to the Space the user left, so
+    /// they are looked up again.
     private func spaceDidChange() {
         // A notification can still arrive just after the user finished.
         guard continuation != nil else { return }
@@ -106,7 +86,7 @@ final class WindowSelectionSession {
             updateHighlight()
             // The app on the new Space has become active and taken the
             // keyboard. Take it back, so Escape still cancels.
-            focusPanelUnderPointer()
+            OverlayPanel.focus(panels)
             Log.selection.info("Moved to another Space: \(windows.count) window(s) to pick from")
         }
     }
@@ -141,10 +121,8 @@ final class WindowSelectionSession {
         self.continuation = nil
         Log.selection.info("Window selection finished: \(result == nil ? "cancelled" : "selected", privacy: .public)")
 
-        if let spaceObserver {
-            NSWorkspace.shared.notificationCenter.removeObserver(spaceObserver)
-            self.spaceObserver = nil
-        }
+        spaceObserver?.stop()
+        spaceObserver = nil
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
         views.removeAll()
