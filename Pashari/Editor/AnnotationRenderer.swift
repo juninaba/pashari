@@ -241,8 +241,14 @@ enum AnnotationRenderer {
         let scale = screenshot.scale
         let imageBounds = CGRect(origin: .zero, size: screenshot.pointSize)
         let crop = (document.cropRect ?? imageBounds).intersection(imageBounds)
-        let pixelWidth = Int((crop.width * scale).rounded())
-        let pixelHeight = Int((crop.height * scale).rounded())
+        // The crop in whole pixels. With the edges on whole pixels, the
+        // screenshot is copied pixel for pixel instead of being resampled.
+        // (The editor already crops on whole pixels; this also clears away
+        // tiny floating-point errors.)
+        let left = (crop.minX * scale).rounded()
+        let top = (crop.minY * scale).rounded()
+        let pixelWidth = Int((crop.maxX * scale).rounded() - left)
+        let pixelHeight = Int((crop.maxY * scale).rounded() - top)
         guard pixelWidth > 0, pixelHeight > 0 else { return nil }
 
         // Keep the screenshot's own colour space when it is an RGB one.
@@ -266,10 +272,15 @@ enum AnnotationRenderer {
 
         // A bitmap context starts out in pixels with y growing upwards.
         // Turn it into image points with y growing downwards, shifted so the
-        // crop's top-left corner lands at the bitmap's top-left corner.
+        // crop's top-left corner lands at the bitmap's top-left corner. Core
+        // Graphics applies these steps to what is drawn in reverse order, so
+        // read them from the bottom up: points become pixels, the crop's
+        // corner moves to the origin, and y is flipped.
         context.translateBy(x: 0, y: CGFloat(pixelHeight))
-        context.scaleBy(x: scale, y: -scale)
-        context.translateBy(x: -crop.minX, y: -crop.minY)
+        context.scaleBy(x: 1, y: -1)
+        // The shift is in whole pixels.
+        context.translateBy(x: -left, y: -top)
+        context.scaleBy(x: scale, y: scale)
 
         draw(document.annotations, over: screenshot, blurredImage: blurredImage, in: context)
 

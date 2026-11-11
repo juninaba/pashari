@@ -99,6 +99,15 @@ struct EditorModelTests {
         #expect(model.visibleRect == CGRect(x: 0, y: 0, width: 100, height: 60))
     }
 
+    @Test func cropEdgesLandOnWholePixels() {
+        let model = makeModel()  // 2 pixels per point
+
+        // A drag in a zoomed-out editor ends between pixels.
+        model.crop(to: CGRect(x: 10.3, y: 5.2, width: 40.4, height: 20.1))
+
+        #expect(model.visibleRect == CGRect(x: 10.5, y: 5, width: 40, height: 20.5))
+    }
+
     @Test func aSecondCropStaysInsideTheFirst() {
         let model = makeModel()
         model.crop(to: CGRect(x: 20, y: 10, width: 60, height: 40))

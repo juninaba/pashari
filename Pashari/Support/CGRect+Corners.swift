@@ -12,4 +12,17 @@ extension CGRect {
             height: abs(a.y - b.y)
         )
     }
+
+    /// The same rectangle with each edge moved to the nearest whole pixel,
+    /// for an image with `scale` pixels per point.
+    func snappedToPixels(scale: CGFloat) -> CGRect {
+        func snap(_ value: CGFloat) -> CGFloat {
+            (value * scale).rounded() / scale
+        }
+        // The edges are rounded one by one, not the origin and the size, so
+        // that an edge never moves by more than half a pixel.
+        let left = snap(minX)
+        let top = snap(minY)
+        return CGRect(x: left, y: top, width: snap(maxX) - left, height: snap(maxY) - top)
+    }
 }

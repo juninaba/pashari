@@ -176,6 +176,30 @@ struct AnnotationRendererTests {
         #expect(TestImages.pixel(of: result.image, x: 39, y: 19) == .red)
     }
 
+    @Test func flattenCopiesThePixelsOfACropThatFallsBetweenThem() throws {
+        // Red patch at pixels x 20..<60, y 10..<30, as above.
+        let image = TestImages.make(
+            width: 200,
+            height: 120,
+            patchRect: CGRect(x: 20, y: 10, width: 40, height: 20)
+        )
+        let screenshot = Screenshot(image: image, scale: 2, capturedAt: Date())
+        var document = AnnotationDocument()
+        // A fifth of a pixel past the patch's top-left corner.
+        document.cropRect = CGRect(x: 10.1, y: 5.1, width: 20, height: 10)
+
+        let result = try #require(
+            AnnotationRenderer.flatten(screenshot, with: document, blurredImage: nil)
+        )
+
+        #expect(result.image.width == 40)
+        #expect(result.image.height == 20)
+        // Pure red right up to the edges. Resampling would have blended in
+        // the blue around the patch.
+        #expect(TestImages.pixel(of: result.image, x: 0, y: 0) == .red)
+        #expect(TestImages.pixel(of: result.image, x: 39, y: 19) == .red)
+    }
+
     @Test func blurChangesOnlyTheInsideOfItsRectangle() throws {
         // A sharp red patch on blue. Blurring a region across its edge must
         // mix the two colours there, and leave everything else alone.

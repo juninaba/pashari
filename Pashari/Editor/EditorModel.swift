@@ -65,8 +65,12 @@ final class EditorModel {
     }
 
     /// Crops to `rect` (in image points), within what is visible now.
+    ///
+    /// Each edge first moves to the nearest whole pixel. In a zoomed editor
+    /// the mouse lands between pixels, and an image cut there would have to
+    /// be resampled to be saved, which blurs it.
     func crop(to rect: CGRect) {
-        let clipped = rect.intersection(visibleRect)
+        let clipped = rect.snappedToPixels(scale: screenshot.scale).intersection(visibleRect)
         guard !clipped.isNull, clipped.width >= 1, clipped.height >= 1 else { return }
         var document = history.current
         document.cropRect = clipped
