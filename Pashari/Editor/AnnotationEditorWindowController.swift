@@ -9,8 +9,8 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     var onClose: ((Screenshot?) -> Void)?
 
     let model: EditorModel
-    let window: EditorWindow
-    private let canvas: AnnotationCanvasView
+    let window: NSWindow
+    let canvas: AnnotationCanvasView
     private let scrollView = NSScrollView()
     /// The SwiftUI toolbar, wrapped so it can live in an AppKit window.
     /// `lazy` because building it needs `self` for the button actions.
@@ -35,7 +35,7 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     init(screenshot: Screenshot) {
         model = EditorModel(screenshot: screenshot)
         canvas = AnnotationCanvasView(model: model)
-        window = EditorWindow(
+        window = NSWindow(
             contentRect: Self.initialContentRect(for: screenshot.pointSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -50,7 +50,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
             height: Self.minimumCanvasHeight + EditorToolbarView.height
         )
         window.delegate = self
-        window.onKeyCommand = { [weak self] command in self?.perform(command) }
         window.contentView = makeContentView()
 
         // Never let the window get narrower than its toolbar, and widen it
@@ -147,17 +146,26 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         )
     }
 
-    // MARK: - Actions
+    // MARK: - Menu shortcuts
 
-    private func perform(_ command: EditorKeyCommand) {
-        switch command {
-        case .undo: model.undo()
-        case .redo: model.redo()
-        case .copy: copyToClipboard()
-        case .save: saveToDisk()
-        case .close: window.performClose(nil)
-        }
+    // Edit > Copy (⌘C) and File > Save (⌘S) in the hidden main menu (see
+    // MainMenu) end up here. The menu asks the view with keyboard focus
+    // first, then the views around it, then the window, and then the
+    // window's delegate, which is this object. So these work wherever the
+    // focus is in the editor, except that ⌘C copies the selected text while
+    // text is being typed. (Undo and Redo are handled by the canvas.)
+
+    // `@objc(copy:)` is the name the menu asks for. The Swift name is
+    // different because every NSObject already has a `copy()` method.
+    @objc(copy:) func copyImage(_ sender: Any?) {
+        copyToClipboard()
     }
+
+    @objc func saveDocument(_ sender: Any?) {
+        saveToDisk()
+    }
+
+    // MARK: - Actions
 
     // Not named `copy()`: every NSObject already has a method of that name.
     private func copyToClipboard() {

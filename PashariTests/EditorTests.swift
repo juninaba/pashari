@@ -5,24 +5,102 @@ import Testing
 @testable import Pashari
 
 @MainActor
-struct EditorKeyCommandTests {
-    @Test func mapsTheEditorShortcuts() {
-        #expect(EditorKeyCommand(key: "z", shift: false) == .undo)
-        #expect(EditorKeyCommand(key: "z", shift: true) == .redo)
-        #expect(EditorKeyCommand(key: "c", shift: false) == .copy)
-        #expect(EditorKeyCommand(key: "s", shift: false) == .save)
-        #expect(EditorKeyCommand(key: "w", shift: false) == .close)
+struct MainMenuTests {
+    @Test func hasTheStandardShortcuts() {
+        let items = MainMenu.make().items.compactMap(\.submenu).flatMap(\.items)
+        func action(_ key: String, _ modifiers: NSEvent.ModifierFlags = .command) -> Selector? {
+            items.first { $0.keyEquivalent == key && $0.keyEquivalentModifierMask == modifiers }?.action
+        }
+
+        #expect(action("w") == #selector(NSWindow.performClose(_:)))
+        #expect(action("s") == #selector(NSDocument.save(_:)))
+        #expect(action("z") == #selector(AnnotationCanvasView.undo(_:)))
+        #expect(action("z", [.command, .shift]) == #selector(AnnotationCanvasView.redo(_:)))
+        #expect(action("x") == #selector(NSText.cut(_:)))
+        #expect(action("c") == #selector(NSText.copy(_:)))
+        #expect(action("v") == #selector(NSText.paste(_:)))
+        #expect(action("a") == #selector(NSText.selectAll(_:)))
+        // No Quit: it would throw away a screenshot left in the editor.
+        #expect(action("q") == nil)
+    }
+}
+
+/// Where the main menu's shortcuts end up in the editor. The menu sends each
+/// action to the first object that has a method for it, asking the view with
+/// keyboard focus first, then the views around it, the window, and last the
+/// window's delegate. `receiver(of:in:)` asks them in the same order.
+@MainActor
+struct EditorShortcutTests {
+    @Test func theEditorHandlesTheShortcuts() {
+        let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
+        editor.onClose = nil
+        editor.window.makeFirstResponder(editor.canvas)
+
+        #expect(receiver(of: #selector(AnnotationCanvasView.undo(_:)), in: editor.window) === editor.canvas)
+        #expect(receiver(of: #selector(AnnotationCanvasView.redo(_:)), in: editor.window) === editor.canvas)
+        #expect(receiver(of: #selector(NSText.copy(_:)), in: editor.window) === editor)
+        #expect(receiver(of: #selector(NSDocument.save(_:)), in: editor.window) === editor)
+        #expect(receiver(of: #selector(NSWindow.performClose(_:)), in: editor.window) === editor.window)
     }
 
-    @Test func otherKeysAreNotCommands() {
-        #expect(EditorKeyCommand(key: "q", shift: false) == nil)
-        #expect(EditorKeyCommand(key: "c", shift: true) == nil)
+    @Test func whileTypingCopyIsForTheTextAndSaveStillWorks() throws {
+        let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
+        editor.onClose = nil
+        editor.model.tool = .text
+        let click = try #require(
+            NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: editor.canvas.convert(CGPoint(x: 20, y: 15), to: nil),
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: editor.window.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: 1
+            )
+        )
+        editor.canvas.mouseDown(with: click)
+
+        #expect(editor.window.firstResponder is NSTextView)
+        #expect(receiver(of: #selector(NSText.copy(_:)), in: editor.window) is NSTextView)
+        #expect(receiver(of: #selector(NSDocument.save(_:)), in: editor.window) === editor)
+        #expect(receiver(of: #selector(NSWindow.performClose(_:)), in: editor.window) === editor.window)
+        #expect(receiver(of: #selector(AnnotationCanvasView.undo(_:)), in: editor.window) === editor.canvas)
     }
 
-    @Test func textEditingGetsTheStandardActions() {
-        #expect(EditorWindow.textEditingAction(key: "v", shift: false) == #selector(NSText.paste(_:)))
-        #expect(EditorWindow.textEditingAction(key: "a", shift: false) == #selector(NSText.selectAll(_:)))
-        #expect(EditorWindow.textEditingAction(key: "s", shift: false) == nil)
+    @Test func undoOutsideTypingStepsThroughThePicture() {
+        let harness = CanvasHarness()
+        harness.model.add(.counter(1, center: CGPoint(x: 20, y: 20)))
+
+        harness.canvas.undo(nil)
+        #expect(harness.shapes.isEmpty)
+        harness.canvas.redo(nil)
+        #expect(harness.shapes == [.counter(1, center: CGPoint(x: 20, y: 20))])
+    }
+
+    @Test func undoWhileTypingTakesBackTheTyping() {
+        let harness = CanvasHarness()
+        harness.model.add(.counter(1, center: CGPoint(x: 80, y: 40)))
+        harness.model.tool = .text
+        harness.click(at: CGPoint(x: 20, y: 15))
+        harness.type("Hello")
+
+        harness.canvas.undo(nil)
+
+        #expect(harness.textView?.string == "")
+        // The picture is left alone.
+        #expect(harness.shapes == [.counter(1, center: CGPoint(x: 80, y: 40))])
+    }
+
+    private func receiver(of action: Selector, in window: NSWindow) -> AnyObject? {
+        var responder: NSResponder? = window.firstResponder
+        while let current = responder {
+            if current.responds(to: action) { return current }
+            responder = current.nextResponder
+        }
+        guard let delegate = window.delegate, delegate.responds(to: action) else { return nil }
+        return delegate
     }
 }
 

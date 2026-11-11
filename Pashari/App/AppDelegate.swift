@@ -17,6 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Leftovers from a previous run that did not quit cleanly.
         PendingCapture.removeTemporaryFiles()
 
+        // Never shown, but it gives the windows ⌘W, ⌘C, ⌘Z and so on.
+        NSApp.mainMenu = MainMenu.make()
+
         // Thumbnail and editor pass screenshots back and forth: "Annotate"
         // on a thumbnail opens an editor, and an editor that is closed
         // without Copy or Save turns back into a thumbnail.

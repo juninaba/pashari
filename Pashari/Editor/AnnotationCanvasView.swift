@@ -229,6 +229,29 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
 
     // MARK: - Keyboard
 
+    // Edit > Undo and Redo in the hidden main menu (⌘Z, ⇧⌘Z; see MainMenu)
+    // arrive here while the canvas, or the text being typed on it, has
+    // keyboard focus. Further out, the window would take them, but the
+    // window only knows how to undo typing.
+
+    /// While text is being typed, takes back the typing, as in any text
+    /// field. Otherwise takes back the last change to the picture.
+    @objc func undo(_ sender: Any?) {
+        if let typingUndo = textView?.undoManager {
+            if typingUndo.canUndo { typingUndo.undo() }
+        } else {
+            model.undo()
+        }
+    }
+
+    @objc func redo(_ sender: Any?) {
+        if let typingUndo = textView?.undoManager {
+            if typingUndo.canRedo { typingUndo.redo() }
+        } else {
+            model.redo()
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
         switch Int(event.keyCode) {
         case kVK_Delete, kVK_ForwardDelete:
