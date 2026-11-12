@@ -10,23 +10,50 @@ enum ScreenRecordingPermission {
     /// Returns true when capturing is allowed. Otherwise guides the user to
     /// System Settings and returns false.
     static func ensureGranted() -> Bool {
-        if CGPreflightScreenCaptureAccess() {
+        let defaults = UserDefaults.standard
+        var hasAsked = defaults.bool(forKey: hasAskedKey)
+        let granted = ensureGranted(
+            isGranted: CGPreflightScreenCaptureAccess,
+            request: CGRequestScreenCaptureAccess,
+            showInstructions: { showInstructions() },
+            hasAsked: &hasAsked
+        )
+        defaults.set(hasAsked, forKey: hasAskedKey)
+        return granted
+    }
+
+    /// The steps of `ensureGranted()`, with the calls to macOS passed in so
+    /// that tests can stand in for them. `hasAsked` tells whether an earlier
+    /// attempt has asked already, and becomes true once one has. (`inout`
+    /// lets the function change the caller's variable.)
+    static func ensureGranted(
+        isGranted: () -> Bool,
+        request: () -> Bool,
+        showInstructions: () -> Void,
+        hasAsked: inout Bool
+    ) -> Bool {
+        if isGranted() {
             return true
         }
 
-        // macOS shows its own prompt only the first time an app asks, and does
-        // not say whether it did. So remember that we asked, and show our own
-        // explanation on later attempts.
-        let defaults = UserDefaults.standard
-        if !defaults.bool(forKey: hasAskedKey) {
-            defaults.set(true, forKey: hasAskedKey)
-            // Also adds Pashari to the list in System Settings.
-            if CGRequestScreenCaptureAccess() {
-                return true
-            }
-            return false
+        // Ask on every attempt, not only the first. macOS shows its prompt,
+        // and adds Pashari to the list in System Settings, only while
+        // Pashari is missing from that list; otherwise the request returns
+        // at once. The entry can go missing later, for example through
+        // `tccutil reset` or the minus button under the list. Asking only
+        // once would then leave nothing there for the user to turn on.
+        if request() {
+            return true
         }
 
+        // macOS does not say whether it showed its prompt. On the first
+        // attempt it normally does, so that one is left to it, and later
+        // attempts get our explanation. (Right after the entry went missing,
+        // both appear together; they lead to the same switch.)
+        if !hasAsked {
+            hasAsked = true
+            return false
+        }
         showInstructions()
         return false
     }
