@@ -394,6 +394,24 @@ struct EditorWindowTests {
         #expect(size == CGSize(width: 1700, height: 850))
     }
 
+    @Test func windowsAreCentredOnTheScreenTheyAreFor() {
+        // A second display to the right of a 1920-point-wide main one.
+        let secondScreen = CGRect(x: 1920, y: 0, width: 2560, height: 1400)
+
+        let origin = NSWindow.originCentering(CGSize(width: 1000, height: 600), in: secondScreen)
+
+        #expect(origin == CGPoint(x: 2700, y: 400))
+    }
+
+    @Test func aWindowTallerThanTheScreenKeepsItsTitleBarOnIt() {
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 800)
+
+        let origin = NSWindow.originCentering(CGSize(width: 900, height: 1000), in: screen)
+
+        // Its top edge is the top of the screen.
+        #expect(origin.y + 1000 == screen.maxY)
+    }
+
     @Test func theWindowIsNeverNarrowerThanItsToolbar() throws {
         // A tiny image would otherwise get the smallest possible window.
         let screenshot = Screenshot(

@@ -41,8 +41,17 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     init(screenshot: Screenshot) {
         model = EditorModel(screenshot: screenshot)
         canvas = AnnotationCanvasView(model: model)
+        // The screen the user is working on. The pointer is on it, over the
+        // thumbnail whose Annotate button opened the editor.
+        let screen = NSScreen.underMouse ?? NSScreen.main
         window = NSWindow(
-            contentRect: Self.initialContentRect(for: screenshot.pointSize),
+            contentRect: CGRect(
+                origin: .zero,
+                size: Self.initialContentSize(
+                    for: screenshot.pointSize,
+                    screenSize: screen?.visibleFrame.size ?? CGSize(width: 1280, height: 800)
+                )
+            ),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -67,7 +76,11 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         if let contentSize = window.contentView?.frame.size, contentSize.width < toolbarWidth {
             window.setContentSize(CGSize(width: toolbarWidth, height: contentSize.height))
         }
-        window.center()
+        if let screen {
+            window.center(on: screen)
+        } else {
+            window.center()
+        }
     }
 
     func show() {
@@ -130,15 +143,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
 
     /// Big enough to show the image at its real size where possible, but
     /// never larger than most of the screen.
-    private static func initialContentRect(for imageSize: CGSize) -> CGRect {
-        let screenSize = (NSScreen.underMouse ?? NSScreen.main)?.visibleFrame.size
-            ?? CGSize(width: 1280, height: 800)
-        return CGRect(
-            origin: .zero,
-            size: initialContentSize(for: imageSize, screenSize: screenSize)
-        )
-    }
-
     static func initialContentSize(for imageSize: CGSize, screenSize: CGSize) -> CGSize {
         let maximum = CGSize(width: screenSize.width * 0.85, height: screenSize.height * 0.85)
         let wanted = CGSize(
