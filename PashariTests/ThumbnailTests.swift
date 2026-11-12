@@ -82,6 +82,48 @@ struct ThumbnailLayoutTests {
 }
 
 @MainActor
+struct ThumbnailControllerTests {
+    @Test func aThumbnailForADisplayThatIsGoneMovesToTheScreenInUse() throws {
+        let controller = ThumbnailController()
+        // No screen has this ID, as if its display had just been unplugged.
+        controller.show(makeScreenshot(), onDisplay: 0xDEAD_BEEF)
+        let panel = try #require(controller.panels.first)
+        defer { close(panel) }
+
+        let screen = try #require(NSScreen.underMouse ?? NSScreen.main)
+        let expected = ThumbnailLayout.stackFrames(for: [panel.frame.size], in: screen.visibleFrame)
+        #expect(panel.frame == expected.first)
+    }
+
+    @Test func thumbnailsAreLaidOutAgainWhenDisplaysChange() async throws {
+        let controller = ThumbnailController()
+        controller.show(makeScreenshot())
+        let panel = try #require(controller.panels.first)
+        defer { close(panel) }
+        let home = panel.frame
+        // Far from any screen, where a layout for a display that is gone
+        // would leave it.
+        panel.setFrameOrigin(CGPoint(x: -20_000, y: -20_000))
+
+        NotificationCenter.default.post(
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: NSApp
+        )
+        for _ in 0..<100 where panel.frame != home {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(panel.frame == home)
+    }
+
+    /// Closes the thumbnail the way its close button does, which also deletes
+    /// its temporary file.
+    private func close(_ panel: NSPanel) {
+        (panel.contentView as? ThumbnailCardView)?.onClose?()
+    }
+}
+
+@MainActor
 struct PendingCaptureTests {
     @Test func preparesAPNGFileNamedAfterTheCaptureTime() async throws {
         let directory = FileManager.default.temporaryDirectory
