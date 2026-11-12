@@ -93,6 +93,38 @@ struct EditorShortcutTests {
         #expect(harness.shapes == [.counter(1, center: CGPoint(x: 80, y: 40))])
     }
 
+    @Test func theToolbarUndoesTheTypingLikeCommandZ() throws {
+        let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
+        editor.onClose = nil
+        editor.model.crop(to: CGRect(x: 10, y: 10, width: 60, height: 40))
+        editor.model.tool = .text
+        let click = try #require(
+            NSEvent.mouseEvent(
+                with: .leftMouseDown,
+                location: editor.canvas.convert(CGPoint(x: 20, y: 15), to: nil),
+                modifierFlags: [],
+                timestamp: 0,
+                windowNumber: editor.window.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: 1,
+                pressure: 1
+            )
+        )
+        editor.canvas.mouseDown(with: click)
+        let textView = try #require(editor.window.firstResponder as? NSTextView)
+        textView.insertText("Hi", replacementRange: textView.selectedRange())
+        let toolbar = try #require(
+            editor.window.contentView?.subviews.compactMap { $0 as? NSHostingView<EditorToolbarView> }.first
+        )
+
+        toolbar.rootView.onUndo()
+
+        // The typing is taken back, and the crop under it stays.
+        #expect(textView.string == "")
+        #expect(editor.model.document.cropRect != nil)
+    }
+
     private func receiver(of action: Selector, in window: NSWindow) -> AnyObject? {
         var responder: NSResponder? = window.firstResponder
         while let current = responder {

@@ -17,6 +17,12 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     private lazy var toolbar = NSHostingView(
         rootView: EditorToolbarView(
             model: model,
+            // The same as ⌘Z and ⇧⌘Z. While text is being typed, they take
+            // back the typing; going past it to the picture underneath would
+            // leave the text field over the wrong spot, say after a crop is
+            // undone. (Clicking a toolbar button does not end the typing.)
+            onUndo: { [weak self] in self?.canvas.undo(nil) },
+            onRedo: { [weak self] in self?.canvas.redo(nil) },
             onCopy: { [weak self] in self?.copyToClipboard() },
             onSave: { [weak self] in self?.saveToDisk() }
         )

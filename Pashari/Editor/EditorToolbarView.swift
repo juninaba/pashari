@@ -8,6 +8,8 @@ struct EditorToolbarView: View {
     // model is `@Observable`, so the toolbar redraws when, say, the selected
     // tool or the undo state changes.
     @Bindable var model: EditorModel
+    let onUndo: () -> Void
+    let onRedo: () -> Void
     let onCopy: () -> Void
     let onSave: () -> Void
 
@@ -34,14 +36,10 @@ struct EditorToolbarView: View {
             Spacer(minLength: 12)
 
             HStack(spacing: 2) {
-                iconButton("arrow.uturn.backward", label: String(localized: "Undo")) {
-                    model.undo()
-                }
-                .disabled(!model.canUndo)
-                iconButton("arrow.uturn.forward", label: String(localized: "Redo")) {
-                    model.redo()
-                }
-                .disabled(!model.canRedo)
+                iconButton("arrow.uturn.backward", label: String(localized: "Undo"), action: onUndo)
+                    .disabled(!model.canUndo)
+                iconButton("arrow.uturn.forward", label: String(localized: "Redo"), action: onRedo)
+                    .disabled(!model.canRedo)
             }
             separator
             // `fixedSize` keeps these two at their natural width, so their
