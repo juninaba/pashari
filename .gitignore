@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Xcode project is generated from project.yml by XcodeGen
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+build/
+
+# Per-developer build settings (signing team etc.)
+Config/Local.xcconfig
+
+# Swift Package Manager
+.build/
+.swiftpm/

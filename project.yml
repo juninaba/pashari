@@ -1,0 +1,65 @@
+# XcodeGen spec. Run `xcodegen generate` to create Pashari.xcodeproj.
+# The generated project is git-ignored; this file is the source of truth.
+
+name: Pashari
+
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+
+# Signing, the app's bundle ID and the version live in the xcconfig so that
+# they can be overridden locally. Do not set CODE_SIGN_* or DEVELOPMENT_TEAM
+# under `settings` below: values written there end up in the project file and
+# would win over the xcconfig.
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    # UI code runs on the main thread unless a declaration opts out.
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    # Required for notarization later; harmless during development.
+    ENABLE_HARDENED_RUNTIME: YES
+
+# Swift packages. The version is pinned exactly because the generated project
+# (and with it Package.resolved) is not checked in.
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    exactVersion: 2.4.0
+
+targets:
+  Pashari:
+    type: application
+    platform: macOS
+    sources:
+      - path: Pashari
+    dependencies:
+      - package: KeyboardShortcuts
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER)
+        INFOPLIST_FILE: Pashari/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+    # A shared scheme, so `xcodebuild -scheme Pashari build` and `test` work
+    # from the command line.
+    scheme:
+      testTargets:
+        - PashariTests
+
+  PashariTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: PashariTests
+    dependencies:
+      - target: Pashari
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER).tests
+        GENERATE_INFOPLIST_FILE: YES
