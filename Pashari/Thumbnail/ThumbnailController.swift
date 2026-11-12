@@ -84,7 +84,7 @@ final class ThumbnailController {
 
     private func save(_ capture: PendingCapture) {
         deliver(capture, errorTitle: String(localized: "The screenshot could not be saved")) { file in
-            _ = try ScreenshotWriter.write(
+            _ = try await ScreenshotWriter.write(
                 file.data,
                 in: Preferences.saveDirectory(),
                 capturedAt: capture.screenshot.capturedAt
@@ -101,14 +101,14 @@ final class ThumbnailController {
     private func deliver(
         _ capture: PendingCapture,
         errorTitle: String,
-        to output: @escaping (PendingCapture.File) throws -> Void
+        to output: @escaping (PendingCapture.File) async throws -> Void
     ) {
         // `insert` reports whether the capture was not in the set yet.
         guard capturesBeingDelivered.insert(ObjectIdentifier(capture)).inserted else { return }
         Task {
             defer { capturesBeingDelivered.remove(ObjectIdentifier(capture)) }
             do {
-                try output(try await capture.file())
+                try await output(try await capture.file())
                 dismiss(capture)
             } catch {
                 ErrorAlert.show(error, title: errorTitle)

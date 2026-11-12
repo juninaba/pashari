@@ -8,15 +8,22 @@ enum ScreenshotWriter {
     /// file's URL.
     static func save(_ screenshot: Screenshot, in directory: URL) async throws -> URL {
         let data = try await pngData(for: screenshot)
-        return try write(data, in: directory, capturedAt: screenshot.capturedAt)
+        return try await write(data, in: directory, capturedAt: screenshot.capturedAt)
     }
 
     /// Writes already-encoded PNG data into `directory` under a name that is
     /// not taken yet. Returns the file's URL.
-    static func write(_ data: Data, in directory: URL, capturedAt date: Date) throws -> URL {
+    ///
+    /// A full Retina screenshot is several megabytes, and the folder may be
+    /// on a slow drive or a network share. `@concurrent` writes it off the
+    /// main thread, so the screen does not freeze meanwhile.
+    @concurrent
+    static func write(_ data: Data, in directory: URL, capturedAt date: Date) async throws -> URL {
         let url = availableURL(in: directory, capturedAt: date)
         do {
-            try data.write(to: url)
+            // Off the main thread, two saves could pick the same free name
+            // at once. Failing beats writing over the other file.
+            try data.write(to: url, options: .withoutOverwriting)
         } catch {
             throw CaptureError.cannotWriteFile(url)
         }
@@ -24,13 +31,13 @@ enum ScreenshotWriter {
     }
 
     /// "pashari-20261110-ktwu.png"
-    static func fileName(capturedAt date: Date) -> String {
+    nonisolated static func fileName(capturedAt date: Date) -> String {
         "\(baseName(capturedAt: date)).png"
     }
 
     /// The file name for `date` inside `directory`, with "-2", "-3"...
     /// appended when a file of that name already exists.
-    static func availableURL(in directory: URL, capturedAt date: Date) -> URL {
+    nonisolated static func availableURL(in directory: URL, capturedAt date: Date) -> URL {
         let baseName = baseName(capturedAt: date)
         var url = directory.appending(path: "\(baseName).png")
         var counter = 2
@@ -43,7 +50,7 @@ enum ScreenshotWriter {
 
     /// "pashari-20261110-ktwu": the day of the capture, then the time of day
     /// as four letters.
-    private static func baseName(capturedAt date: Date) -> String {
+    private nonisolated static func baseName(capturedAt date: Date) -> String {
         // Gregorian, so the year is 2026 even on a Mac set to another
         // calendar, and in the Mac's time zone, so the date matches its clock.
         var calendar = Calendar(identifier: .gregorian)
@@ -70,7 +77,7 @@ enum ScreenshotWriter {
     /// It counts the time that has passed since midnight rather than reading
     /// the clock. On the night the clocks go back, the clock shows the same
     /// hour twice, and a code read off it would go backwards.
-    static func timeCode(for date: Date, in calendar: Calendar) -> String {
+    nonisolated static func timeCode(for date: Date, in calendar: Calendar) -> String {
         let seconds = date.timeIntervalSince(calendar.startOfDay(for: date))
         // Kept within what four letters can hold.
         var count = min(max(Int(seconds * 4), 0), 26 * 26 * 26 * 26 - 1)
