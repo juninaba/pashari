@@ -191,16 +191,6 @@
         }
       }
     },
-    "Highlighter" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "蛍光ペン"
-          }
-        }
-      }
-    },
     "Large" : {
       "localizations" : {
         "ja" : {

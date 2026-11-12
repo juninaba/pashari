@@ -107,7 +107,6 @@ struct AnnotationGeometryTests {
             (.rectangle(rect), .rectangle(movedRect)),
             (.ellipse(rect), .ellipse(movedRect)),
             (.pen([a, b]), .pen([movedA, movedB])),
-            (.highlighter([a, b]), .highlighter([movedA, movedB])),
             (.text("hi", origin: a), .text("hi", origin: movedA)),
             (.blur(rect), .blur(movedRect)),
             (.counter(3, center: a), .counter(3, center: movedA)),

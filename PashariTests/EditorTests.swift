@@ -123,7 +123,7 @@ struct EditorToolTests {
     }
 
     @Test func otherToolsDoNotMakeAShapeFromADrag() {
-        for tool in [EditorTool.select, .pen, .highlighter, .text, .counter, .crop] {
+        for tool in [EditorTool.select, .pen, .text, .counter, .crop] {
             #expect(tool.shape(from: start, to: end) == nil)
         }
     }

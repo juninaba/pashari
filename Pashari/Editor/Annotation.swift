@@ -15,7 +15,6 @@ struct Annotation: Equatable, Identifiable {
         case rectangle(CGRect)
         case ellipse(CGRect)
         case pen([CGPoint])
-        case highlighter([CGPoint])
         /// `origin` is the top-left corner of the text.
         case text(String, origin: CGPoint)
         case blur(CGRect)
@@ -78,14 +77,6 @@ enum StrokeSize: String, CaseIterable, Identifiable {
         case .small: 2
         case .medium: 4
         case .large: 7
-        }
-    }
-
-    var highlighterWidth: CGFloat {
-        switch self {
-        case .small: 12
-        case .medium: 18
-        case .large: 26
         }
     }
 

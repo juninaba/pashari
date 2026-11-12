@@ -74,16 +74,6 @@ enum AnnotationRenderer {
             context.addPath(smoothPath(through: points))
             context.strokePath()
 
-        case .highlighter(let points):
-            // "Multiply" darkens what is underneath instead of covering it,
-            // the way a real highlighter leaves the text readable.
-            context.setBlendMode(.multiply)
-            context.setAlpha(0.45)
-            context.setLineWidth(annotation.size.highlighterWidth)
-            context.setLineCap(.butt)
-            context.addPath(smoothPath(through: points))
-            context.strokePath()
-
         case .text(let string, let origin):
             drawText(
                 string,
@@ -165,10 +155,10 @@ enum AnnotationRenderer {
         )
     }
 
-    /// A curve through the points, for the pen and the highlighter. Joining
-    /// the raw points with straight lines looks jagged; instead each point
-    /// becomes the control point of a curve between the midpoints on either
-    /// side of it. The select tool tests clicks against this same curve.
+    /// A curve through the points, for the pen. Joining the raw points
+    /// with straight lines looks jagged; instead each point becomes the
+    /// control point of a curve between the midpoints on either side of
+    /// it. The select tool tests clicks against this same curve.
     static func smoothPath(through points: [CGPoint]) -> CGPath {
         let path = CGMutablePath()
         guard let first = points.first else { return path }

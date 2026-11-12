@@ -105,7 +105,7 @@ struct ShiftConstraintTests {
     @Test func otherToolsAreNotConstrained() {
         let pointer = CGPoint(x: 700, y: 560)
 
-        for tool in [EditorTool.select, .pen, .highlighter, .text, .counter, .blur, .crop] {
+        for tool in [EditorTool.select, .pen, .text, .counter, .blur, .crop] {
             #expect(tool.constrainedEnd(from: start, to: pointer, within: bounds) == pointer)
         }
     }

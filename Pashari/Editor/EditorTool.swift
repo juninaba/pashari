@@ -6,7 +6,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
     /// Picks existing marks to move or delete them. Every other tool makes
     /// something new.
     case select
-    case arrow, rectangle, ellipse, line, pen, highlighter, text, counter, blur, crop
+    case arrow, rectangle, ellipse, line, pen, text, counter, blur, crop
 
     var id: Self { self }
 
@@ -19,7 +19,6 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .ellipse: "oval"
         case .line: "line.diagonal"
         case .pen: "scribble"
-        case .highlighter: "highlighter"
         case .text: "textformat"
         case .counter: "1.circle"
         case .blur: "drop"
@@ -35,7 +34,6 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .ellipse: String(localized: "Ellipse")
         case .line: String(localized: "Line")
         case .pen: String(localized: "Pen")
-        case .highlighter: String(localized: "Highlighter")
         case .text: String(localized: "Text")
         case .counter: String(localized: "Number")
         case .blur: String(localized: "Blur")
@@ -44,8 +42,8 @@ enum EditorTool: String, CaseIterable, Identifiable {
     }
 
     /// The shape this tool makes from a drag between two points, or nil for
-    /// tools that do not work by dragging out a shape (select, pen,
-    /// highlighter, text, number and crop are handled separately).
+    /// tools that do not work by dragging out a shape (select, pen, text,
+    /// number and crop are handled separately).
     func shape(from start: CGPoint, to end: CGPoint) -> Annotation.Shape? {
         let rect = CGRect(corner: start, oppositeCorner: end)
         switch self {
@@ -54,7 +52,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .rectangle: return .rectangle(rect)
         case .ellipse: return .ellipse(rect)
         case .blur: return .blur(rect)
-        case .select, .pen, .highlighter, .text, .counter, .crop: return nil
+        case .select, .pen, .text, .counter, .crop: return nil
         }
     }
 
@@ -103,7 +101,7 @@ enum EditorTool: String, CaseIterable, Identifiable {
                 y: start.y + (dy < 0 ? -side : side)
             )
 
-        case .select, .pen, .highlighter, .text, .counter, .blur, .crop:
+        case .select, .pen, .text, .counter, .blur, .crop:
             return end
         }
     }

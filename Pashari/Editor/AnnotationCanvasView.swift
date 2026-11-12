@@ -144,8 +144,6 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
             model.add(.counter(model.document.nextCounterNumber, center: point))
         case .pen:
             draft = makeDraft(.pen([point]))
-        case .highlighter:
-            draft = makeDraft(.highlighter([point]))
         case .arrow, .line, .rectangle, .ellipse, .blur, .crop:
             dragStart = point
         }
@@ -156,8 +154,6 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
 
         if case .pen(let points) = draft?.shape {
             draft?.shape = .pen(points + [point])
-        } else if case .highlighter(let points) = draft?.shape {
-            draft?.shape = .highlighter(points + [point])
         } else if let moveStart {
             moveOffset = CGSize(width: point.x - moveStart.x, height: point.y - moveStart.y)
         } else if let dragStart {
@@ -220,7 +216,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
             hypot(to.x - from.x, to.y - from.y) >= 3
         case .rectangle(let rect), .ellipse(let rect), .blur(let rect):
             rect.width >= 3 && rect.height >= 3
-        case .pen(let points), .highlighter(let points):
+        case .pen(let points):
             points.count >= 2
         case .text, .counter:
             true

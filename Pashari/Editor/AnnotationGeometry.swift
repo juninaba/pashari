@@ -23,9 +23,6 @@ extension Annotation {
         case .pen(let points):
             return Self.boundingBox(of: points)
                 .insetBy(dx: -size.lineWidth / 2, dy: -size.lineWidth / 2)
-        case .highlighter(let points):
-            return Self.boundingBox(of: points)
-                .insetBy(dx: -size.highlighterWidth / 2, dy: -size.highlighterWidth / 2)
         case .text(let string, let origin):
             return CGRect(origin: origin, size: AnnotationRenderer.textSize(of: string, size: size))
         case .blur(let rect):
@@ -62,12 +59,6 @@ extension Annotation {
             return Self.isPoint(point, within: reach, of: CGPath(ellipseIn: rect, transform: nil))
         case .pen(let points):
             return Self.isPoint(point, within: reach, of: AnnotationRenderer.smoothPath(through: points))
-        case .highlighter(let points):
-            return Self.isPoint(
-                point,
-                within: size.highlighterWidth / 2 + Self.hitSlop,
-                of: AnnotationRenderer.smoothPath(through: points)
-            )
         case .text, .blur, .counter:
             return bounds.insetBy(dx: -Self.hitSlop, dy: -Self.hitSlop).contains(point)
         }
@@ -90,7 +81,6 @@ extension Annotation {
         case .rectangle(let rect): copy.shape = .rectangle(moved(rect))
         case .ellipse(let rect): copy.shape = .ellipse(moved(rect))
         case .pen(let points): copy.shape = .pen(points.map(moved))
-        case .highlighter(let points): copy.shape = .highlighter(points.map(moved))
         case .text(let string, let origin): copy.shape = .text(string, origin: moved(origin))
         case .blur(let rect): copy.shape = .blur(moved(rect))
         case .counter(let number, let center): copy.shape = .counter(number, center: moved(center))
