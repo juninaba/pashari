@@ -5,10 +5,17 @@ import AppKit
 /// call into this class.
 final class CaptureCoordinator {
     private let thumbnailController: ThumbnailController
+    /// Checks the Screen Recording permission, and guides the user to System
+    /// Settings when it is missing. Tests pass in their own.
+    private let ensurePermission: @MainActor () -> Bool
     private var isCapturing = false
 
-    init(thumbnailController: ThumbnailController) {
+    init(
+        thumbnailController: ThumbnailController,
+        ensurePermission: @escaping @MainActor () -> Bool = { ScreenRecordingPermission.ensureGranted() }
+    ) {
         self.thumbnailController = thumbnailController
+        self.ensurePermission = ensurePermission
     }
 
     /// Captures the whole screen the pointer is on.
@@ -48,13 +55,17 @@ final class CaptureCoordinator {
             Log.capture.info("Ignored: a capture is already running")
             return
         }
-        guard ScreenRecordingPermission.ensureGranted() else {
+        // Set before the permission check, which can show an alert. Should a
+        // hotkey get through while the alert waits for the user, it must not
+        // start a second check, with a second alert on top of the first.
+        isCapturing = true
+        guard ensurePermission() else {
+            isCapturing = false
             Log.capture.info("Stopped: no Screen Recording permission")
             return
         }
         Log.capture.info("Capture started")
 
-        isCapturing = true
         // `Task` starts asynchronous work from a synchronous function. The
         // work still runs on the main thread, but every `await` inside it
         // gives the thread back to the event loop while waiting.
