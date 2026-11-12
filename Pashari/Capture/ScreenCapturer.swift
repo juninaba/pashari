@@ -27,9 +27,10 @@ enum ScreenCapturer {
     }
 
     /// The windows the user can pick in window mode, ordered front to back.
+    /// Pashari's own windows, such as Settings and the editor, are among
+    /// them like any other app's.
     static func selectableWindows() async throws -> [SCWindow] {
         let content = try await shareableContent()
-        let ownProcessID = ProcessInfo.processInfo.processIdentifier
 
         // ScreenCaptureKit does not promise any order, but the older window
         // list API returns on-screen windows front to back. Use its order.
@@ -42,11 +43,11 @@ enum ScreenCapturer {
         return content.windows
             .filter { window in
                 // Layer 0 holds ordinary app windows. The menu bar, the Dock,
-                // desktop icons and so on live on other layers.
+                // desktop icons and so on live on other layers, and so do
+                // Pashari's thumbnails and selection overlays.
                 window.windowLayer == 0
                     && window.isOnScreen
                     && window.owningApplication != nil
-                    && window.owningApplication?.processID != ownProcessID
                     && window.frame.width >= minimumWindowSide
                     && window.frame.height >= minimumWindowSide
                     && position[window.windowID] != nil
