@@ -462,6 +462,39 @@ struct EditorWindowTests {
     }
 }
 
+@MainActor
+struct QuitTests {
+    @Test func quittingAsksFirstOnlyWhileAnEditorIsOpen() {
+        let controller = AnnotationEditorController()
+        var questions = 0
+        var answer = false
+        controller.confirmQuit = {
+            questions += 1
+            return answer
+        }
+
+        #expect(controller.mayQuit())
+        #expect(questions == 0)
+
+        let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
+        controller.keep(editor)
+        // The user cancels, then tries again and quits.
+        #expect(!controller.mayQuit())
+        answer = true
+        #expect(controller.mayQuit())
+        #expect(questions == 2)
+
+        editor.window.close()
+    }
+
+    @Test func theAppAsksTheEditorsBeforeItQuits() throws {
+        let delegate = try #require(NSApp.delegate as? AppDelegate)
+
+        // The test run has no editor open, so nothing stands in the way.
+        #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)
+    }
+}
+
 // MARK: - Helpers
 
 @MainActor

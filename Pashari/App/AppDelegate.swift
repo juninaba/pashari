@@ -54,6 +54,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    /// Asked before Pashari quits, from the menu or because the Mac is
+    /// shutting down. Saying no keeps it running.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        editorController.mayQuit() ? .terminateNow : .terminateCancel
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         PendingCapture.removeTemporaryFiles()
     }
