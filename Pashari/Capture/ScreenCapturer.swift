@@ -127,16 +127,21 @@ enum ScreenCapturer {
         return Screenshot(image: image, scale: scale, capturedAt: Date())
     }
 
-    /// Pashari's own windows that must not appear in a screenshot.
+    /// Pashari's own windows that must not appear in a screenshot: the menu,
+    /// which is still fading out when the capture starts, the floating
+    /// thumbnails and the selection overlays. They all sit above the layer
+    /// of ordinary windows.
     ///
-    /// The menu is still fading out when the capture starts, and later the
-    /// floating thumbnail will be on screen too. The menu bar icon itself is
-    /// kept: without it the screenshot would have a hole in the menu bar.
-    private static func ownWindowsToHide(in content: SCShareableContent) -> [SCWindow] {
+    /// Ordinary windows, such as Settings and the editor, stay in the
+    /// picture like any other app's, as they do in window mode. So does the
+    /// menu bar icon: without it the screenshot would have a hole in the
+    /// menu bar.
+    static func ownWindowsToHide(in content: SCShareableContent) -> [SCWindow] {
         let ownProcessID = ProcessInfo.processInfo.processIdentifier
         let menuBarIconLayer = Int(CGWindowLevelForKey(.statusWindow))
         return content.windows.filter { window in
             window.owningApplication?.processID == ownProcessID
+                && window.windowLayer != 0
                 && window.windowLayer != menuBarIconLayer
         }
     }

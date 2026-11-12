@@ -38,6 +38,21 @@ struct ScreenCapturerTests {
         #expect(abs(screenshot.pointSize.height - window.frame.height) <= 8)
     }
 
+    @Test func screenshotsKeepPasharisOrdinaryWindowsAndHideFloatingOnes() async throws {
+        let window = try await showWindow(at: CGPoint(x: 80, y: 80), level: .normal)
+        let floating = try await showWindow(at: CGPoint(x: 360, y: 80), level: .floating)
+        defer {
+            window.orderOut(nil)
+            floating.orderOut(nil)
+        }
+
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let hidden = ScreenCapturer.ownWindowsToHide(in: content).map(\.windowID)
+
+        #expect(!hidden.contains(CGWindowID(window.windowNumber)))
+        #expect(hidden.contains(CGWindowID(floating.windowNumber)))
+    }
+
     /// A small window of the test host, once it is on screen. It appears on
     /// whatever Space is in front, even one that holds a full-screen app.
     private func showWindow(at origin: CGPoint, level: NSWindow.Level) async throws -> NSWindow {
