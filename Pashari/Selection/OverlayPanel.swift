@@ -7,6 +7,10 @@ import AppKit
 /// and keyboard input without making Pashari the active app. Whatever app the
 /// user was working in stays active.
 final class OverlayPanel: NSPanel {
+    /// Above the menu bar, the Dock and any open menus. Screenshots leave out
+    /// Pashari's windows at this level (see `ScreenCapturer.ownWindowsToHide`).
+    static let windowLevel: NSWindow.Level = .screenSaver
+
     init(screen: NSScreen) {
         super.init(
             contentRect: screen.frame,
@@ -16,8 +20,7 @@ final class OverlayPanel: NSPanel {
         )
         setFrame(screen.frame, display: false)
 
-        // Above the menu bar, the Dock and any open menus.
-        level = .screenSaver
+        level = Self.windowLevel
         // Show on whichever Space is current, including full-screen apps.
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 

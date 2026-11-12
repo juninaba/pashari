@@ -53,6 +53,17 @@ struct ScreenCapturerTests {
         #expect(hidden.contains(CGWindowID(floating.windowNumber)))
     }
 
+    @Test func screenshotsKeepPasharisDialogs() async throws {
+        // At the level macOS gives modal panels, such as alerts.
+        let dialog = try await showWindow(at: CGPoint(x: 80, y: 80), level: .modalPanel)
+        defer { dialog.orderOut(nil) }
+
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let hidden = ScreenCapturer.ownWindowsToHide(in: content).map(\.windowID)
+
+        #expect(!hidden.contains(CGWindowID(dialog.windowNumber)))
+    }
+
     /// A small window of the test host, once it is on screen. It appears on
     /// whatever Space is in front, even one that holds a full-screen app.
     private func showWindow(at origin: CGPoint, level: NSWindow.Level) async throws -> NSWindow {
