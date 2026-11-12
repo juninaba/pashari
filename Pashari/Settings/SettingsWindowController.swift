@@ -4,14 +4,17 @@ import SwiftUI
 /// Opens the Settings window, creating it the first time.
 final class SettingsWindowController {
     private var window: NSWindow?
+    private let model = SettingsModel()
 
     func show() {
+        // The settings may have changed while the window was closed.
+        model.reload()
         // The screen the user is working on: the pointer is on it.
         let screen = NSScreen.underMouse ?? NSScreen.main
         if window == nil {
             // `NSHostingController` is the bridge that puts a SwiftUI view
             // inside an AppKit window.
-            let hostingController = NSHostingController(rootView: SettingsView())
+            let hostingController = NSHostingController(rootView: SettingsView(model: model))
             let window = NSWindow(contentViewController: hostingController)
             window.title = String(localized: "Pashari Settings")
             window.styleMask = [.titled, .closable]

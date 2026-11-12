@@ -63,7 +63,34 @@ struct PreferencesTests {
         #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
+    @Test func settingsShowWhatChangedWhileTheyWereClosed() {
+        let system = FakeSettings()
+        system.saveDirectory = URL(filePath: "/Volumes/External/Screenshots")
+        system.launchAtLogin = true
+        let model = SettingsModel(
+            readLaunchAtLogin: { system.launchAtLogin },
+            readSaveDirectory: { system.saveDirectory }
+        )
+        model.launchAtLoginError = "An earlier attempt failed"
+
+        // The drive is unplugged, so saves fall back to the Desktop, and the
+        // login item is turned off in System Settings.
+        system.saveDirectory = Preferences.desktopDirectory
+        system.launchAtLogin = false
+        model.reload()
+
+        #expect(model.saveDirectory == Preferences.desktopDirectory)
+        #expect(!model.launchAtLogin)
+        #expect(model.launchAtLoginError == nil)
+    }
+
     // MARK: - Helpers
+
+    /// Stands in for the real settings, which the test must not change.
+    private final class FakeSettings {
+        var saveDirectory = Preferences.desktopDirectory
+        var launchAtLogin = false
+    }
 
     /// A settings store used by one test only, so nothing here touches the
     /// real settings of the app.

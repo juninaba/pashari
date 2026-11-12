@@ -5,21 +5,19 @@ import SwiftUI
 /// The contents of the Settings window.
 ///
 /// SwiftUI is declarative: `body` describes what the window looks like for
-/// the current state, and SwiftUI redraws it whenever a `@State` value
-/// changes.
+/// the current state, and SwiftUI redraws it whenever a value it reads from
+/// `model` changes.
 struct SettingsView: View {
-    @State private var launchAtLogin = LaunchAtLogin.isEnabled
-    @State private var launchAtLoginError: String?
-    @State private var saveDirectory = Preferences.saveDirectory()
+    @Bindable var model: SettingsModel
 
     var body: some View {
         Form {
             Section("General") {
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, newValue in
+                Toggle("Launch at login", isOn: $model.launchAtLogin)
+                    .onChange(of: model.launchAtLogin) { _, newValue in
                         setLaunchAtLogin(newValue)
                     }
-                if let launchAtLoginError {
+                if let launchAtLoginError = model.launchAtLoginError {
                     Text(launchAtLoginError)
                         .font(.footnote)
                         .foregroundStyle(.red)
@@ -29,12 +27,12 @@ struct SettingsView: View {
                 // with a button to pick another.
                 LabeledContent("Save screenshots to") {
                     HStack(spacing: 8) {
-                        Text(FileManager.default.displayName(atPath: saveDirectory.path))
+                        Text(FileManager.default.displayName(atPath: model.saveDirectory.path))
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .foregroundStyle(.secondary)
                             // The full path, as a tooltip.
-                            .help(saveDirectory.path)
+                            .help(model.saveDirectory.path)
                         Button("Choose…") {
                             chooseSaveDirectory()
                         }
@@ -62,14 +60,14 @@ struct SettingsView: View {
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
-        panel.directoryURL = saveDirectory
+        panel.directoryURL = model.saveDirectory
         panel.prompt = String(localized: "Choose")
         panel.message = String(localized: "Choose the folder Pashari saves screenshots to.")
 
         // `runModal` waits here until the user picks a folder or cancels.
         if panel.runModal() == .OK, let url = panel.url {
             Preferences.setSaveDirectory(url)
-            saveDirectory = url
+            model.saveDirectory = url
         }
     }
 
@@ -79,10 +77,10 @@ struct SettingsView: View {
         guard enabled != LaunchAtLogin.isEnabled else { return }
         do {
             try LaunchAtLogin.setEnabled(enabled)
-            launchAtLoginError = nil
+            model.launchAtLoginError = nil
         } catch {
-            launchAtLoginError = error.localizedDescription
-            launchAtLogin = LaunchAtLogin.isEnabled
+            model.launchAtLoginError = error.localizedDescription
+            model.launchAtLogin = LaunchAtLogin.isEnabled
         }
     }
 }
