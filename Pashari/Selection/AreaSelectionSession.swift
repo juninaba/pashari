@@ -23,11 +23,9 @@ final class AreaSelectionSession {
 
     /// Returns the selected part of the screen, or nil when the user cancelled.
     func run(with frozenScreens: [FrozenScreen]) async -> Screenshot? {
-        // A dialog may have opened while the screen images were being captured.
-        guard NSApp.modalWindow == nil else { return nil }
         // The overlay reports its result through callbacks. A continuation
         // turns that into something the caller can `await`.
-        return await withCheckedContinuation { continuation in
+        await withCheckedContinuation { continuation in
             self.continuation = continuation
             show(frozenScreens)
         }

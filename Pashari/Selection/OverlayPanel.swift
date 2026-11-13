@@ -32,6 +32,9 @@ final class OverlayPanel: NSPanel {
         // Panels hide themselves when their app is not active. Pashari never
         // is, so that default would make the overlay vanish immediately.
         hidesOnDeactivate = false
+        // An error or Quit dialog can open after selection has started.
+        // Keep accepting input so the user can finish or cancel the overlay.
+        worksWhenModal = true
         // Windows created in code are owned by Swift references, not by AppKit.
         isReleasedWhenClosed = false
         acceptsMouseMovedEvents = true

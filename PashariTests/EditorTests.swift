@@ -503,7 +503,7 @@ struct QuitTests {
             thumbnails.show(makeScreenshot())
         }
         defer {
-            for panel in thumbnails.panels {
+            while let panel = thumbnails.panels.first {
                 (panel.contentView as? ThumbnailCardView)?.onClose?()
             }
         }
@@ -514,13 +514,13 @@ struct QuitTests {
         #expect(delegate.applicationShouldTerminate(NSApp) == .terminateCancel)
         #expect(questions == 1)
         // Cancelling keeps even the captures waiting outside the visible stack.
-        #expect(thumbnails.panels.count == ThumbnailLayout.maximumCount + 2)
+        #expect(thumbnails.pendingCount == ThumbnailLayout.maximumCount + 2)
         answer = true
         #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)
         #expect(questions == 2)
 
         if !editorOpen {
-            for panel in thumbnails.panels {
+            while let panel = thumbnails.panels.first {
                 (panel.contentView as? ThumbnailCardView)?.onClose?()
             }
             #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)

@@ -1,11 +1,12 @@
 import Foundation
+import ImageIO
 
 /// A screenshot that has been taken but not yet copied, saved or discarded.
 /// This is what a floating thumbnail stands for.
 ///
 /// As soon as it is created it starts encoding the PNG in the background and
-/// writes it to a temporary file. Copy and Save reuse that data, and drag and
-/// drop hands out the temporary file.
+/// writes it to a temporary file. Once that succeeds, only metadata stays in
+/// memory. Copy, Save and the editor read the file when they need it.
 final class PendingCapture {
     /// The encoded image and the temporary file holding it.
     struct File: Sendable {
@@ -13,36 +14,110 @@ final class PendingCapture {
         let url: URL
     }
 
-    let screenshot: Screenshot
+    let pointSize: CGSize
+    let capturedAt: Date
+    private let scale: CGFloat
+    private let url: URL
+    private var original: Screenshot?
 
-    /// The background work. `Task` is a handle to it, and `await`ing its
-    /// `value` waits for the result however many times it is asked for.
-    private let preparation: Task<File, Error>
+    /// Returns no image or PNG data, so a completed task retains no large buffers.
+    private let preparation: Task<Void, Error>
 
     /// The file, once it is ready. Drag and drop needs the answer right away
-    /// and cannot wait, so it reads this instead of awaiting `file()`.
-    private(set) var readyFile: File?
+    /// and cannot wait, so it reads this instead of awaiting `fileURL()`.
+    private(set) var readyFileURL: URL?
 
     init(screenshot: Screenshot, temporaryDirectory: URL = PendingCapture.temporaryDirectory) {
-        self.screenshot = screenshot
+        pointSize = screenshot.pointSize
+        capturedAt = screenshot.capturedAt
+        scale = screenshot.scale
+        original = screenshot
         // Each capture gets a folder of its own, so the file inside can
         // carry the plain name it will have wherever it is dropped.
         let url = temporaryDirectory
             .appending(path: UUID().uuidString)
             .appending(path: ScreenshotWriter.fileName(capturedAt: screenshot.capturedAt))
+        self.url = url
         preparation = Task {
             let data = try await ScreenshotWriter.pngData(for: screenshot)
             try await Self.write(data, to: url)
-            return File(data: data, url: url)
         }
         Task {
-            readyFile = try? await preparation.value
+            _ = try? await fileURL()
         }
     }
 
     /// The encoded image and its temporary file, waiting for them if needed.
     func file() async throws -> File {
+        let url = try await fileURL()
+        return File(data: try await Self.readData(from: url), url: url)
+    }
+
+    /// Keeps the original if writing fails: it may be the only copy left.
+    func fileURL() async throws -> URL {
         try await preparation.value
+        original = nil
+        readyFileURL = url
+        return url
+    }
+
+    func screenshot() async throws -> Screenshot {
+        if let original { return original }
+        let image = try await Self.readImage(from: url)
+        return Screenshot(image: image, scale: scale, capturedAt: capturedAt)
+    }
+
+    /// A standalone small bitmap, so a preview never retains a full frame.
+    func thumbnail(maxPixelSize: Int) async throws -> CGImage {
+        if let original {
+            return try await Self.resize(original.image, maxPixelSize: maxPixelSize)
+        }
+        return try await Self.readImage(from: url, maxPixelSize: maxPixelSize)
+    }
+
+    @concurrent
+    private static func readData(from url: URL) async throws -> Data {
+        try Data(contentsOf: url)
+    }
+
+    @concurrent
+    private static func readImage(from url: URL, maxPixelSize: Int? = nil) async throws -> CGImage {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            throw CaptureError.cannotReadFile(url)
+        }
+        let image: CGImage?
+        if let maxPixelSize {
+            image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+                kCGImageSourceShouldCacheImmediately: true,
+            ] as CFDictionary)
+        } else {
+            image = CGImageSourceCreateImageAtIndex(source, 0, [
+                kCGImageSourceShouldCacheImmediately: true,
+            ] as CFDictionary)
+        }
+        guard let image else { throw CaptureError.cannotReadFile(url) }
+        return image
+    }
+
+    @concurrent
+    private static func resize(_ image: CGImage, maxPixelSize: Int) async throws -> CGImage {
+        let factor = min(CGFloat(maxPixelSize) / CGFloat(max(image.width, image.height)), 1)
+        let width = max(Int((CGFloat(image.width) * factor).rounded()), 1)
+        let height = max(Int((CGFloat(image.height) * factor).rounded()), 1)
+        let colorSpace = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil }
+            ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw CaptureError.cannotEncodeImage
+        }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let thumbnail = context.makeImage() else { throw CaptureError.cannotEncodeImage }
+        return thumbnail
     }
 
     // MARK: - Temporary files
@@ -51,8 +126,8 @@ final class PendingCapture {
     /// still being written, this waits for that first; otherwise the file
     /// would appear after it was meant to be deleted.
     func removeFile() async {
-        guard let file = try? await preparation.value else { return }
-        try? FileManager.default.removeItem(at: file.url.deletingLastPathComponent())
+        guard let url = try? await fileURL() else { return }
+        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
     }
 
     /// A full Retina screenshot is several megabytes. `@concurrent` writes
@@ -66,8 +141,8 @@ final class PendingCapture {
         try data.write(to: url)
     }
 
-    /// Where the temporary files live. Each one is deleted when its thumbnail
-    /// goes, except after a drag and drop: the app it was dropped into may
+    /// Where the temporary files live. Each one is deleted when its capture
+    /// is delivered or discarded, except after a drag and drop: the receiving app may
     /// read it later. The whole folder is emptied when Pashari starts and
     /// quits.
     static var temporaryDirectory: URL {

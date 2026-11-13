@@ -9,15 +9,14 @@ final class ThumbnailCardView: NSVisualEffectView {
 
     let previewView: ThumbnailPreviewView
 
-    init(screenshot: Screenshot) {
-        let previewSize = ThumbnailLayout.previewSize(for: screenshot.pointSize)
+    init(imageSize: CGSize) {
+        let previewSize = ThumbnailLayout.previewSize(for: imageSize)
         let toolbarHeight = ThumbnailLayout.toolbarHeight
 
         // AppKit's y axis grows upwards: the toolbar sits at y = 0 and the
         // preview above it.
         previewView = ThumbnailPreviewView(
-            frame: CGRect(origin: CGPoint(x: 0, y: toolbarHeight), size: previewSize),
-            image: screenshot.image
+            frame: CGRect(origin: CGPoint(x: 0, y: toolbarHeight), size: previewSize)
         )
         super.init(
             frame: CGRect(

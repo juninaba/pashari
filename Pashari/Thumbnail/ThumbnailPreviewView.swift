@@ -10,17 +10,15 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
     /// Called after a drop that the receiving app accepted.
     var onDrop: (() -> Void)?
 
-    private let image: CGImage
+    private var image: CGImage?
     private var mouseDownEvent: NSEvent?
 
-    init(frame: CGRect, image: CGImage) {
-        self.image = image
+    override init(frame: CGRect) {
         super.init(frame: frame)
 
         // Let Core Animation draw the image, scaled to fit with its
         // proportions kept.
         wantsLayer = true
-        layer?.contents = image
         layer?.contentsGravity = .resizeAspect
         layer?.backgroundColor = NSColor.black.withAlphaComponent(0.25).cgColor
     }
@@ -28,6 +26,11 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("ThumbnailPreviewView is created in code only")
+    }
+
+    func show(_ image: CGImage) {
+        self.image = image
+        layer?.contents = image
     }
 
     // React to the first click even though the panel never has focus.
@@ -49,7 +52,8 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         guard
             let mouseDownEvent,
             Self.distance(mouseDownEvent.locationInWindow, event.locationInWindow) >= 4,
-            let url = fileURL?()
+            let url = fileURL?(),
+            let image
         else {
             return
         }

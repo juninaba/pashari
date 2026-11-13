@@ -7,28 +7,35 @@ final class ThumbnailController {
     /// already gone by then; the editor takes over.
     var onAnnotate: ((Screenshot) -> Void)?
 
-    private struct Entry {
+    private final class Entry {
         let capture: PendingCapture
-        let panel: ThumbnailPanel
+        var panel: ThumbnailPanel?
+        var previewTask: Task<Void, Never>?
         /// The display the thumbnail is on. Not an `NSScreen`: that describes
         /// the display as it was when the thumbnail appeared, and says
         /// nothing useful once the display is unplugged. The ID can be
         /// looked up among the screens there are now.
         var displayID: CGDirectDisplayID
+
+        init(capture: PendingCapture, displayID: CGDirectDisplayID) {
+            self.capture = capture
+            self.displayID = displayID
+        }
     }
 
     /// Newest first.
     private var entries: [Entry] = []
 
-    /// The captures whose Copy or Save is under way. `ObjectIdentifier`
+    /// Captures being copied, saved, or opened in the editor. `ObjectIdentifier`
     /// stands for one particular object, the way `===` compares them.
     private var capturesBeingDelivered: Set<ObjectIdentifier> = []
 
     /// Includes captures waiting for room in the visible stack.
     var hasPendingCaptures: Bool { !entries.isEmpty }
+    var pendingCount: Int { entries.count }
 
-    /// The thumbnails' windows, newest first. For tests.
-    var panels: [NSPanel] { entries.map(\.panel) }
+    /// Only visible captures have windows. Newest first; also used by tests.
+    var panels: [NSPanel] { entries.compactMap(\.panel) }
 
     init() {
         // Sent when a display is plugged in or out, or when displays are
@@ -54,24 +61,38 @@ final class ThumbnailController {
     /// Adds a thumbnail for `screenshot` on the display `displayID`.
     func show(_ screenshot: Screenshot, onDisplay displayID: CGDirectDisplayID) {
         let capture = PendingCapture(screenshot: screenshot)
+        entries.insert(Entry(capture: capture, displayID: displayID), at: 0)
+        layout()
+    }
 
-        let card = ThumbnailCardView(screenshot: screenshot)
+    private func makePanel(for entry: Entry, on screen: NSScreen) -> ThumbnailPanel {
+        let capture = entry.capture
+        let card = ThumbnailCardView(imageSize: capture.pointSize)
         // `[weak self]` keeps these closures from keeping the controller
         // alive; `capture` is held on purpose, it is the thing to act on.
         card.onCopy = { [weak self] in self?.copy(capture) }
         card.onSave = { [weak self] in self?.save(capture) }
         card.onAnnotate = { [weak self] in self?.annotate(capture) }
         card.onClose = { [weak self] in self?.dismiss(capture) }
-        card.previewView.fileURL = { capture.readyFile?.url }
+        card.previewView.fileURL = { capture.readyFileURL }
         card.previewView.onDrop = { [weak self] in self?.dismiss(capture, keepingFile: true) }
 
         let panel = ThumbnailPanel(contentView: card)
         panel.alphaValue = 0
-        entries.insert(Entry(capture: capture, panel: panel, displayID: displayID), at: 0)
-
-        layout()
-        panel.animator().alphaValue = 1
-        Log.thumbnail.info("Thumbnail shown at \(panel.frame.debugDescription, privacy: .public)")
+        // Keep Retina detail when a display change moves this card to another screen.
+        let maxPixelSize = Int(ThumbnailLayout.maximumPreviewSize.width * max(2, screen.backingScaleFactor))
+        entry.previewTask = Task { [weak card] in
+            do {
+                try Task.checkCancellation()
+                let image = try await capture.thumbnail(maxPixelSize: maxPixelSize)
+                guard !Task.isCancelled else { return }
+                card?.previewView.show(image)
+            } catch {
+                guard !Task.isCancelled, card != nil else { return }
+                ErrorAlert.show(error, title: String(localized: "The screenshot could not be opened"))
+            }
+        }
+        return panel
     }
 
     // MARK: - Actions
@@ -87,7 +108,7 @@ final class ThumbnailController {
             _ = try await ScreenshotWriter.write(
                 file.data,
                 in: Preferences.saveDirectory(),
-                capturedAt: capture.screenshot.capturedAt
+                capturedAt: capture.capturedAt
             )
         }
     }
@@ -117,8 +138,20 @@ final class ThumbnailController {
     }
 
     private func annotate(_ capture: PendingCapture) {
-        dismiss(capture)
-        onAnnotate?(capture.screenshot)
+        guard capturesBeingDelivered.insert(ObjectIdentifier(capture)).inserted else { return }
+        Task {
+            defer { capturesBeingDelivered.remove(ObjectIdentifier(capture)) }
+            do {
+                let screenshot = try await capture.screenshot()
+                // The thumbnail may have been closed while its PNG was loading.
+                guard entries.contains(where: { $0.capture === capture }) else { return }
+                dismiss(capture)
+                onAnnotate?(screenshot)
+            } catch {
+                guard entries.contains(where: { $0.capture === capture }) else { return }
+                ErrorAlert.show(error, title: String(localized: "The screenshot could not be opened"))
+            }
+        }
     }
 
     /// Removes the thumbnail, and its temporary file unless `keepingFile`:
@@ -126,7 +159,7 @@ final class ThumbnailController {
     private func dismiss(_ capture: PendingCapture, keepingFile: Bool = false) {
         // `===` compares identity: is this the very same object?
         guard let index = entries.firstIndex(where: { $0.capture === capture }) else { return }
-        entries.remove(at: index).panel.orderOut(nil)
+        hide(entries.remove(at: index))
         if !keepingFile {
             Task { await capture.removeFile() }
         }
@@ -135,31 +168,44 @@ final class ThumbnailController {
 
     // MARK: - Layout
 
+    private func hide(_ entry: Entry) {
+        entry.previewTask?.cancel()
+        entry.previewTask = nil
+        entry.panel?.contentView = nil
+        entry.panel?.close()
+        entry.panel = nil
+    }
+
     /// Stacks the thumbnails in the bottom-left corner of their screen,
     /// newest at the bottom. Older captures wait off-screen until there is
-    /// room; hiding a panel never discards its screenshot or temporary file.
+    /// room. Their panels and preview images are released; the PNG stays.
     private func layout() {
         moveOffMissingDisplays()
         for (displayID, group) in Dictionary(grouping: entries, by: \.displayID) {
             guard let screen = Self.screen(for: displayID) else { continue }
             let fitting = ThumbnailLayout.fittingCount(
-                for: group.map(\.panel.frame.size),
+                for: group.map { ThumbnailLayout.cardSize(for: $0.capture.pointSize) },
                 in: screen.visibleFrame
             )
             let visibleCount = min(fitting, ThumbnailLayout.maximumCount)
             let visible = group.prefix(visibleCount)
             for entry in group.dropFirst(visibleCount) {
-                entry.panel.orderOut(nil)
+                hide(entry)
             }
             // `visibleFrame` leaves out the menu bar and the Dock.
             let frames = ThumbnailLayout.stackFrames(
-                for: visible.map(\.panel.frame.size),
+                for: visible.map { ThumbnailLayout.cardSize(for: $0.capture.pointSize) },
                 in: screen.visibleFrame
             )
             for (entry, frame) in zip(visible, frames) {
-                entry.panel.setFrame(frame, display: true)
-                if !entry.panel.isVisible {
-                    entry.panel.orderFrontRegardless()
+                if let panel = entry.panel {
+                    panel.setFrame(frame, display: true)
+                } else {
+                    let panel = makePanel(for: entry, on: screen)
+                    entry.panel = panel
+                    panel.setFrame(frame, display: true)
+                    panel.orderFrontRegardless()
+                    panel.animator().alphaValue = 1
                 }
             }
         }

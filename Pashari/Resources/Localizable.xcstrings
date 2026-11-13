@@ -471,6 +471,26 @@
         }
       }
     },
+    "The screenshot could not be opened" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクリーンショットを開けませんでした"
+          }
+        }
+      }
+    },
+    "The screenshot could not be read from %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクリーンショットを %@ から読み込めませんでした。"
+          }
+        }
+      }
+    },
     "The screenshot could not be saved" : {
       "localizations" : {
         "ja" : {

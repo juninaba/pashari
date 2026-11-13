@@ -85,42 +85,69 @@ struct ThumbnailLayoutTests {
 struct ThumbnailControllerTests {
     @Test func overflowCapturesKeepTheirFilesAndReturnWhenThereIsRoom() async throws {
         let controller = ThumbnailController()
-        defer { controller.panels.forEach(close) }
+        defer {
+            while let panel = controller.panels.first { close(panel) }
+        }
         #expect(!controller.hasPendingCaptures)
 
         controller.show(makeScreenshot())
-        let oldest = try #require(controller.panels.first)
-        let card = try #require(oldest.contentView as? ThumbnailCardView)
-        for _ in 0..<100 where card.previewView.fileURL?() == nil {
-            try await Task.sleep(for: .milliseconds(10))
+        weak var oldPanel: NSPanel?
+        let file: URL
+        do {
+            let panel = try #require(controller.panels.first)
+            oldPanel = panel
+            let card = try #require(panel.contentView as? ThumbnailCardView)
+            for _ in 0..<100 where card.previewView.fileURL?() == nil {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            file = try #require(card.previewView.fileURL?())
         }
-        let file = try #require(card.previewView.fileURL?())
 
         for _ in 0...ThumbnailLayout.maximumCount {
             controller.show(makeScreenshot())
         }
-        #expect(controller.panels.count == ThumbnailLayout.maximumCount + 2)
-        #expect(!oldest.isVisible)
+        #expect(controller.pendingCount == ThumbnailLayout.maximumCount + 2)
+        #expect(controller.panels.count <= ThumbnailLayout.maximumCount)
         #expect(controller.hasPendingCaptures)
 
         NotificationCenter.default.post(
             name: NSApplication.didChangeScreenParametersNotification,
             object: NSApp
         )
-        // Give screen-change handling and any queued file deletion time to run.
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(controller.panels.count == ThumbnailLayout.maximumCount + 2)
-        #expect(controller.panels.filter(\.isVisible).count <= ThumbnailLayout.maximumCount)
-        #expect(FileManager.default.fileExists(atPath: file.path))
-
-        for panel in controller.panels where panel !== oldest {
-            close(panel)
+        // AppKit may retain the window object briefly, but its views and
+        // backing store must be discarded when it leaves the visible stack.
+        if let oldPanel {
+            #expect(oldPanel.contentView == nil)
+            #expect(!oldPanel.isVisible)
         }
-        #expect(oldest.isVisible)
-        #expect(controller.panels.count == 1)
+        #expect(controller.pendingCount == ThumbnailLayout.maximumCount + 2)
         #expect(FileManager.default.fileExists(atPath: file.path))
 
-        close(oldest)
+        while controller.pendingCount > 1 {
+            close(try #require(controller.panels.first))
+        }
+        let restored = try #require(controller.panels.first)
+        let restoredCard = try #require(restored.contentView as? ThumbnailCardView)
+        #expect(restored.isVisible)
+        #expect(controller.panels.count == 1)
+        #expect(restoredCard.previewView.fileURL?() == file)
+        for _ in 0..<100 where restoredCard.previewView.layer?.contents == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(restoredCard.previewView.layer?.contents != nil)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+
+        var annotated: Screenshot?
+        controller.onAnnotate = { annotated = $0 }
+        restoredCard.onAnnotate?()
+        for _ in 0..<100 where annotated == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let screenshot = try #require(annotated)
+        #expect(screenshot.image.width == 200)
+        #expect(screenshot.image.height == 120)
+        #expect(screenshot.scale == 2)
+        #expect(TestImages.pixel(of: screenshot.image, x: 20, y: 20) == .blue)
         #expect(!controller.hasPendingCaptures)
     }
 
@@ -166,6 +193,69 @@ struct ThumbnailControllerTests {
 
 @MainActor
 struct PendingCaptureTests {
+    @Test func restoresTheFullImageAndMetadataFromItsPNG() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = Screenshot(
+            image: TestImages.make(width: 60, height: 40, patchRect: CGRect(x: 0, y: 0, width: 10, height: 10)),
+            scale: 2, capturedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        let capture = PendingCapture(screenshot: original, temporaryDirectory: directory)
+        _ = try await capture.fileURL()
+
+        let restored = try await capture.screenshot()
+        #expect(restored.image !== original.image)
+        #expect(restored.pointSize == original.pointSize)
+        #expect(restored.scale == original.scale)
+        #expect(restored.capturedAt == original.capturedAt)
+        #expect(TestImages.pixel(of: restored.image, x: 5, y: 5) == .red)
+        #expect(TestImages.pixel(of: restored.image, x: 20, y: 20) == .blue)
+        let thumbnail = try await capture.thumbnail(maxPixelSize: 20)
+        #expect(thumbnail.width == 20)
+        #expect(thumbnail.height <= 20)
+    }
+
+    @Test func releasesTheOriginalPixelsAfterWritingEvenWhileAPreviewIsHeld() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let released = DispatchSemaphore(value: 0)
+        let capture = PendingCapture(
+            screenshot: Screenshot(image: TestImages.tracked(released: released), scale: 2, capturedAt: Date()),
+            temporaryDirectory: directory
+        )
+        let thumbnail = try await capture.thumbnail(maxPixelSize: 20)
+        _ = try await capture.fileURL()
+
+        func sourceWasReleased() -> Bool {
+            released.wait(timeout: .now()) == .success
+        }
+        var pixelsReleased = false
+        for _ in 0..<100 {
+            if sourceWasReleased() {
+                pixelsReleased = true
+                break
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(pixelsReleased)
+        #expect(thumbnail.width == 20)
+        #expect(try await capture.screenshot().image.width == 60)
+    }
+
+    @Test func keepsTheOriginalWhenWritingTheTemporaryFileFails() async throws {
+        let path = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try Data().write(to: path)
+        defer { try? FileManager.default.removeItem(at: path) }
+        let original = makeScreenshot()
+        let capture = PendingCapture(screenshot: original, temporaryDirectory: path)
+        await #expect(throws: (any Error).self) { try await capture.fileURL() }
+
+        #expect(capture.readyFileURL == nil)
+        let restored = try await capture.screenshot()
+        #expect(restored.image === original.image)
+        #expect(try await capture.thumbnail(maxPixelSize: 20).width == 20)
+    }
+
     @Test func preparesAPNGFileNamedAfterTheCaptureTime() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "pashari-tests-\(UUID().uuidString)")
