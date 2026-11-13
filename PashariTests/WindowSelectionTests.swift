@@ -115,6 +115,16 @@ struct WindowSelectionTests {
         #expect(pixelWidths == [Int(size.width), Int(size.width) * 2])
     }
 
+    @Test func cameraSitsOnWholePointsSoItStaysSharp() {
+        // The camera symbol is 23 × 18 points in a 28-point square.
+        let origin = NSCursor.centeredOrigin(
+            of: CGSize(width: 23, height: 18),
+            in: CGSize(width: 28, height: 28)
+        )
+
+        #expect(origin == CGPoint(x: 2, y: 5))
+    }
+
     @Test func focusShowsTheFocusedOverlaysCursor() throws {
         let screen = try #require(NSScreen.screens.first)
         let panel = OverlayPanel(screen: screen)
