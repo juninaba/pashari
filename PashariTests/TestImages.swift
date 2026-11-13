@@ -3,6 +3,27 @@ import Foundation
 
 /// Helpers for building and inspecting small images in tests.
 enum TestImages {
+    /// Signals when the image's source pixels are actually freed, on any thread.
+    static func tracked(released: DispatchSemaphore) -> CGImage {
+        let width = 60
+        let height = 40
+        let count = width * height * 4
+        let pixels = UnsafeMutableRawPointer.allocate(byteCount: count, alignment: 16)
+        pixels.initializeMemory(as: UInt8.self, repeating: 255, count: count)
+        let provider = CGDataProvider(
+            dataInfo: Unmanaged.passRetained(released).toOpaque(), data: pixels, size: count
+        ) { info, data, _ in
+            data.deallocate()
+            Unmanaged<DispatchSemaphore>.fromOpaque(info!).takeRetainedValue().signal()
+        }!
+        return CGImage(
+            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        )!
+    }
+
     struct RGBA: Equatable {
         var red: UInt8
         var green: UInt8

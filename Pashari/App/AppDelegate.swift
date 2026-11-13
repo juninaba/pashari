@@ -2,8 +2,8 @@ import AppKit
 
 /// Receives app lifecycle callbacks from AppKit and owns the top-level objects.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let thumbnailController = ThumbnailController()
-    private let editorController = AnnotationEditorController()
+    private let thumbnailController: ThumbnailController
+    private let editorController: AnnotationEditorController
     private let settingsWindowController = SettingsWindowController()
     // `lazy`: created on first use. It needs `thumbnailController`, and one
     // stored property cannot refer to another while the object is still
@@ -13,10 +13,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private var statusItemController: StatusItemController?
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // Leftovers from a previous run that did not quit cleanly.
-        PendingCapture.removeTemporaryFiles()
+    /// Tests supply an answer without opening a modal alert.
+    lazy var confirmQuit: () -> Bool = { [unowned self] in self.askToQuit() }
 
+    init(
+        thumbnailController: ThumbnailController = ThumbnailController(),
+        editorController: AnnotationEditorController = AnnotationEditorController()
+    ) {
+        self.thumbnailController = thumbnailController
+        self.editorController = editorController
+        super.init()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
         // Never shown, but it gives the windows ⌘W, ⌘C, ⌘Z and so on.
         NSApp.mainMenu = MainMenu.make()
 
@@ -57,10 +66,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Asked before Pashari quits, from the menu or because the Mac is
     /// shutting down. Saying no keeps it running.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        editorController.mayQuit() ? .terminateNow : .terminateCancel
+        guard thumbnailController.hasPendingCaptures || editorController.hasOpenEditors else {
+            return .terminateNow
+        }
+        guard confirmQuit() else {
+            editorController.showEditors()
+            return .terminateCancel
+        }
+        return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        PendingCapture.removeTemporaryFiles()
+        CaptureStorage.current.removeFiles()
+    }
+
+    private func askToQuit() -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "Quit Pashari?")
+        alert.informativeText = String(
+            localized: "Screenshots in thumbnails or the editor have not been copied or saved, and will be lost."
+        )
+        // Return keeps the work; quitting requires an explicit choice.
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.addButton(withTitle: String(localized: "Quit")).hasDestructiveAction = true
+
+        return ModalPresentation.run { alert.runModal() } == .alertSecondButtonReturn
     }
 }

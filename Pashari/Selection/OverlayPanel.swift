@@ -11,6 +11,9 @@ final class OverlayPanel: NSPanel {
     /// Pashari's windows at this level (see `ScreenCapturer.ownWindowsToHide`).
     static let windowLevel: NSWindow.Level = .screenSaver
 
+    /// Ends the owning selection session, including its other display panels.
+    var onCancel: (() -> Void)?
+
     init(screen: NSScreen) {
         super.init(
             contentRect: screen.frame,
@@ -32,6 +35,9 @@ final class OverlayPanel: NSPanel {
         // Panels hide themselves when their app is not active. Pashari never
         // is, so that default would make the overlay vanish immediately.
         hidesOnDeactivate = false
+        // An error or Quit dialog can open after selection has started.
+        // Keep accepting input so the user can finish or cancel the overlay.
+        worksWhenModal = true
         // Windows created in code are owned by Swift references, not by AppKit.
         isReleasedWhenClosed = false
         acceptsMouseMovedEvents = true
@@ -46,6 +52,12 @@ final class OverlayPanel: NSPanel {
     // Borderless windows refuse keyboard focus by default. The overlay needs
     // it to hear the Escape key.
     override var canBecomeKey: Bool { true }
+
+    static func cancelSelection() {
+        for panel in NSApp.windows.compactMap({ $0 as? OverlayPanel }) where panel.isVisible {
+            panel.onCancel?()
+        }
+    }
 
     /// Gives keyboard focus to whichever of `panels` is under the pointer
     /// (or else the first), so that Escape reaches the overlay.

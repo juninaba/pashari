@@ -8,6 +8,7 @@ enum CaptureError: LocalizedError {
     case displayNotFound
     case cannotEncodeImage
     case cannotWriteFile(URL)
+    case cannotReadFile(URL)
     case cannotApplyEdits
 
     var errorDescription: String? {
@@ -20,6 +21,8 @@ enum CaptureError: LocalizedError {
             String(localized: "The annotations and crop could not be applied to the screenshot.")
         case .cannotWriteFile(let url):
             String(localized: "The screenshot could not be saved to \(url.path).")
+        case .cannotReadFile(let url):
+            String(localized: "The screenshot could not be read from \(url.path).")
         }
     }
 }

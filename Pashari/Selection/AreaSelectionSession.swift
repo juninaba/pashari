@@ -51,9 +51,10 @@ final class AreaSelectionSession {
             selectionView.onSelect = { [weak self] rect in
                 self?.select(rect, onScreenAt: index)
             }
-            selectionView.onCancel = { [weak self] in
+            panel.onCancel = { [weak self] in
                 self?.finish(with: nil)
             }
+            selectionView.onCancel = panel.onCancel
             backdrop.addSubview(selectionView)
 
             panel.contentView = backdrop

@@ -464,34 +464,68 @@ struct EditorWindowTests {
 
 @MainActor
 struct QuitTests {
-    @Test func quittingAsksFirstOnlyWhileAnEditorIsOpen() {
+    @Test func quittingAsksFirstWhileAnEditorIsOpen() {
         let controller = AnnotationEditorController()
+        let delegate = AppDelegate(editorController: controller)
         var questions = 0
         var answer = false
-        controller.confirmQuit = {
+        delegate.confirmQuit = {
             questions += 1
             return answer
         }
 
-        #expect(controller.mayQuit())
+        #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)
         #expect(questions == 0)
 
         let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
         controller.keep(editor)
         // The user cancels, then tries again and quits.
-        #expect(!controller.mayQuit())
+        #expect(delegate.applicationShouldTerminate(NSApp) == .terminateCancel)
         answer = true
-        #expect(controller.mayQuit())
+        #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)
         #expect(questions == 2)
 
         editor.window.close()
     }
 
-    @Test func theAppAsksTheEditorsBeforeItQuits() throws {
-        let delegate = try #require(NSApp.delegate as? AppDelegate)
+    @Test(arguments: [false, true])
+    func pendingThumbnailsRequireOneConfirmationEvenWithEditors(editorOpen: Bool) {
+        let thumbnails = ThumbnailController()
+        let editors = AnnotationEditorController()
+        let delegate = AppDelegate(thumbnailController: thumbnails, editorController: editors)
+        var questions = 0
+        var answer = false
+        delegate.confirmQuit = {
+            questions += 1
+            return answer
+        }
+        for _ in 0..<(ThumbnailLayout.maximumCount + 2) {
+            thumbnails.show(makeScreenshot())
+        }
+        defer {
+            while let panel = thumbnails.panels.first {
+                (panel.contentView as? ThumbnailCardView)?.onClose?()
+            }
+        }
+        let editor = editorOpen ? AnnotationEditorWindowController(screenshot: makeScreenshot()) : nil
+        if let editor { editors.keep(editor) }
+        defer { editor?.window.close() }
 
-        // The test run has no editor open, so nothing stands in the way.
+        #expect(delegate.applicationShouldTerminate(NSApp) == .terminateCancel)
+        #expect(questions == 1)
+        // Cancelling keeps even the captures waiting outside the visible stack.
+        #expect(thumbnails.pendingCount == ThumbnailLayout.maximumCount + 2)
+        answer = true
         #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)
+        #expect(questions == 2)
+
+        if !editorOpen {
+            while let panel = thumbnails.panels.first {
+                (panel.contentView as? ThumbnailCardView)?.onClose?()
+            }
+            #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)
+            #expect(questions == 2)
+        }
     }
 }
 

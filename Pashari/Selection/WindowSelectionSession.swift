@@ -47,7 +47,8 @@ final class WindowSelectionSession {
             let view = WindowSelectionView(frame: CGRect(origin: .zero, size: screen.frame.size))
             view.onPointerMove = { [weak self] in self?.updateHighlight() }
             view.onClick = { [weak self] in self?.click() }
-            view.onCancel = { [weak self] in self?.finish(with: nil) }
+            panel.onCancel = { [weak self] in self?.finish(with: nil) }
+            view.onCancel = panel.onCancel
 
             panel.contentView = view
             panel.makeFirstResponder(view)

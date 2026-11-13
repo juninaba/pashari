@@ -65,7 +65,7 @@ struct SettingsView: View {
         panel.message = String(localized: "Choose the folder Pashari saves screenshots to.")
 
         // `runModal` waits here until the user picks a folder or cancels.
-        if panel.runModal() == .OK, let url = panel.url {
+        if ModalPresentation.run({ panel.runModal() }) == .OK, let url = panel.url {
             Preferences.setSaveDirectory(url)
             model.saveDirectory = url
         }

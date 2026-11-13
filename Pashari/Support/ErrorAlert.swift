@@ -8,9 +8,6 @@ enum ErrorAlert {
         alert.messageText = title
         alert.informativeText = error.localizedDescription
 
-        // A menu bar app is never the active app on its own, so bring the
-        // alert to the front explicitly.
-        NSApp.activate()
-        alert.runModal()
+        ModalPresentation.run { alert.runModal() }
     }
 }
