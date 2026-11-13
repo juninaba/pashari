@@ -26,9 +26,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Leftovers from a previous run that did not quit cleanly.
-        PendingCapture.removeTemporaryFiles()
-
         // Never shown, but it gives the windows ⌘W, ⌘C, ⌘Z and so on.
         NSApp.mainMenu = MainMenu.make()
 
@@ -80,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        PendingCapture.removeTemporaryFiles()
+        CaptureStorage.current.removeFiles()
     }
 
     private func askToQuit() -> Bool {
@@ -94,7 +91,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.addButton(withTitle: String(localized: "Quit")).hasDestructiveAction = true
 
-        NSApp.activate()
-        return alert.runModal() == .alertSecondButtonReturn
+        return ModalPresentation.run { alert.runModal() } == .alertSecondButtonReturn
     }
 }

@@ -25,6 +25,9 @@ final class ThumbnailController {
 
     /// Newest first.
     private var entries: [Entry] = []
+    private let storageDirectory: URL
+    private let saveDirectory: @MainActor () -> URL
+    private let showError: @MainActor (Error, String) -> Void
 
     /// Captures being copied, saved, or opened in the editor. `ObjectIdentifier`
     /// stands for one particular object, the way `===` compares them.
@@ -37,7 +40,14 @@ final class ThumbnailController {
     /// Only visible captures have windows. Newest first; also used by tests.
     var panels: [NSPanel] { entries.compactMap(\.panel) }
 
-    init() {
+    init(
+        storageDirectory: URL = CaptureStorage.current.directory,
+        saveDirectory: @escaping @MainActor () -> URL = { Preferences.saveDirectory() },
+        showError: @escaping @MainActor (Error, String) -> Void = { ErrorAlert.show($0, title: $1) }
+    ) {
+        self.storageDirectory = storageDirectory
+        self.saveDirectory = saveDirectory
+        self.showError = showError
         // Sent when a display is plugged in or out, or when displays are
         // rearranged or change resolution.
         _ = NotificationCenter.default.addObserver(
@@ -60,7 +70,7 @@ final class ThumbnailController {
 
     /// Adds a thumbnail for `screenshot` on the display `displayID`.
     func show(_ screenshot: Screenshot, onDisplay displayID: CGDirectDisplayID) {
-        let capture = PendingCapture(screenshot: screenshot)
+        let capture = PendingCapture(screenshot: screenshot, directory: storageDirectory)
         entries.insert(Entry(capture: capture, displayID: displayID), at: 0)
         layout()
     }
@@ -73,14 +83,19 @@ final class ThumbnailController {
         card.onCopy = { [weak self] in self?.copy(capture) }
         card.onSave = { [weak self] in self?.save(capture) }
         card.onAnnotate = { [weak self] in self?.annotate(capture) }
-        card.onClose = { [weak self] in self?.dismiss(capture) }
-        card.previewView.fileURL = { capture.readyFileURL }
+        card.onClose = { [weak self] in self?.close(capture) }
+        card.previewView.fileURL = { [weak self] in
+            guard self?.capturesBeingDelivered.contains(ObjectIdentifier(capture)) == false else { return nil }
+            return capture.readyFileURL
+        }
         card.previewView.onDrop = { [weak self] in self?.dismiss(capture, keepingFile: true) }
+        card.setActionsEnabled(!capturesBeingDelivered.contains(ObjectIdentifier(capture)))
 
         let panel = ThumbnailPanel(contentView: card)
         panel.alphaValue = 0
         // Keep Retina detail when a display change moves this card to another screen.
         let maxPixelSize = Int(ThumbnailLayout.maximumPreviewSize.width * max(2, screen.backingScaleFactor))
+        let showError = self.showError
         entry.previewTask = Task { [weak card] in
             do {
                 try Task.checkCancellation()
@@ -89,7 +104,7 @@ final class ThumbnailController {
                 card?.previewView.show(image)
             } catch {
                 guard !Task.isCancelled, card != nil else { return }
-                ErrorAlert.show(error, title: String(localized: "The screenshot could not be opened"))
+                showError(error, String(localized: "The screenshot could not be opened"))
             }
         }
         return panel
@@ -107,7 +122,7 @@ final class ThumbnailController {
         deliver(capture, errorTitle: String(localized: "The screenshot could not be saved")) { file in
             _ = try await ScreenshotWriter.write(
                 file.data,
-                in: Preferences.saveDirectory(),
+                in: self.saveDirectory(),
                 capturedAt: capture.capturedAt
             )
         }
@@ -126,21 +141,29 @@ final class ThumbnailController {
     ) {
         // `insert` reports whether the capture was not in the set yet.
         guard capturesBeingDelivered.insert(ObjectIdentifier(capture)).inserted else { return }
+        updateActions(for: capture)
         Task {
-            defer { capturesBeingDelivered.remove(ObjectIdentifier(capture)) }
+            defer {
+                capturesBeingDelivered.remove(ObjectIdentifier(capture))
+                updateActions(for: capture)
+            }
             do {
                 try await output(try await capture.file())
                 dismiss(capture)
             } catch {
-                ErrorAlert.show(error, title: errorTitle)
+                showError(error, errorTitle)
             }
         }
     }
 
     private func annotate(_ capture: PendingCapture) {
         guard capturesBeingDelivered.insert(ObjectIdentifier(capture)).inserted else { return }
+        updateActions(for: capture)
         Task {
-            defer { capturesBeingDelivered.remove(ObjectIdentifier(capture)) }
+            defer {
+                capturesBeingDelivered.remove(ObjectIdentifier(capture))
+                updateActions(for: capture)
+            }
             do {
                 let screenshot = try await capture.screenshot()
                 // The thumbnail may have been closed while its PNG was loading.
@@ -149,9 +172,20 @@ final class ThumbnailController {
                 onAnnotate?(screenshot)
             } catch {
                 guard entries.contains(where: { $0.capture === capture }) else { return }
-                ErrorAlert.show(error, title: String(localized: "The screenshot could not be opened"))
+                showError(error, String(localized: "The screenshot could not be opened"))
             }
         }
+    }
+
+    private func updateActions(for capture: PendingCapture) {
+        let entry = entries.first { $0.capture === capture }
+        let card = entry?.panel?.contentView as? ThumbnailCardView
+        card?.setActionsEnabled(!capturesBeingDelivered.contains(ObjectIdentifier(capture)))
+    }
+
+    private func close(_ capture: PendingCapture) {
+        guard !capturesBeingDelivered.contains(ObjectIdentifier(capture)) else { return }
+        dismiss(capture)
     }
 
     /// Removes the thumbnail, and its temporary file unless `keepingFile`:

@@ -8,6 +8,7 @@ final class ThumbnailCardView: NSVisualEffectView {
     var onClose: (() -> Void)?
 
     let previewView: ThumbnailPreviewView
+    private var actionButtons: [NSButton] = []
 
     init(imageSize: CGSize) {
         let previewSize = ThumbnailLayout.previewSize(for: imageSize)
@@ -46,6 +47,10 @@ final class ThumbnailCardView: NSVisualEffectView {
         fatalError("ThumbnailCardView is created in code only")
     }
 
+    func setActionsEnabled(_ enabled: Bool) {
+        actionButtons.forEach { $0.isEnabled = enabled }
+    }
+
     private func makeToolbar(width: CGFloat, height: CGFloat) -> NSView {
         let buttons = [
             ThumbnailButton(
@@ -70,6 +75,7 @@ final class ThumbnailCardView: NSVisualEffectView {
             ),
         ]
 
+        actionButtons = buttons
         // The card never changes size, so the buttons are simply placed side
         // by side, each taking an equal share of the width.
         let toolbar = NSView(frame: CGRect(x: 0, y: 0, width: width, height: height))

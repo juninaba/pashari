@@ -83,6 +83,74 @@ struct ThumbnailLayoutTests {
 
 @MainActor
 struct ThumbnailControllerTests {
+    @Test func closingImmediatelyAfterSaveWaitsForTheCaptureToBeDelivered() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let destination = root.appending(path: "saved")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        var errors = 0
+        let controller = ThumbnailController(
+            storageDirectory: root.appending(path: "working"),
+            saveDirectory: { destination },
+            showError: { _, _ in errors += 1 }
+        )
+        let screenshot = makeScreenshot()
+        controller.show(screenshot)
+        let panel = try #require(controller.panels.first)
+        let card = try #require(panel.contentView as? ThumbnailCardView)
+        defer { card.onClose?() }
+        let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? NSButton }
+        try #require(buttons.count == 4)
+
+        // Both actions run before the preparation or delivery task can finish.
+        card.onSave?()
+        card.onClose?()
+        #expect(controller.pendingCount == 1)
+        #expect(buttons.allSatisfy { !$0.isEnabled })
+        #expect(card.previewView.fileURL?() == nil)
+
+        for _ in 0..<200 where controller.hasPendingCaptures && errors == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(errors == 0)
+        #expect(!controller.hasPendingCaptures)
+        let saved = destination.appending(path: ScreenshotWriter.fileName(capturedAt: screenshot.capturedAt))
+        let expected = try await ScreenshotWriter.pngData(for: screenshot)
+        #expect(try Data(contentsOf: saved) == expected)
+    }
+
+    @Test func aFailedSaveReenablesActionsAndKeepsTheCapture() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let destination = root.appending(path: "not-a-directory")
+        try Data().write(to: destination)
+        var errors = 0
+        let controller = ThumbnailController(
+            storageDirectory: root.appending(path: "working"),
+            saveDirectory: { destination },
+            showError: { _, _ in errors += 1 }
+        )
+        controller.show(makeScreenshot())
+        let panel = try #require(controller.panels.first)
+        let card = try #require(panel.contentView as? ThumbnailCardView)
+        defer { card.onClose?() }
+        card.onSave?()
+        card.onClose?()
+
+        for _ in 0..<200 where errors == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(errors == 1)
+        #expect(controller.pendingCount == 1)
+        let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? NSButton }
+        #expect(buttons.allSatisfy { $0.isEnabled })
+        let file = try #require(card.previewView.fileURL?())
+        #expect(FileManager.default.fileExists(atPath: file.path))
+        card.onClose?()
+        #expect(!controller.hasPendingCaptures)
+    }
+
     @Test func overflowCapturesKeepTheirFilesAndReturnWhenThereIsRoom() async throws {
         let controller = ThumbnailController()
         defer {
@@ -200,7 +268,7 @@ struct PendingCaptureTests {
             image: TestImages.make(width: 60, height: 40, patchRect: CGRect(x: 0, y: 0, width: 10, height: 10)),
             scale: 2, capturedAt: Date(timeIntervalSince1970: 1_800_000_000)
         )
-        let capture = PendingCapture(screenshot: original, temporaryDirectory: directory)
+        let capture = PendingCapture(screenshot: original, directory: directory)
         _ = try await capture.fileURL()
 
         let restored = try await capture.screenshot()
@@ -221,7 +289,7 @@ struct PendingCaptureTests {
         let released = DispatchSemaphore(value: 0)
         let capture = PendingCapture(
             screenshot: Screenshot(image: TestImages.tracked(released: released), scale: 2, capturedAt: Date()),
-            temporaryDirectory: directory
+            directory: directory
         )
         let thumbnail = try await capture.thumbnail(maxPixelSize: 20)
         _ = try await capture.fileURL()
@@ -247,7 +315,7 @@ struct PendingCaptureTests {
         try Data().write(to: path)
         defer { try? FileManager.default.removeItem(at: path) }
         let original = makeScreenshot()
-        let capture = PendingCapture(screenshot: original, temporaryDirectory: path)
+        let capture = PendingCapture(screenshot: original, directory: path)
         await #expect(throws: (any Error).self) { try await capture.fileURL() }
 
         #expect(capture.readyFileURL == nil)
@@ -266,7 +334,7 @@ struct PendingCaptureTests {
             capturedAt: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        let capture = PendingCapture(screenshot: screenshot, temporaryDirectory: directory)
+        let capture = PendingCapture(screenshot: screenshot, directory: directory)
         let file = try await capture.file()
 
         #expect(file.url.path.hasPrefix(directory.path))
@@ -286,8 +354,8 @@ struct PendingCaptureTests {
             capturedAt: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        let first = try await PendingCapture(screenshot: screenshot, temporaryDirectory: directory).file()
-        let second = try await PendingCapture(screenshot: screenshot, temporaryDirectory: directory).file()
+        let first = try await PendingCapture(screenshot: screenshot, directory: directory).file()
+        let second = try await PendingCapture(screenshot: screenshot, directory: directory).file()
 
         #expect(first.url != second.url)
         #expect(first.url.lastPathComponent == second.url.lastPathComponent)
@@ -302,7 +370,7 @@ struct PendingCaptureTests {
             scale: 1,
             capturedAt: Date()
         )
-        let capture = PendingCapture(screenshot: screenshot, temporaryDirectory: directory)
+        let capture = PendingCapture(screenshot: screenshot, directory: directory)
         let file = try await capture.file()
 
         await capture.removeFile()
@@ -321,7 +389,7 @@ struct PendingCaptureTests {
         )
 
         // Closed straight away, while the PNG may still be encoding.
-        await PendingCapture(screenshot: screenshot, temporaryDirectory: directory).removeFile()
+        await PendingCapture(screenshot: screenshot, directory: directory).removeFile()
 
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
     }

@@ -5,10 +5,10 @@ import ImageIO
 /// This is what a floating thumbnail stands for.
 ///
 /// As soon as it is created it starts encoding the PNG in the background and
-/// writes it to a temporary file. Once that succeeds, only metadata stays in
+/// writes it to a working file. Once that succeeds, only metadata stays in
 /// memory. Copy, Save and the editor read the file when they need it.
 final class PendingCapture {
-    /// The encoded image and the temporary file holding it.
+    /// The encoded image and the working file holding it.
     struct File: Sendable {
         let data: Data
         let url: URL
@@ -27,14 +27,14 @@ final class PendingCapture {
     /// and cannot wait, so it reads this instead of awaiting `fileURL()`.
     private(set) var readyFileURL: URL?
 
-    init(screenshot: Screenshot, temporaryDirectory: URL = PendingCapture.temporaryDirectory) {
+    init(screenshot: Screenshot, directory: URL = CaptureStorage.current.directory) {
         pointSize = screenshot.pointSize
         capturedAt = screenshot.capturedAt
         scale = screenshot.scale
         original = screenshot
         // Each capture gets a folder of its own, so the file inside can
         // carry the plain name it will have wherever it is dropped.
-        let url = temporaryDirectory
+        let url = directory
             .appending(path: UUID().uuidString)
             .appending(path: ScreenshotWriter.fileName(capturedAt: screenshot.capturedAt))
         self.url = url
@@ -47,7 +47,7 @@ final class PendingCapture {
         }
     }
 
-    /// The encoded image and its temporary file, waiting for them if needed.
+    /// The encoded image and its working file, waiting for them if needed.
     func file() async throws -> File {
         let url = try await fileURL()
         return File(data: try await Self.readData(from: url), url: url)
@@ -120,9 +120,9 @@ final class PendingCapture {
         return thumbnail
     }
 
-    // MARK: - Temporary files
+    // MARK: - Working files
 
-    /// Deletes the temporary file, once the thumbnail is gone. If the file is
+    /// Deletes the working file after delivery or discard. If the file is
     /// still being written, this waits for that first; otherwise the file
     /// would appear after it was meant to be deleted.
     func removeFile() async {
@@ -139,17 +139,5 @@ final class PendingCapture {
             withIntermediateDirectories: true
         )
         try data.write(to: url)
-    }
-
-    /// Where the temporary files live. Each one is deleted when its capture
-    /// is delivered or discarded, except after a drag and drop: the receiving app may
-    /// read it later. The whole folder is emptied when Pashari starts and
-    /// quits.
-    static var temporaryDirectory: URL {
-        FileManager.default.temporaryDirectory.appending(path: "Pashari")
-    }
-
-    static func removeTemporaryFiles() {
-        try? FileManager.default.removeItem(at: temporaryDirectory)
     }
 }

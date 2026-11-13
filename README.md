@@ -23,6 +23,10 @@ Thumbnails that do not fit on screen wait until space is available. Copy,
 save, or close visible thumbnails to reveal older captures. Quitting asks
 for confirmation while screenshots remain in thumbnails or editors.
 
+Working PNGs live in a directory for each run under
+`~/Library/Application Support/Pashari/PendingCaptures`. Quitting removes
+only that run's files. Files left by an interrupted run are kept.
+
 Default hotkeys (change them under Settings):
 
 | Action             | Hotkey |

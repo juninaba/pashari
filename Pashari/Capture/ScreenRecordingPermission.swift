@@ -70,10 +70,7 @@ enum ScreenRecordingPermission {
         alert.addButton(withTitle: String(localized: "Open System Settings"))
         alert.addButton(withTitle: String(localized: "Cancel"))
 
-        // A menu bar app is never the active app on its own, so bring the
-        // alert to the front explicitly.
-        NSApp.activate()
-        if alert.runModal() == .alertFirstButtonReturn {
+        if ModalPresentation.run({ alert.runModal() }) == .alertFirstButtonReturn {
             let pane = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
             if let url = URL(string: pane) {
                 NSWorkspace.shared.open(url)
