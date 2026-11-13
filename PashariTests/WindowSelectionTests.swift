@@ -114,6 +114,21 @@ struct WindowSelectionTests {
         let pixelWidths = cursor.image.representations.map(\.pixelsWide).sorted()
         #expect(pixelWidths == [Int(size.width), Int(size.width) * 2])
     }
+
+    @Test func focusShowsTheFocusedOverlaysCursor() throws {
+        let screen = try #require(NSScreen.screens.first)
+        let panel = OverlayPanel(screen: screen)
+        let view = WindowSelectionView(frame: CGRect(origin: .zero, size: screen.frame.size))
+        panel.contentView = view
+        panel.makeFirstResponder(view)
+        NSCursor.arrow.set()
+
+        OverlayPanel.focus([panel])
+
+        #expect(NSCursor.current === NSCursor.camera)
+        panel.orderOut(nil)
+        NSCursor.arrow.set()
+    }
 }
 
 @MainActor

@@ -66,7 +66,6 @@ final class AreaSelectionSession {
         }
 
         OverlayPanel.focus(overlays.map(\.panel))
-        NSCursor.crosshair.set()
         spaceObserver = SpaceChangeObserver { [weak self] in
             self?.spaceDidChange()
         }

@@ -58,9 +58,6 @@ final class WindowSelectionSession {
         }
 
         OverlayPanel.focus(panels)
-        // Show the camera right away. The view sets it again on every move,
-        // but until the pointer moves no event reaches it.
-        NSCursor.camera.set()
         updateHighlight()
         spaceObserver = SpaceChangeObserver { [weak self] in
             self?.spaceDidChange()
