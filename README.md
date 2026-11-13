@@ -23,9 +23,13 @@ Default hotkeys (change them under Settings):
 
 | Action             | Hotkey |
 | ------------------ | ------ |
-| Capture area       | ⌃⌥4    |
-| Capture window     | ⌃⌥5    |
-| Capture fullscreen | ⌃⌥3    |
+| Capture area       | ⇧⌘2    |
+| Capture window     | ⇧⌘3    |
+| Capture fullscreen | ⇧⌘4    |
+
+macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
+System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that
+Pashari gets them.
 
 Settings opens from the menu bar icon. If the icon is hidden, for example
 behind the notch, open Pashari again from Spotlight or the Finder and
