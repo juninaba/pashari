@@ -371,6 +371,16 @@
         }
       }
     },
+    "Screenshots in thumbnails or the editor have not been copied or saved, and will be lost." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サムネイルやエディタに残っているスクリーンショットは、まだコピーも保存もしていないため失われます。"
+          }
+        }
+      }
+    },
     "Select" : {
       "localizations" : {
         "ja" : {
@@ -517,16 +527,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取り消す"
-          }
-        }
-      }
-    },
-    "What is open in the editor has not been copied or saved, and will be lost." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "エディタで開いているスクリーンショットは、まだコピーも保存もしていないため失われます。"
           }
         }
       }

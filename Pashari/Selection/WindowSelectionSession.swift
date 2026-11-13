@@ -19,6 +19,8 @@ final class WindowSelectionSession {
     /// `windows` must be ordered front to back. Returns the window the user
     /// clicked, or nil when they cancelled.
     func run(with windows: [SCWindow]) async -> SCWindow? {
+        // A dialog may have opened while the window list was being fetched.
+        guard NSApp.modalWindow == nil else { return nil }
         setWindows(windows)
 
         // The continuation carries the window's position in `windows` rather

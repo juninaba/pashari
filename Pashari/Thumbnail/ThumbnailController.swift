@@ -24,6 +24,9 @@ final class ThumbnailController {
     /// stands for one particular object, the way `===` compares them.
     private var capturesBeingDelivered: Set<ObjectIdentifier> = []
 
+    /// Includes captures waiting for room in the visible stack.
+    var hasPendingCaptures: Bool { !entries.isEmpty }
+
     /// The thumbnails' windows, newest first. For tests.
     var panels: [NSPanel] { entries.map(\.panel) }
 
@@ -63,13 +66,10 @@ final class ThumbnailController {
         card.previewView.onDrop = { [weak self] in self?.dismiss(capture, keepingFile: true) }
 
         let panel = ThumbnailPanel(contentView: card)
+        panel.alphaValue = 0
         entries.insert(Entry(capture: capture, panel: panel, displayID: displayID), at: 0)
-        moveOffMissingDisplays()
-        makeRoom(on: entries[0].displayID)
 
         layout()
-        panel.alphaValue = 0
-        panel.orderFrontRegardless()
         panel.animator().alphaValue = 1
         Log.thumbnail.info("Thumbnail shown at \(panel.frame.debugDescription, privacy: .public)")
     }
@@ -135,35 +135,32 @@ final class ThumbnailController {
 
     // MARK: - Layout
 
-    /// Removes the oldest thumbnails on the display that no longer fit:
-    /// those that would stick out of the top of the screen, and any beyond
-    /// `ThumbnailLayout.maximumCount`. Other displays keep theirs.
-    private func makeRoom(on displayID: CGDirectDisplayID) {
-        guard let screen = Self.screen(for: displayID) else { return }
-        // `entries` is newest first, and so is this.
-        let stack = entries.filter { $0.displayID == displayID }
-        let fitting = ThumbnailLayout.fittingCount(
-            for: stack.map(\.panel.frame.size),
-            in: screen.visibleFrame
-        )
-        for entry in stack.dropFirst(min(fitting, ThumbnailLayout.maximumCount)) {
-            dismiss(entry.capture)
-        }
-    }
-
     /// Stacks the thumbnails in the bottom-left corner of their screen,
-    /// newest at the bottom.
+    /// newest at the bottom. Older captures wait off-screen until there is
+    /// room; hiding a panel never discards its screenshot or temporary file.
     private func layout() {
         moveOffMissingDisplays()
         for (displayID, group) in Dictionary(grouping: entries, by: \.displayID) {
             guard let screen = Self.screen(for: displayID) else { continue }
-            // `visibleFrame` leaves out the menu bar and the Dock.
-            let frames = ThumbnailLayout.stackFrames(
+            let fitting = ThumbnailLayout.fittingCount(
                 for: group.map(\.panel.frame.size),
                 in: screen.visibleFrame
             )
-            for (entry, frame) in zip(group, frames) {
+            let visibleCount = min(fitting, ThumbnailLayout.maximumCount)
+            let visible = group.prefix(visibleCount)
+            for entry in group.dropFirst(visibleCount) {
+                entry.panel.orderOut(nil)
+            }
+            // `visibleFrame` leaves out the menu bar and the Dock.
+            let frames = ThumbnailLayout.stackFrames(
+                for: visible.map(\.panel.frame.size),
+                in: screen.visibleFrame
+            )
+            for (entry, frame) in zip(visible, frames) {
                 entry.panel.setFrame(frame, display: true)
+                if !entry.panel.isVisible {
+                    entry.panel.orderFrontRegardless()
+                }
             }
         }
     }
@@ -172,10 +169,6 @@ final class ThumbnailController {
     /// Thumbnails leave the displays that are gone, and each stack is
     /// checked against the size its screen has now.
     private func screensDidChange() {
-        moveOffMissingDisplays()
-        for displayID in Set(entries.map(\.displayID)) {
-            makeRoom(on: displayID)
-        }
         layout()
         Log.thumbnail.info("Displays changed: thumbnails laid out again")
     }

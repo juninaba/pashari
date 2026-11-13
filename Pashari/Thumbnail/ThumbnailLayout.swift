@@ -13,7 +13,7 @@ enum ThumbnailLayout {
     static let margin: CGFloat = 16
     /// Gap between stacked thumbnails.
     static let spacing: CGFloat = 10
-    /// At most this many on one screen, even when more would fit.
+    /// At most this many visible on one screen; older captures wait for room.
     static let maximumCount = 5
 
     /// The size of the preview for a screenshot of `imageSize` (in points):

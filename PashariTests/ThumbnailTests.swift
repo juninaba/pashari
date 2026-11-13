@@ -83,6 +83,47 @@ struct ThumbnailLayoutTests {
 
 @MainActor
 struct ThumbnailControllerTests {
+    @Test func overflowCapturesKeepTheirFilesAndReturnWhenThereIsRoom() async throws {
+        let controller = ThumbnailController()
+        defer { controller.panels.forEach(close) }
+        #expect(!controller.hasPendingCaptures)
+
+        controller.show(makeScreenshot())
+        let oldest = try #require(controller.panels.first)
+        let card = try #require(oldest.contentView as? ThumbnailCardView)
+        for _ in 0..<100 where card.previewView.fileURL?() == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let file = try #require(card.previewView.fileURL?())
+
+        for _ in 0...ThumbnailLayout.maximumCount {
+            controller.show(makeScreenshot())
+        }
+        #expect(controller.panels.count == ThumbnailLayout.maximumCount + 2)
+        #expect(!oldest.isVisible)
+        #expect(controller.hasPendingCaptures)
+
+        NotificationCenter.default.post(
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: NSApp
+        )
+        // Give screen-change handling and any queued file deletion time to run.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(controller.panels.count == ThumbnailLayout.maximumCount + 2)
+        #expect(controller.panels.filter(\.isVisible).count <= ThumbnailLayout.maximumCount)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+
+        for panel in controller.panels where panel !== oldest {
+            close(panel)
+        }
+        #expect(oldest.isVisible)
+        #expect(controller.panels.count == 1)
+        #expect(FileManager.default.fileExists(atPath: file.path))
+
+        close(oldest)
+        #expect(!controller.hasPendingCaptures)
+    }
+
     @Test func aThumbnailForADisplayThatIsGoneMovesToTheScreenInUse() throws {
         let controller = ThumbnailController()
         // No screen has this ID, as if its display had just been unplugged.

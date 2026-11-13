@@ -50,6 +50,11 @@ final class CaptureCoordinator {
     /// Shared skeleton of every capture mode. `capture` returns the
     /// screenshot, or nil when the user cancelled.
     private func run(_ capture: @escaping () async throws -> Screenshot?) {
+        // A modal dialog would keep the selection overlay from receiving input.
+        guard NSApp.modalWindow == nil else {
+            Log.capture.info("Ignored: a modal dialog is open")
+            return
+        }
         // Ignore a second request while one is still running.
         guard !isCapturing else {
             Log.capture.info("Ignored: a capture is already running")
