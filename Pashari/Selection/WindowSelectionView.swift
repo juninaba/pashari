@@ -17,6 +17,10 @@ final class WindowSelectionView: SelectionOverlayView {
     /// Called when the user clicks.
     var onClick: (() -> Void)?
 
+    // A click picks the whole window, so the pointer need not be precise.
+    // The camera makes it clear that Pashari is waiting for that click.
+    override var cursor: NSCursor { .camera }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
 

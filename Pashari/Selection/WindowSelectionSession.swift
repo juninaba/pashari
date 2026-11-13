@@ -127,6 +127,7 @@ final class WindowSelectionSession {
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
         views.removeAll()
+        NSCursor.arrow.set()
         continuation.resume(returning: result)
     }
 

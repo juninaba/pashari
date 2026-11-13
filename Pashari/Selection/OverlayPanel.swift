@@ -60,10 +60,17 @@ final class OverlayPanel: NSPanel {
     }
 
     /// Gives keyboard focus to whichever of `panels` is under the pointer
-    /// (or else the first), so that Escape reaches the overlay.
+    /// (or else the first), so that Escape reaches the overlay, and shows
+    /// that overlay's cursor.
+    ///
+    /// The view sets its cursor on every pointer move, but until the pointer
+    /// moves no event reaches it. That happens both when the overlay first
+    /// appears and after a Space change, where the newly active app may have
+    /// put its own cursor up.
     static func focus(_ panels: [OverlayPanel]) {
         let pointer = NSEvent.mouseLocation
         let panel = panels.first { NSMouseInRect(pointer, $0.frame, false) } ?? panels.first
         panel?.makeKey()
+        (panel?.firstResponder as? SelectionOverlayView)?.cursor.set()
     }
 }

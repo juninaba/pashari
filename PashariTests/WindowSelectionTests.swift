@@ -94,6 +94,51 @@ struct WindowSelectionTests {
 
         #expect(events == ["move", "click"])
     }
+
+    @Test func showsACameraCursorWhileAreaSelectionKeepsTheCrosshair() {
+        let frame = CGRect(x: 0, y: 0, width: 100, height: 100)
+
+        #expect(WindowSelectionView(frame: frame).cursor === NSCursor.camera)
+        #expect(AreaSelectionView(frame: frame, scale: 2).cursor === NSCursor.crosshair)
+    }
+
+    @Test func cameraCursorIsDrawnSharplyWithItsHotSpotInTheMiddle() {
+        let cursor = NSCursor.camera
+        let size = NSCursor.cameraCursorSize
+
+        // Not the arrow it falls back to when the symbol cannot be drawn.
+        #expect(cursor !== NSCursor.arrow)
+        #expect(cursor.image.size == size)
+        #expect(cursor.hotSpot == NSPoint(x: size.width / 2, y: size.height / 2))
+        // One bitmap for regular displays and one for Retina.
+        let pixelWidths = cursor.image.representations.map(\.pixelsWide).sorted()
+        #expect(pixelWidths == [Int(size.width), Int(size.width) * 2])
+    }
+
+    @Test func cameraSitsOnWholePointsSoItStaysSharp() {
+        // The camera symbol is 23 × 18 points in a 28-point square.
+        let origin = NSCursor.centeredOrigin(
+            of: CGSize(width: 23, height: 18),
+            in: CGSize(width: 28, height: 28)
+        )
+
+        #expect(origin == CGPoint(x: 2, y: 5))
+    }
+
+    @Test func focusShowsTheFocusedOverlaysCursor() throws {
+        let screen = try #require(NSScreen.screens.first)
+        let panel = OverlayPanel(screen: screen)
+        let view = WindowSelectionView(frame: CGRect(origin: .zero, size: screen.frame.size))
+        panel.contentView = view
+        panel.makeFirstResponder(view)
+        NSCursor.arrow.set()
+
+        OverlayPanel.focus([panel])
+
+        #expect(NSCursor.current === NSCursor.camera)
+        panel.orderOut(nil)
+        NSCursor.arrow.set()
+    }
 }
 
 @MainActor
