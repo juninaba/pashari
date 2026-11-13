@@ -6,7 +6,6 @@ import Testing
 @MainActor
 struct ThumbnailLayoutTests {
     @Test func largeScreenshotIsScaledDownKeepingItsProportions() {
-        // A 16:10 full screen.
         let size = ThumbnailLayout.previewSize(for: CGSize(width: 1728, height: 1080))
 
         #expect(size == CGSize(width: 240, height: 150))
@@ -51,15 +50,12 @@ struct ThumbnailLayoutTests {
     }
 
     @Test func onlyTheCardsThatFitTheScreenHeightStay() {
-        // Five 16:10 captures: cards 184 points tall, 10 apart, and 16 from
-        // the edges of the screen.
         let sizes = Array(repeating: CGSize(width: 240, height: 184), count: 5)
 
         // 16 + 3 × 184 + 2 × 10 = 588 fits below 700 - 16; a fourth card
         // would reach 782.
         let small = CGRect(x: 0, y: 0, width: 1000, height: 700)
         #expect(ThumbnailLayout.fittingCount(for: sizes, in: small) == 3)
-        // 16 + 5 × 184 + 4 × 10 = 976 fits below 1000 - 16.
         let large = CGRect(x: 0, y: 0, width: 1000, height: 1000)
         #expect(ThumbnailLayout.fittingCount(for: sizes, in: large) == 5)
     }
@@ -252,8 +248,6 @@ struct ThumbnailControllerTests {
         #expect(panel.frame == home)
     }
 
-    /// Closes the thumbnail the way its close button does, which also deletes
-    /// its temporary file.
     private func close(_ panel: NSPanel) {
         (panel.contentView as? ThumbnailCardView)?.onClose?()
     }

@@ -1,8 +1,5 @@
 import AppKit
 
-/// A borderless window that covers one whole screen while the user picks what
-/// to capture.
-///
 /// It is an `NSPanel` with `.nonactivatingPanel`, which lets it receive mouse
 /// and keyboard input without making Pashari the active app. Whatever app the
 /// user was working in stays active.
@@ -24,7 +21,6 @@ final class OverlayPanel: NSPanel {
         setFrame(screen.frame, display: false)
 
         level = Self.windowLevel
-        // Show on whichever Space is current, including full-screen apps.
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
         isOpaque = false
@@ -38,7 +34,6 @@ final class OverlayPanel: NSPanel {
         // An error or Quit dialog can open after selection has started.
         // Keep accepting input so the user can finish or cancel the overlay.
         worksWhenModal = true
-        // Windows created in code are owned by Swift references, not by AppKit.
         isReleasedWhenClosed = false
         acceptsMouseMovedEvents = true
         // Take every click, even on parts of the overlay that are fully

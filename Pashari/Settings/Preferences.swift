@@ -1,20 +1,13 @@
 import Foundation
 
-/// Settings the user can change, kept in `UserDefaults` (the system's small
-/// per-app key-value store, which survives restarts).
-///
 /// The hotkeys are not here: the KeyboardShortcuts package stores those
 /// itself.
 enum Preferences {
     private static let saveDirectoryKey = "saveDirectory"
 
-    /// The folder "Save" writes to.
-    ///
     /// This is the Desktop until the user picks another folder. It is also
     /// the Desktop when the chosen folder is gone, for example on a drive
     /// that is no longer connected, so that saving keeps working.
-    ///
-    /// `defaults` is a parameter so tests can use a store of their own.
     static func saveDirectory(in defaults: UserDefaults = .standard) -> URL {
         guard let path = defaults.string(forKey: saveDirectoryKey) else {
             return desktopDirectory

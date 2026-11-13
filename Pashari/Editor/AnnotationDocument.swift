@@ -24,18 +24,12 @@ struct AnnotationDocument: Equatable {
         return (numbers.max() ?? 0) + 1
     }
 
-    /// The mark a click at `point` picks: the one drawn last, and so on
-    /// top, among those the point touches.
     func topmostAnnotation(at point: CGPoint) -> Annotation? {
         annotations.last { $0.isHit(at: point) }
     }
 }
 
 /// Undo and redo by keeping earlier states.
-///
-/// The state is a value type (a struct), so every assignment is a full,
-/// independent copy. Going back is just a matter of putting an old copy
-/// back; nothing has to be "un-done" step by step.
 struct History<State: Equatable> {
     private(set) var current: State
     private var undoStack: [State] = []
@@ -48,8 +42,6 @@ struct History<State: Equatable> {
     var canUndo: Bool { !undoStack.isEmpty }
     var canRedo: Bool { !redoStack.isEmpty }
 
-    /// Makes `state` the current one, remembering the old one for undo.
-    /// A new change discards whatever could have been redone.
     mutating func apply(_ state: State) {
         guard state != current else { return }
         undoStack.append(current)

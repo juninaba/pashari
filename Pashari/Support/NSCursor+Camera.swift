@@ -1,14 +1,8 @@
 import AppKit
 
 extension NSCursor {
-    /// A camera, shown while the user picks a window to capture, so it is
-    /// clear at a glance that Pashari is waiting for a click. macOS's own
-    /// screenshot tool shows one in its window mode too.
-    ///
-    /// Falls back to the arrow if the camera symbol cannot be drawn.
     static let camera: NSCursor = makeCameraCursor() ?? .arrow
 
-    /// Size of the cursor image, in points.
     static let cameraCursorSize = CGSize(width: 28, height: 28)
 
     private static func makeCameraCursor() -> NSCursor? {
@@ -48,7 +42,6 @@ extension NSCursor {
             )
         else { return nil }
 
-        // Draw in points; the context turns them into pixels.
         context.scaleBy(x: CGFloat(scale), y: CGFloat(scale))
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)

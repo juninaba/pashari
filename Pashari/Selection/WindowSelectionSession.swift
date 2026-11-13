@@ -1,7 +1,6 @@
 import AppKit
 import ScreenCaptureKit
 
-/// Lets the user point at a window and click it.
 final class WindowSelectionSession {
     private var windows: [SCWindow] = []
     /// Frames of `windows` in AppKit screen coordinates, in the same order.
@@ -65,8 +64,6 @@ final class WindowSelectionSession {
         Log.selection.info("Window overlay shown on \(self.panels.count) screen(s), \(self.windows.count) window(s) to pick from")
     }
 
-    /// The windows found at the start belong to the Space the user left, so
-    /// they are looked up again.
     private func spaceDidChange() {
         // A notification can still arrive just after the user finished.
         guard continuation != nil else { return }
@@ -92,8 +89,6 @@ final class WindowSelectionSession {
         }
     }
 
-    /// Finds the frontmost window under the pointer and shows it on every
-    /// screen it reaches into.
     private func updateHighlight() {
         highlightedIndex = Self.indexOfFrontmostFrame(at: NSEvent.mouseLocation, in: frames)
         let highlight = highlightedIndex.map { frames[$0] }
@@ -109,7 +104,6 @@ final class WindowSelectionSession {
     }
 
     private func click() {
-        // A click on the bare desktop picks nothing; keep waiting.
         guard let highlightedIndex else {
             Log.selection.info("Clicked outside every window: still waiting")
             return

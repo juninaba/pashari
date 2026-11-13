@@ -1,19 +1,14 @@
 import AppKit
 
-/// Receives app lifecycle callbacks from AppKit and owns the top-level objects.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let thumbnailController: ThumbnailController
     private let editorController: AnnotationEditorController
     private let settingsWindowController = SettingsWindowController()
-    // `lazy`: created on first use. It needs `thumbnailController`, and one
-    // stored property cannot refer to another while the object is still
-    // being set up.
     private lazy var captureCoordinator = CaptureCoordinator(
         thumbnailController: thumbnailController
     )
     private var statusItemController: StatusItemController?
 
-    /// Tests supply an answer without opening a modal alert.
     lazy var confirmQuit: () -> Bool = { [unowned self] in self.askToQuit() }
 
     init(
@@ -26,12 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Never shown, but it gives the windows ⌘W, ⌘C, ⌘Z and so on.
         NSApp.mainMenu = MainMenu.make()
 
-        // Thumbnail and editor pass screenshots back and forth: "Annotate"
-        // on a thumbnail opens an editor, and an editor that is closed
-        // without Copy or Save turns back into a thumbnail.
         thumbnailController.onAnnotate = { [editorController] screenshot in
             editorController.open(screenshot)
         }
@@ -46,10 +37,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Hotkeys.register(with: captureCoordinator)
     }
 
-    /// Called when Pashari is opened again while it is already running, for
-    /// example from Spotlight or with a double-click in the Finder. macOS
-    /// does not start a second copy; it tells the running one instead.
-    ///
     /// Pashari answers by showing Settings. Otherwise the menu bar icon would
     /// be the only way in, and macOS hides that icon when the menu bar is too
     /// full to show it, for example next to the notch.
@@ -59,12 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) -> Bool {
         Log.app.info("Opened again while running: showing Settings")
         settingsWindowController.show()
-        // false tells AppKit that the event is handled.
         return false
     }
 
-    /// Asked before Pashari quits, from the menu or because the Mac is
-    /// shutting down. Saying no keeps it running.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard thumbnailController.hasPendingCaptures || editorController.hasOpenEditors else {
             return .terminateNow

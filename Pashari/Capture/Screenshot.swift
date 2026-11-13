@@ -1,9 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// One captured image, plus what is needed to show and save it correctly.
 struct Screenshot {
-    /// The pixels, at the display's full (Retina) resolution.
     let image: CGImage
 
     /// Pixels per point. 2.0 on a Retina display, 1.0 on a standard one.
@@ -11,13 +9,10 @@ struct Screenshot {
 
     let capturedAt: Date
 
-    /// The size the image had on screen, in points.
     var pointSize: CGSize {
         CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
     }
 
-    /// Returns the part of the image inside `rect`.
-    ///
     /// `rect` is in points with the origin at the top-left corner, the same
     /// way the image is laid out. Returns nil when nothing is left after
     /// clipping `rect` to the image.

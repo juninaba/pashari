@@ -1,9 +1,5 @@
 import AppKit
 
-/// The macOS "Screen & System Audio Recording" permission.
-///
-/// Without it the system refuses to hand over screen contents. The user grants
-/// it in System Settings; an app cannot grant it to itself.
 enum ScreenRecordingPermission {
     private static let hasAskedKey = "hasAskedForScreenRecordingPermission"
 
@@ -22,10 +18,6 @@ enum ScreenRecordingPermission {
         return granted
     }
 
-    /// The steps of `ensureGranted()`, with the calls to macOS passed in so
-    /// that tests can stand in for them. `hasAsked` tells whether an earlier
-    /// attempt has asked already, and becomes true once one has. (`inout`
-    /// lets the function change the caller's variable.)
     static func ensureGranted(
         isGranted: () -> Bool,
         request: () -> Bool,

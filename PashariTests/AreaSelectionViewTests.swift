@@ -4,8 +4,6 @@ import Testing
 
 @testable import Pashari
 
-/// Drives the selection view with hand-made mouse and key events. The events
-/// are passed straight to the view; nothing is posted to the system.
 @MainActor
 struct AreaSelectionViewTests {
     @Test func draggingReportsTheRectangle() {
@@ -78,8 +76,6 @@ struct AreaSelectionViewTests {
     }
 }
 
-/// A selection view inside an off-screen window, plus a record of what it
-/// reported.
 @MainActor
 private final class Harness {
     let window: NSWindow

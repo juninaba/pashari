@@ -2,11 +2,6 @@ import AppKit
 import KeyboardShortcuts
 import SwiftUI
 
-/// The contents of the Settings window.
-///
-/// SwiftUI is declarative: `body` describes what the window looks like for
-/// the current state, and SwiftUI redraws it whenever a value it reads from
-/// `model` changes.
 struct SettingsView: View {
     @Bindable var model: SettingsModel
 
@@ -23,15 +18,12 @@ struct SettingsView: View {
                         .foregroundStyle(.red)
                 }
 
-                // A label on the left, and on the right the current folder
-                // with a button to pick another.
                 LabeledContent("Save screenshots to") {
                     HStack(spacing: 8) {
                         Text(FileManager.default.displayName(atPath: model.saveDirectory.path))
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .foregroundStyle(.secondary)
-                            // The full path, as a tooltip.
                             .help(model.saveDirectory.path)
                         Button("Choose…") {
                             chooseSaveDirectory()
@@ -41,8 +33,6 @@ struct SettingsView: View {
             }
 
             Section("Shortcuts") {
-                // Each recorder shows the current shortcut and lets the user
-                // type a new one. The package saves the change by itself.
                 KeyboardShortcuts.Recorder("Capture Area", name: .captureArea)
                 KeyboardShortcuts.Recorder("Capture Window", name: .captureWindow)
                 KeyboardShortcuts.Recorder("Capture Fullscreen", name: .captureFullscreen)
@@ -53,7 +43,6 @@ struct SettingsView: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// Shows the system's folder picker and remembers the choice.
     private func chooseSaveDirectory() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -64,7 +53,6 @@ struct SettingsView: View {
         panel.prompt = String(localized: "Choose")
         panel.message = String(localized: "Choose the folder Pashari saves screenshots to.")
 
-        // `runModal` waits here until the user picks a folder or cancels.
         if ModalPresentation.run({ panel.runModal() }) == .OK, let url = panel.url {
             Preferences.setSaveDirectory(url)
             model.saveDirectory = url

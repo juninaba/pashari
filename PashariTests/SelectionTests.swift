@@ -35,7 +35,6 @@ struct AnnotationGeometryTests {
     @Test func anEllipseIsHitOnItsOutlineButNotInTheMiddle() {
         let annotation = make(.ellipse(CGRect(x: 0, y: 0, width: 100, height: 60)))
 
-        // Leftmost and topmost points of the outline.
         #expect(annotation.isHit(at: CGPoint(x: 0, y: 30)))
         #expect(annotation.isHit(at: CGPoint(x: 50, y: 0)))
         #expect(!annotation.isHit(at: CGPoint(x: 50, y: 30)))
@@ -44,12 +43,10 @@ struct AnnotationGeometryTests {
     }
 
     @Test func aLongThinEllipseIsHitOnlyNearItsOutline() {
-        // The ends are 200 points from the centre, the sides only 10.
         let annotation = make(.ellipse(CGRect(x: 0, y: 0, width: 400, height: 20)))
 
         #expect(annotation.isHit(at: CGPoint(x: 0, y: 10)))
         #expect(annotation.isHit(at: CGPoint(x: 200, y: 0)))
-        // 100 points and 50 points past the ends.
         #expect(!annotation.isHit(at: CGPoint(x: -100, y: 10)))
         #expect(!annotation.isHit(at: CGPoint(x: 450, y: 10)))
     }
@@ -116,7 +113,6 @@ struct AnnotationGeometryTests {
             let moved = annotation.translated(by: offset)
 
             #expect(moved.shape == expected)
-            // Still the same annotation, with the same look.
             #expect(moved.id == annotation.id)
             #expect(moved.color == annotation.color)
             #expect(moved.size == annotation.size)
@@ -163,7 +159,6 @@ struct EditorSelectionTests {
         #expect(model.document.annotations.map(\.shape) == [
             .rectangle(CGRect(x: 15, y: 17, width: 40, height: 30))
         ])
-        // Still selected after the move.
         #expect(model.selectedAnnotation != nil)
 
         model.deleteSelected()
@@ -265,7 +260,6 @@ struct CanvasSelectionTests {
         #expect(harness.model.selectedAnnotation != nil)
         #expect(harness.shapes == [.counter(1, center: CGPoint(x: 20, y: 20))])
         #expect(harness.model.canUndo == undoStepsBefore)
-        // Nothing to redo either: the click made no change that undo undid.
         #expect(!harness.model.canRedo)
     }
 

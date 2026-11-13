@@ -1,14 +1,10 @@
 import CoreGraphics
 import Foundation
 
-/// One mark drawn on top of a screenshot.
-///
 /// All coordinates are in points of the original image, with the origin at
 /// its top-left corner and y growing downwards. They do not depend on zoom
 /// or on how the image is cropped.
 struct Annotation: Equatable, Identifiable {
-    /// What kind of mark it is, together with the geometry that kind needs.
-    /// A Swift enum case can carry its own data, like a tagged union.
     enum Shape: Equatable {
         case arrow(from: CGPoint, to: CGPoint)
         case line(from: CGPoint, to: CGPoint)
@@ -18,7 +14,6 @@ struct Annotation: Equatable, Identifiable {
         /// `origin` is the top-left corner of the text.
         case text(String, origin: CGPoint)
         case blur(CGRect)
-        /// A numbered badge: 1, 2, 3...
         case counter(Int, center: CGPoint)
     }
 
@@ -34,13 +29,11 @@ struct Annotation: Equatable, Identifiable {
         self.size = size
     }
 
-    /// Blur marks are drawn from a blurred copy of the whole screenshot.
     var isBlur: Bool {
         if case .blur = shape { true } else { false }
     }
 }
 
-/// The palette offered in the editor.
 enum AnnotationColor: String, CaseIterable, Identifiable {
     case red, orange, yellow, green, blue, black, white
 
@@ -58,20 +51,16 @@ enum AnnotationColor: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Text placed on top of this colour (the number in a badge) uses dark
-    /// ink on the light colours and white on the rest.
     var prefersDarkText: Bool {
         self == .yellow || self == .white
     }
 }
 
-/// Three sizes that scale every tool together.
 enum StrokeSize: String, CaseIterable, Identifiable {
     case small, medium, large
 
     var id: Self { self }
 
-    /// Arrows, lines, shapes and the pen.
     var lineWidth: CGFloat {
         switch self {
         case .small: 2

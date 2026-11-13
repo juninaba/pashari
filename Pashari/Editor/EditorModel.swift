@@ -2,9 +2,6 @@ import CoreGraphics
 import Foundation
 import Observation
 
-/// The state of one editor window: the screenshot, what has been drawn on
-/// it, and which tool, colour and size are selected.
-///
 /// `@Observable` makes SwiftUI views that read these properties redraw when
 /// they change. The AppKit canvas is not SwiftUI, so it is told through
 /// `onDocumentChange` (the document or the selection changed),
@@ -15,7 +12,6 @@ final class EditorModel {
 
     var tool: EditorTool = .arrow {
         didSet {
-            // A selection only means something to the select tool.
             if tool != .select {
                 deselect()
             }
@@ -42,7 +38,6 @@ final class EditorModel {
 
     @ObservationIgnored var onDocumentChange: (() -> Void)?
     @ObservationIgnored var onToolChange: (() -> Void)?
-    /// The colour or the size changed.
     @ObservationIgnored var onStyleChange: (() -> Void)?
 
     /// See `blurredImage(for:)`. `lazy` means it is worked out on first use.
@@ -62,17 +57,14 @@ final class EditorModel {
     var canUndo: Bool { history.canUndo }
     var canRedo: Bool { history.canRedo }
 
-    /// The whole image, in image points.
     var imageBounds: CGRect {
         CGRect(origin: .zero, size: screenshot.pointSize)
     }
 
-    /// The part of the image currently shown: the crop, or everything.
     var visibleRect: CGRect {
         document.cropRect ?? imageBounds
     }
 
-    /// Adds a mark using the selected colour and size.
     func add(_ shape: Annotation.Shape) {
         var document = history.current
         document.annotations.append(Annotation(shape: shape, color: color, size: size))
@@ -156,7 +148,6 @@ final class EditorModel {
         }
     }
 
-    /// Every change to the document goes through here (or undo and redo).
     private func apply(_ document: AnnotationDocument) {
         guard !isExporting else { return }
         history.apply(document)

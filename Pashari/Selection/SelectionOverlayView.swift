@@ -1,18 +1,11 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// Shared behaviour of the views that fill an `OverlayPanel`: keyboard focus,
-/// cancelling with Escape or a right click, and mouse tracking that works
-/// while Pashari is not the active app.
 class SelectionOverlayView: NSView {
-    /// Called when the user backs out without choosing anything.
     var onCancel: (() -> Void)?
 
-    /// The pointer shown while it is over this view.
     var cursor: NSCursor { .arrow }
 
-    // Take keyboard input, and react to the very first click even though the
-    // panel was not focused before it.
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 

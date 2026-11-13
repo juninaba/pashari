@@ -23,7 +23,6 @@ struct ScreenshotTests {
     }
 
     @Test func cropMeasuresFromTheTopLeftCorner() throws {
-        // A red patch near the top-left corner: pixels x 20..<60, y 10..<30.
         let image = TestImages.make(
             width: 200,
             height: 120,

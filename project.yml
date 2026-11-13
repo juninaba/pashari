@@ -20,7 +20,6 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    # UI code runs on the main thread unless a declaration opts out.
     SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
     SWIFT_APPROACHABLE_CONCURRENCY: YES
     # Required for notarization later; harmless during development.
@@ -46,8 +45,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER)
         INFOPLIST_FILE: Pashari/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-    # A shared scheme, so `xcodebuild -scheme Pashari build` and `test` work
-    # from the command line.
     scheme:
       testTargets:
         - PashariTests

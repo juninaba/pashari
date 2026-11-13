@@ -1,7 +1,5 @@
 import AppKit
 
-/// Dims the frozen screen and lets the user drag out a rectangle.
-///
 /// The view only draws the dimming, the selection border and the size label.
 /// The frozen screenshot itself sits in the view underneath.
 final class AreaSelectionView: SelectionOverlayView {
@@ -24,8 +22,6 @@ final class AreaSelectionView: SelectionOverlayView {
         fatalError("AreaSelectionView is created in code only")
     }
 
-    // Top-left origin with y growing downwards, like CGImage and like the web.
-    // AppKit's default is bottom-left with y growing upwards.
     override var isFlipped: Bool { true }
 
     override var cursor: NSCursor { .crosshair }
@@ -69,7 +65,6 @@ final class AreaSelectionView: SelectionOverlayView {
             width: textSize.width + padding.width * 2,
             height: textSize.height + padding.height * 2
         )
-        // Keep the label on screen when the selection touches an edge.
         if box.maxY > bounds.maxY { box.origin.y = selection.maxY - box.height - 6 }
         if box.minX < bounds.minX { box.origin.x = bounds.minX }
 
@@ -81,7 +76,6 @@ final class AreaSelectionView: SelectionOverlayView {
         )
     }
 
-    /// Removes the rectangle, ready for a new drag.
     func clearSelection() {
         dragStart = nil
         selection = nil

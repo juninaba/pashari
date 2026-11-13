@@ -1,21 +1,17 @@
 import AppKit
 import ScreenCaptureKit
 
-/// A still image of one whole screen, used as the backdrop for area selection.
 struct FrozenScreen {
     let screen: NSScreen
     let screenshot: Screenshot
 }
 
-/// Takes still images of the screen with ScreenCaptureKit.
 enum ScreenCapturer {
-    /// Captures everything visible on one display.
     static func captureDisplay(_ screen: NSScreen) async throws -> Screenshot {
         let content = try await shareableContent()
         return try await capture(screen, content: content)
     }
 
-    /// Captures every connected display.
     static func captureAllDisplays() async throws -> [FrozenScreen] {
         let content = try await shareableContent()
         var frozenScreens: [FrozenScreen] = []
@@ -90,7 +86,6 @@ enum ScreenCapturer {
         return list.compactMap { $0[kCGWindowNumber] as? CGWindowID }
     }
 
-    /// Asks the system what can be captured right now: displays and windows.
     private static func shareableContent() async throws -> SCShareableContent {
         try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
     }
@@ -111,8 +106,6 @@ enum ScreenCapturer {
             excludingWindows: ownWindowsToHide(in: content)
         )
 
-        // `contentRect` is in points and `pointPixelScale` converts to pixels,
-        // so the output keeps the display's full (Retina) resolution.
         let scale = CGFloat(filter.pointPixelScale)
         let configuration = SCStreamConfiguration()
         configuration.width = Int((filter.contentRect.width * scale).rounded())

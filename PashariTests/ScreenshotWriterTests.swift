@@ -41,7 +41,6 @@ struct ScreenshotWriterTests {
         #expect(code(0) == "aaaa")
         #expect(code(0.2) == "aaaa")
         #expect(code(0.25) == "aaab")
-        // 26 quarter seconds carry over into the next letter, as 9 + 1 = 10.
         #expect(code(6.5) == "aaba")
         #expect(code(13 * 3600 + 8 * 60 + 19) == "ktwu")
         #expect(code(86_399.75) == "trgh")
@@ -49,7 +48,6 @@ struct ScreenshotWriterTests {
 
     @Test func fileNamesSortInTheOrderTheyWereTaken() {
         let start = sampleDate
-        // A capture every 97.25 seconds, for two days.
         let names = stride(from: 0, to: 2 * 86_400, by: 97.25).map {
             ScreenshotWriter.fileName(capturedAt: start + $0)
         }
@@ -118,8 +116,6 @@ struct ScreenshotWriterTests {
 
     // MARK: - Helpers
 
-    /// 2026-11-10 13:08:19 in the machine's own time zone, which is also what
-    /// the file name uses.
     private var sampleDate: Date {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .current

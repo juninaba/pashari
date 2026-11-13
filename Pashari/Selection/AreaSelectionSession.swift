@@ -1,12 +1,8 @@
 import AppKit
 
-/// Shows the frozen screens, waits for the user to drag out a rectangle, and
-/// hands back the selected part.
 final class AreaSelectionSession {
-    /// The overlay covering one screen.
     private struct Overlay {
         let panel: OverlayPanel
-        /// Shows the frozen screenshot.
         let backdrop: NSView
         let selectionView: AreaSelectionView
         var frozen: FrozenScreen
@@ -23,8 +19,6 @@ final class AreaSelectionSession {
 
     /// Returns the selected part of the screen, or nil when the user cancelled.
     func run(with frozenScreens: [FrozenScreen]) async -> Screenshot? {
-        // The overlay reports its result through callbacks. A continuation
-        // turns that into something the caller can `await`.
         await withCheckedContinuation { continuation in
             self.continuation = continuation
             show(frozenScreens)
@@ -44,7 +38,6 @@ final class AreaSelectionSession {
             backdrop.layer?.contents = frozen.screenshot.image
             backdrop.layer?.contentsGravity = .resize
 
-            // Top layer: dimming and the selection rectangle.
             let selectionView = AreaSelectionView(frame: bounds, scale: frozen.screenshot.scale)
             selectionView.autoresizingMask = [.width, .height]
             let index = overlays.count
@@ -82,8 +75,6 @@ final class AreaSelectionSession {
         finish(with: overlays[index].frozen.screenshot.cropped(to: rect))
     }
 
-    /// The frozen screenshots show the Space the user left, so the screens
-    /// are captured again.
     private func spaceDidChange() {
         // A notification can still arrive just after the user finished.
         guard continuation != nil else { return }
@@ -98,8 +89,6 @@ final class AreaSelectionSession {
         let change = spaceChanges
 
         Task {
-            // Pashari's own windows, this overlay among them, are left out of
-            // the capture.
             let frozenScreens = (try? await ScreenCapturer.captureAllDisplays()) ?? []
             // Drop them if the user finished, or moved on to yet another
             // Space, while they were being taken.
@@ -117,8 +106,6 @@ final class AreaSelectionSession {
         }
     }
 
-    /// Puts each screen's new screenshot in place. Returns false when a
-    /// screen has none.
     private func replaceFrozenScreens(with frozenScreens: [FrozenScreen]) -> Bool {
         for index in overlays.indices {
             let displayID = overlays[index].frozen.screen.displayID

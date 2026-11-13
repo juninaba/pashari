@@ -89,7 +89,6 @@ struct EditorShortcutTests {
         harness.canvas.undo(nil)
 
         #expect(harness.textView?.string == "")
-        // The picture is left alone.
         #expect(harness.shapes == [.counter(1, center: CGPoint(x: 80, y: 40))])
     }
 
@@ -120,7 +119,6 @@ struct EditorShortcutTests {
 
         toolbar.rootView.onUndo()
 
-        // The typing is taken back, and the crop under it stays.
         #expect(textView.string == "")
         #expect(editor.model.document.cropRect != nil)
     }
@@ -292,8 +290,6 @@ struct EditorModelTests {
     }
 }
 
-/// Drives the canvas with hand-made mouse events, as the selection view
-/// tests do.
 @MainActor
 struct AnnotationCanvasViewTests {
     @Test func draggingWithTheArrowToolAddsAnArrow() {
@@ -395,7 +391,6 @@ struct EditorWindowTests {
     }
 
     @Test func windowsAreCentredOnTheScreenTheyAreFor() {
-        // A second display to the right of a 1920-point-wide main one.
         let secondScreen = CGRect(x: 1920, y: 0, width: 2560, height: 1400)
 
         let origin = NSWindow.originCentering(CGSize(width: 1000, height: 600), in: secondScreen)
@@ -408,7 +403,6 @@ struct EditorWindowTests {
 
         let origin = NSWindow.originCentering(CGSize(width: 900, height: 1000), in: screen)
 
-        // Its top edge is the top of the screen.
         #expect(origin.y + 1000 == screen.maxY)
     }
 
@@ -424,9 +418,6 @@ struct EditorWindowTests {
 
         editor.window.layoutIfNeeded()
 
-        // The toolbar is the one SwiftUI-hosting view in the window. It must
-        // have been given at least the width it asks for, both now and at
-        // the smallest size the window can be resized to.
         let toolbar = try #require(
             editor.window.contentView?.subviews.first { $0 is NSHostingView<EditorToolbarView> }
         )
@@ -457,7 +448,6 @@ struct EditorWindowTests {
         #expect(results.count == 1)
         let result = results.first ?? nil
         #expect(result != nil)
-        // Annotated, so it is a new image rather than the original.
         #expect(result?.image !== screenshot.image)
     }
 }
@@ -479,7 +469,6 @@ struct QuitTests {
 
         let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
         controller.keep(editor)
-        // The user cancels, then tries again and quits.
         #expect(delegate.applicationShouldTerminate(NSApp) == .terminateCancel)
         answer = true
         #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)
@@ -533,7 +522,6 @@ struct QuitTests {
 
 @MainActor
 func makeScreenshot() -> Screenshot {
-    // 200 x 120 pixels at 2x: 100 x 60 points.
     Screenshot(image: TestImages.make(width: 200, height: 120), scale: 2, capturedAt: Date())
 }
 
