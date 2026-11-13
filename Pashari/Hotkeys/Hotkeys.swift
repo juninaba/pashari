@@ -4,9 +4,18 @@ import KeyboardShortcuts
 // picks (in UserDefaults) and listens for the keys system-wide; this file
 // only declares which shortcuts exist and what they start with.
 extension KeyboardShortcuts.Name {
-    // Defaults use Control-Option. They have to stay clear of:
-    // - the system's own screenshot shortcuts (Command-Shift-3/4/5 and their
-    //   Control variants);
+    // Defaults are Command-Shift-2, 3 and 4, in the order of the menu. They
+    // do not keep macOS's meanings: there, Command-Shift-3 takes the full
+    // screen and Command-Shift-4 an area.
+    //
+    // macOS's own screenshots use Command-Shift-3 and Command-Shift-4, and
+    // they are on until the user turns them off. Pashari is meant to replace
+    // them, so they have to be turned off under System Settings > Keyboard >
+    // Keyboard Shortcuts > Screenshots (the README says so).
+    //
+    // The defaults still stay clear of:
+    // - the rest of macOS's screenshot shortcuts: Command-Shift-5, and the
+    //   Control variants of 3 and 4, which copy to the clipboard;
     // - other apps' global shortcuts: the ChatGPT app takes Control-Shift-4
     //   and Control-Option-Shift-4 for its own screenshots. When two apps
     //   register the same keys, macOS tells both, and both start a capture;
@@ -17,15 +26,15 @@ extension KeyboardShortcuts.Name {
     // does not change it for someone who already has Pashari.
     static let captureArea = Self(
         "captureArea",
-        default: .init(.four, modifiers: [.control, .option])
+        default: .init(.two, modifiers: [.command, .shift])
     )
     static let captureWindow = Self(
         "captureWindow",
-        default: .init(.five, modifiers: [.control, .option])
+        default: .init(.three, modifiers: [.command, .shift])
     )
     static let captureFullscreen = Self(
         "captureFullscreen",
-        default: .init(.three, modifiers: [.control, .option])
+        default: .init(.four, modifiers: [.command, .shift])
     )
 }
 

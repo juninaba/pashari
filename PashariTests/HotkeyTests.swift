@@ -21,9 +21,8 @@ struct HotkeyTests {
 
     @Test func theDefaultsStayClearOfShortcutsOthersAlreadyUse() {
         let taken: [KeyboardShortcuts.Shortcut] = [
-            // macOS screenshots
-            .init(.three, modifiers: [.command, .shift]),
-            .init(.four, modifiers: [.command, .shift]),
+            // macOS screenshots. Command-Shift-3 and 4 are not here: the
+            // defaults take those over on purpose (see Hotkeys.swift).
             .init(.five, modifiers: [.command, .shift]),
             .init(.three, modifiers: [.command, .shift, .control]),
             .init(.four, modifiers: [.command, .shift, .control]),
