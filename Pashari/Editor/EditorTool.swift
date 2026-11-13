@@ -1,16 +1,12 @@
 import CoreGraphics
 import Foundation
 
-/// The tools in the editor's toolbar.
 enum EditorTool: String, CaseIterable, Identifiable {
-    /// Picks existing marks to move or delete them. Every other tool makes
-    /// something new.
     case select
     case arrow, rectangle, ellipse, line, pen, text, counter, blur, crop
 
     var id: Self { self }
 
-    /// Name of the SF Symbol shown on the tool's button.
     var symbolName: String {
         switch self {
         case .select: "cursorarrow"
@@ -91,8 +87,6 @@ enum EditorTool: String, CaseIterable, Identifiable {
             return CGPoint(x: start.x + direction.x * length, y: start.y + direction.y * length)
 
         case .rectangle, .ellipse:
-            // The longer side of the drag sets the size, limited by the room
-            // left in the direction of the drag.
             let roomX = dx < 0 ? start.x - bounds.minX : bounds.maxX - start.x
             let roomY = dy < 0 ? start.y - bounds.minY : bounds.maxY - start.y
             let side = max(min(max(abs(dx), abs(dy)), roomX, roomY), 0)

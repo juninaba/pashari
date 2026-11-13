@@ -1,7 +1,5 @@
 import AppKit
 
-/// Calls back each time the user moves to another Space, until stopped.
-///
 /// Every desktop, and every app in full screen, is a Space of its own. The
 /// selection overlays follow the user from Space to Space (see
 /// `OverlayPanel`), but what they show belongs to the Space the user left,

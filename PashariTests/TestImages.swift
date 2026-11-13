@@ -1,7 +1,6 @@
 import CoreGraphics
 import Foundation
 
-/// Helpers for building and inspecting small images in tests.
 enum TestImages {
     /// Signals when the image's source pixels are actually freed, on any thread.
     static func tracked(released: DispatchSemaphore) -> CGImage {

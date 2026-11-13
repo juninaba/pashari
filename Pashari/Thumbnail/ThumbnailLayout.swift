@@ -1,7 +1,5 @@
 import CoreGraphics
 
-/// Sizes and positions of the floating thumbnails. Plain arithmetic, kept
-/// apart from the windows so it can be tested.
 enum ThumbnailLayout {
     /// The preview never grows beyond this.
     static let maximumPreviewSize = CGSize(width: 240, height: 160)
@@ -9,9 +7,7 @@ enum ThumbnailLayout {
     static let minimumPreviewSize = CGSize(width: 148, height: 48)
 
     static let toolbarHeight: CGFloat = 34
-    /// Distance from the screen's edges.
     static let margin: CGFloat = 16
-    /// Gap between stacked thumbnails.
     static let spacing: CGFloat = 10
     /// At most this many visible on one screen; older captures wait for room.
     static let maximumCount = 5
@@ -31,7 +27,6 @@ enum ThumbnailLayout {
         )
     }
 
-    /// The whole card: preview plus the row of buttons under it.
     static func cardSize(for imageSize: CGSize) -> CGSize {
         let preview = previewSize(for: imageSize)
         return CGSize(width: preview.width, height: preview.height + toolbarHeight)
@@ -57,7 +52,6 @@ enum ThumbnailLayout {
         var count = 0
         for size in cardSizes {
             top += size.height
-            // The same margin at the top as at the bottom.
             guard top <= area.maxY - margin else { break }
             count += 1
             top += spacing

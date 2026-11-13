@@ -79,12 +79,10 @@ struct CaptureCoordinatorTests {
         coordinator.captureFullscreen()
         #expect(state.checks == 1)
 
-        // Once the alert is closed, the next request is checked again.
         coordinator.captureFullscreen()
         #expect(state.checks == 2)
     }
 
-    /// What the stand-in permission check sees and counts.
     private final class AlertState {
         var checks = 0
         weak var coordinator: CaptureCoordinator?

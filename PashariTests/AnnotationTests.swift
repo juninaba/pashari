@@ -83,7 +83,6 @@ struct AnnotationDocumentTests {
 @MainActor
 struct AnnotationRendererTests {
     @Test func arrowHeadPointsBackAlongTheArrow() {
-        // A long arrow pointing right, ending at (100, 50).
         let head = AnnotationRenderer.arrowHead(
             from: CGPoint(x: 0, y: 50),
             to: CGPoint(x: 100, y: 50),
@@ -175,7 +174,6 @@ struct AnnotationRendererTests {
     }
 
     @Test func flattenCopiesThePixelsOfACropThatFallsBetweenThem() throws {
-        // Red patch at pixels x 20..<60, y 10..<30, as above.
         let image = TestImages.make(
             width: 200,
             height: 120,

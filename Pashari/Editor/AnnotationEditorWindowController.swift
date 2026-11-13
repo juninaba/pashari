@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// One editor window: builds it, shows it, and handles Copy, Save and Close.
 final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     /// Called once when the window closes. The argument is the edited
     /// screenshot when it still needs a home (the window was simply closed),
@@ -12,8 +11,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     let window: NSWindow
     let canvas: AnnotationCanvasView
     private let scrollView = NSScrollView()
-    /// The SwiftUI toolbar, wrapped so it can live in an AppKit window.
-    /// `lazy` because building it needs `self` for the button actions.
     private lazy var toolbar = NSHostingView(
         rootView: EditorToolbarView(
             model: model,
@@ -27,7 +24,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
             onSave: { [weak self] in self?.saveToDisk() }
         )
     )
-    /// True once Copy or Save has taken care of the result.
     private var isDelivered = false
 
     /// A starting point for the narrowest the window may be. The real limit
@@ -35,14 +31,11 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     /// measured once the toolbar exists (see `init`).
     private static let minimumContentWidth: CGFloat = 900
     private static let minimumCanvasHeight: CGFloat = 280
-    /// Empty space left around the image.
     private static let canvasPadding: CGFloat = 24
 
     init(screenshot: Screenshot) {
         model = EditorModel(screenshot: screenshot)
         canvas = AnnotationCanvasView(model: model)
-        // The screen the user is working on. The pointer is on it, over the
-        // thumbnail whose Annotate button opened the editor.
         let screen = NSScreen.underMouse ?? NSScreen.main
         window = NSWindow(
             contentRect: CGRect(
@@ -67,8 +60,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.contentView = makeContentView()
 
-        // Never let the window get narrower than its toolbar, and widen it
-        // now if it already is.
         let toolbarWidth = ceil(toolbar.fittingSize.width)
         if toolbarWidth > window.contentMinSize.width {
             window.contentMinSize.width = toolbarWidth
@@ -114,14 +105,10 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.backgroundColor = .underPageBackgroundColor
-        // Pinch to zoom, handled entirely by the scroll view.
         scrollView.allowsMagnification = true
         scrollView.minMagnification = 0.1
         scrollView.maxMagnification = 8
 
-        // Auto Layout: instead of setting frames, state the rules ("the
-        // toolbar is pinned to the top, the scroll view fills the rest") and
-        // let AppKit work out the frames whenever the window is resized.
         let container = NSView()
         for view in [toolbar, scrollView] {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -141,8 +128,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         return container
     }
 
-    /// Big enough to show the image at its real size where possible, but
-    /// never larger than most of the screen.
     static func initialContentSize(for imageSize: CGSize, screenSize: CGSize) -> CGSize {
         let maximum = CGSize(width: screenSize.width * 0.85, height: screenSize.height * 0.85)
         let wanted = CGSize(
@@ -158,13 +143,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Menu shortcuts
 
-    // Edit > Copy (⌘C) and File > Save (⌘S) in the hidden main menu (see
-    // MainMenu) end up here. The menu asks the view with keyboard focus
-    // first, then the views around it, then the window, and then the
-    // window's delegate, which is this object. So these work wherever the
-    // focus is in the editor, except that ⌘C copies the selected text while
-    // text is being typed. (Undo and Redo are handled by the canvas.)
-
     // `@objc(copy:)` is the name the menu asks for. The Swift name is
     // different because every NSObject already has a `copy()` method.
     @objc(copy:) func copyImage(_ sender: Any?) {
@@ -177,7 +155,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Actions
 
-    // Not named `copy()`: every NSObject already has a method of that name.
     private func copyToClipboard() {
         deliver(errorTitle: String(localized: "The screenshot could not be copied")) { screenshot in
             Clipboard.copy(pngData: try await ScreenshotWriter.pngData(for: screenshot))
@@ -190,8 +167,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Bakes the annotations in, hands the result to `output`, and closes
-    /// the window if that worked.
     private func deliver(
         errorTitle: String,
         to output: @escaping (Screenshot) async throws -> Void
@@ -204,7 +179,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         do {
             screenshot = try model.flattened()
         } catch {
-            // The window stays open, with the work in it.
             ErrorAlert.show(error, title: errorTitle)
             return
         }
@@ -234,8 +208,6 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         canvas.finishEditing()
-        // Closing without Copy or Save does not throw the work away: the
-        // result goes back to a floating thumbnail.
         onClose?(isDelivered ? nil : resultForThumbnail())
         onClose = nil
     }

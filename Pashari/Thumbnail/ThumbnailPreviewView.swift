@@ -1,7 +1,5 @@
 import AppKit
 
-/// The picture part of a thumbnail card. It can be dragged into other apps,
-/// which receive the screenshot as a PNG file.
 final class ThumbnailPreviewView: NSView, NSDraggingSource {
     /// Asked when a drag starts. Returns nil while the file is not ready yet,
     /// in which case the drag does not begin.
@@ -16,8 +14,6 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
     override init(frame: CGRect) {
         super.init(frame: frame)
 
-        // Let Core Animation draw the image, scaled to fit with its
-        // proportions kept.
         wantsLayer = true
         layer?.contentsGravity = .resizeAspect
         layer?.backgroundColor = NSColor.black.withAlphaComponent(0.25).cgColor
@@ -33,7 +29,6 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         layer?.contents = image
     }
 
-    // React to the first click even though the panel never has focus.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     // MARK: - Starting a drag
@@ -59,8 +54,6 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         }
         self.mouseDownEvent = nil
 
-        // The dragged data is the file's URL, which is what Finder, mail
-        // clients, chat apps and browsers all understand.
         let item = NSDraggingItem(pasteboardWriter: url as NSURL)
         let pictureFrame = Self.aspectFit(
             CGSize(width: image.width, height: image.height),
@@ -76,7 +69,6 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         _ session: NSDraggingSession,
         sourceOperationMaskFor context: NSDraggingContext
     ) -> NSDragOperation {
-        // The receiver gets a copy; the temporary file stays where it is.
         .copy
     }
 
@@ -85,7 +77,6 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         endedAt screenPoint: NSPoint,
         operation: NSDragOperation
     ) {
-        // An empty operation means nobody took the drop.
         if !operation.isEmpty {
             onDrop?()
         }
@@ -97,8 +88,6 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         hypot(a.x - b.x, a.y - b.y)
     }
 
-    /// The largest rectangle with the proportions of `size` that fits inside
-    /// `bounds`, centred.
     static func aspectFit(_ size: CGSize, in bounds: CGRect) -> CGRect {
         guard size.width > 0, size.height > 0 else { return bounds }
         let factor = min(bounds.width / size.width, bounds.height / size.height)

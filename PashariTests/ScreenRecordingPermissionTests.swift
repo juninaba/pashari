@@ -4,7 +4,6 @@ import Testing
 
 @MainActor
 struct ScreenRecordingPermissionTests {
-    /// Stands in for macOS, counting what Pashari asks of it.
     private final class FakeSystem {
         var isGranted = false
         var grantsOnRequest = false
@@ -12,7 +11,6 @@ struct ScreenRecordingPermissionTests {
         var instructionsShown = 0
         var hasAsked = false
 
-        /// One capture attempt. True when the capture may go ahead.
         func attempt() -> Bool {
             ScreenRecordingPermission.ensureGranted(
                 isGranted: { self.isGranted },

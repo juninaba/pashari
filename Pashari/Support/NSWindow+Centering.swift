@@ -1,8 +1,6 @@
 import AppKit
 
 extension NSWindow {
-    /// Puts the window in the middle of `screen`.
-    ///
     /// `center()` cannot be told which screen to use. It takes the one the
     /// window is on, which for a window that has not been shown yet is the
     /// main display, even when the user is working on another one.

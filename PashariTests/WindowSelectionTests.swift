@@ -6,12 +6,10 @@ import Testing
 @MainActor
 struct ScreenGeometryTests {
     @Test func flipsBetweenTopLeftAndBottomLeftOrigins() {
-        // A window 100 points below the top of a 1000-point-tall display.
         let topLeftOrigin = CGRect(x: 50, y: 100, width: 300, height: 200)
 
         let bottomLeftOrigin = ScreenGeometry.flipped(topLeftOrigin, primaryScreenHeight: 1000)
 
-        // Its bottom edge is 300 points from the top, so 700 from the bottom.
         #expect(bottomLeftOrigin == CGRect(x: 50, y: 700, width: 300, height: 200))
     }
 
@@ -106,17 +104,14 @@ struct WindowSelectionTests {
         let cursor = NSCursor.camera
         let size = NSCursor.cameraCursorSize
 
-        // Not the arrow it falls back to when the symbol cannot be drawn.
         #expect(cursor !== NSCursor.arrow)
         #expect(cursor.image.size == size)
         #expect(cursor.hotSpot == NSPoint(x: size.width / 2, y: size.height / 2))
-        // One bitmap for regular displays and one for Retina.
         let pixelWidths = cursor.image.representations.map(\.pixelsWide).sorted()
         #expect(pixelWidths == [Int(size.width), Int(size.width) * 2])
     }
 
     @Test func cameraSitsOnWholePointsSoItStaysSharp() {
-        // The camera symbol is 23 × 18 points in a 28-point square.
         let origin = NSCursor.centeredOrigin(
             of: CGSize(width: 23, height: 18),
             in: CGSize(width: 28, height: 28)

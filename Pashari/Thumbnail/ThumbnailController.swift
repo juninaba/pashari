@@ -1,7 +1,5 @@
 import AppKit
 
-/// Shows a floating thumbnail for each new screenshot and carries out what
-/// the user does with it: copy, save, annotate, drag away, or close.
 final class ThumbnailController {
     /// Called when the user asks to annotate a screenshot. The thumbnail is
     /// already gone by then; the editor takes over.
@@ -29,8 +27,6 @@ final class ThumbnailController {
     private let saveDirectory: @MainActor () -> URL
     private let showError: @MainActor (Error, String) -> Void
 
-    /// Captures being copied, saved, or opened in the editor. `ObjectIdentifier`
-    /// stands for one particular object, the way `===` compares them.
     private var capturesBeingDelivered: Set<ObjectIdentifier> = []
 
     /// Includes captures waiting for room in the visible stack.
@@ -48,8 +44,6 @@ final class ThumbnailController {
         self.storageDirectory = storageDirectory
         self.saveDirectory = saveDirectory
         self.showError = showError
-        // Sent when a display is plugged in or out, or when displays are
-        // rearranged or change resolution.
         _ = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -59,7 +53,6 @@ final class ThumbnailController {
         }
     }
 
-    /// Adds a thumbnail for `screenshot` on the screen the pointer is on.
     func show(_ screenshot: Screenshot) {
         guard let displayID = (NSScreen.underMouse ?? NSScreen.main)?.displayID else {
             Log.thumbnail.error("No screen to show the thumbnail on")
@@ -68,7 +61,6 @@ final class ThumbnailController {
         show(screenshot, onDisplay: displayID)
     }
 
-    /// Adds a thumbnail for `screenshot` on the display `displayID`.
     func show(_ screenshot: Screenshot, onDisplay displayID: CGDirectDisplayID) {
         let capture = PendingCapture(screenshot: screenshot, directory: storageDirectory)
         entries.insert(Entry(capture: capture, displayID: displayID), at: 0)
@@ -78,8 +70,6 @@ final class ThumbnailController {
     private func makePanel(for entry: Entry, on screen: NSScreen) -> ThumbnailPanel {
         let capture = entry.capture
         let card = ThumbnailCardView(imageSize: capture.pointSize)
-        // `[weak self]` keeps these closures from keeping the controller
-        // alive; `capture` is held on purpose, it is the thing to act on.
         card.onCopy = { [weak self] in self?.copy(capture) }
         card.onSave = { [weak self] in self?.save(capture) }
         card.onAnnotate = { [weak self] in self?.annotate(capture) }
@@ -128,9 +118,6 @@ final class ThumbnailController {
         }
     }
 
-    /// Hands the screenshot's PNG to `output` once it is ready, then removes
-    /// the thumbnail.
-    ///
     /// Right after a capture the PNG may still be encoding. Clicks on Copy
     /// or Save in that time are ignored while the first one waits, so that
     /// a double-click does not save the same screenshot twice.
@@ -139,7 +126,6 @@ final class ThumbnailController {
         errorTitle: String,
         to output: @escaping (PendingCapture.File) async throws -> Void
     ) {
-        // `insert` reports whether the capture was not in the set yet.
         guard capturesBeingDelivered.insert(ObjectIdentifier(capture)).inserted else { return }
         updateActions(for: capture)
         Task {
@@ -191,7 +177,6 @@ final class ThumbnailController {
     /// Removes the thumbnail, and its temporary file unless `keepingFile`:
     /// after a drag and drop the receiving app may still need the file.
     private func dismiss(_ capture: PendingCapture, keepingFile: Bool = false) {
-        // `===` compares identity: is this the very same object?
         guard let index = entries.firstIndex(where: { $0.capture === capture }) else { return }
         hide(entries.remove(at: index))
         if !keepingFile {
@@ -226,7 +211,6 @@ final class ThumbnailController {
             for entry in group.dropFirst(visibleCount) {
                 hide(entry)
             }
-            // `visibleFrame` leaves out the menu bar and the Dock.
             let frames = ThumbnailLayout.stackFrames(
                 for: visible.map { ThumbnailLayout.cardSize(for: $0.capture.pointSize) },
                 in: screen.visibleFrame
@@ -245,17 +229,11 @@ final class ThumbnailController {
         }
     }
 
-    /// Displays changed: one was plugged in or out, or one changed size.
-    /// Thumbnails leave the displays that are gone, and each stack is
-    /// checked against the size its screen has now.
     private func screensDidChange() {
         layout()
         Log.thumbnail.info("Displays changed: thumbnails laid out again")
     }
 
-    /// Moves thumbnails off displays that are gone, unplugged say, to the
-    /// screen the pointer is on. Laid out for a display that is not there,
-    /// they would end up out of reach, with their screenshots in them.
     private func moveOffMissingDisplays() {
         let connected = Set(NSScreen.screens.compactMap(\.displayID))
         guard
@@ -268,7 +246,6 @@ final class ThumbnailController {
         }
     }
 
-    /// The screen showing the display `displayID`, if it is still there.
     private static func screen(for displayID: CGDirectDisplayID) -> NSScreen? {
         NSScreen.screens.first { $0.displayID == displayID }
     }

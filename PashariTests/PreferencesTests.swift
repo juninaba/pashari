@@ -86,7 +86,6 @@ struct PreferencesTests {
 
     // MARK: - Helpers
 
-    /// Stands in for the real settings, which the test must not change.
     private final class FakeSettings {
         var saveDirectory = Preferences.desktopDirectory
         var launchAtLogin = false

@@ -1,7 +1,5 @@
 import AppKit
 
-/// The small floating window that holds one thumbnail card.
-///
 /// Like the selection overlay it is a non-activating panel: clicking its
 /// buttons does not pull the user out of the app they are working in.
 final class ThumbnailPanel: NSPanel {
@@ -18,7 +16,6 @@ final class ThumbnailPanel: NSPanel {
         )
         self.contentView = contentView
 
-        // Float above ordinary windows, on every Space.
         level = Self.windowLevel
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 

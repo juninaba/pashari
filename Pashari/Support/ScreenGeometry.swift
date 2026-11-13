@@ -6,8 +6,6 @@ import AppKit
 ///   the bottom-left corner of the primary display, and y grows upwards.
 /// - Core Graphics and ScreenCaptureKit (`SCWindow.frame`): the origin is the
 ///   top-left corner of the primary display, and y grows downwards.
-///
-/// x is the same in both. Only y has to be mirrored.
 enum ScreenGeometry {
     /// Height of the primary display, the one with the menu bar. It is always
     /// the first entry in `NSScreen.screens`.

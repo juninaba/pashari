@@ -1,7 +1,5 @@
 import CoreGraphics
 
-/// Where an annotation is: its bounding box, whether a point touches it,
-/// and how to move it. Used by the select tool.
 extension Annotation {
     /// How far outside a mark a click may land and still count as hitting it.
     static let hitSlop: CGFloat = 4
@@ -33,8 +31,6 @@ extension Annotation {
         }
     }
 
-    /// Whether a click at `point` should pick this mark.
-    ///
     /// Outlines (rectangle, ellipse) are hit only near their stroke, not in
     /// the empty middle, so that marks inside a big frame stay reachable.
     func isHit(at point: CGPoint) -> Bool {
@@ -42,7 +38,6 @@ extension Annotation {
 
         switch shape {
         case .arrow(let from, let to):
-            // Near the shaft, or anywhere on the head.
             let head = AnnotationRenderer.arrowHead(from: from, to: to, lineWidth: size.lineWidth)
             let headBox = Self.boundingBox(of: [to, head.left, head.right])
                 .insetBy(dx: -Self.hitSlop, dy: -Self.hitSlop)
@@ -64,7 +59,6 @@ extension Annotation {
         }
     }
 
-    /// The same mark, moved by `offset`.
     func translated(by offset: CGSize) -> Annotation {
         func moved(_ point: CGPoint) -> CGPoint {
             CGPoint(x: point.x + offset.width, y: point.y + offset.height)
@@ -73,7 +67,6 @@ extension Annotation {
             rect.offsetBy(dx: offset.width, dy: offset.height)
         }
 
-        // `self` is a struct, so this is a copy; the original stays as it is.
         var copy = self
         switch shape {
         case .arrow(let from, let to): copy.shape = .arrow(from: moved(from), to: moved(to))
@@ -102,7 +95,6 @@ extension Annotation {
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
-    /// Shortest distance from `point` to the line segment between `a` and `b`.
     static func distance(from point: CGPoint, toSegment a: CGPoint, _ b: CGPoint) -> CGFloat {
         let dx = b.x - a.x
         let dy = b.y - a.y
@@ -116,12 +108,6 @@ extension Annotation {
     }
 
     /// Whether `point` is within `reach` of the line drawn along `path`.
-    ///
-    /// Core Graphics can turn a path into the outline of its stroke: the
-    /// shape that drawing it with a pen `reach * 2` wide would paint. The
-    /// point is close enough exactly when it falls inside that shape. This
-    /// follows curves precisely, where measuring the distance to a curve by
-    /// hand is hard (for an ellipse it has no simple formula).
     static func isPoint(_ point: CGPoint, within reach: CGFloat, of path: CGPath) -> Bool {
         path.copy(strokingWithWidth: reach * 2, lineCap: .round, lineJoin: .round, miterLimit: 10)
             .contains(point)

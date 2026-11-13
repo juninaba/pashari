@@ -1,9 +1,5 @@
 import Foundation
 
-/// Things that can go wrong between starting a capture and using the result.
-///
-/// Conforming to `LocalizedError` lets `error.localizedDescription` return the
-/// text from `errorDescription`, so the alert shows a readable message.
 enum CaptureError: LocalizedError {
     case displayNotFound
     case cannotEncodeImage

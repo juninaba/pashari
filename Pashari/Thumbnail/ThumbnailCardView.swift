@@ -1,6 +1,5 @@
 import AppKit
 
-/// One thumbnail: the picture on top and a row of buttons under it.
 final class ThumbnailCardView: NSVisualEffectView {
     var onCopy: (() -> Void)?
     var onSave: (() -> Void)?
@@ -14,8 +13,6 @@ final class ThumbnailCardView: NSVisualEffectView {
         let previewSize = ThumbnailLayout.previewSize(for: imageSize)
         let toolbarHeight = ThumbnailLayout.toolbarHeight
 
-        // AppKit's y axis grows upwards: the toolbar sits at y = 0 and the
-        // preview above it.
         previewView = ThumbnailPreviewView(
             frame: CGRect(origin: CGPoint(x: 0, y: toolbarHeight), size: previewSize)
         )
@@ -76,8 +73,6 @@ final class ThumbnailCardView: NSVisualEffectView {
         ]
 
         actionButtons = buttons
-        // The card never changes size, so the buttons are simply placed side
-        // by side, each taking an equal share of the width.
         let toolbar = NSView(frame: CGRect(x: 0, y: 0, width: width, height: height))
         let buttonWidth = width / CGFloat(buttons.count)
         for (index, button) in buttons.enumerated() {
@@ -93,7 +88,6 @@ final class ThumbnailCardView: NSVisualEffectView {
     }
 }
 
-/// An icon button for the thumbnail's toolbar.
 final class ThumbnailButton: NSButton {
     private let handler: () -> Void
 
@@ -106,12 +100,9 @@ final class ThumbnailButton: NSButton {
         symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
         contentTintColor = .white
         isBordered = false
-        // The label appears as a tooltip and is what VoiceOver reads out.
         toolTip = label
         setAccessibilityLabel(label)
 
-        // Target-action, pointed back at this object, which then runs the
-        // closure it was given.
         target = self
         action = #selector(performAction)
     }
@@ -121,7 +112,6 @@ final class ThumbnailButton: NSButton {
         fatalError("ThumbnailButton is created in code only")
     }
 
-    // React to the first click even though the panel never has focus.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     @objc private func performAction() {

@@ -1,12 +1,8 @@
 import SwiftUI
 
-/// The strip of controls along the top of the editor window.
 struct EditorToolbarView: View {
     static let height: CGFloat = 46
 
-    // `@Bindable` lets this view both read the model and write to it. The
-    // model is `@Observable`, so the toolbar redraws when, say, the selected
-    // tool or the undo state changes.
     @Bindable var model: EditorModel
     let onUndo: () -> Void
     let onRedo: () -> Void
@@ -52,7 +48,6 @@ struct EditorToolbarView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: Self.height)
-        // Greyed out while Copy or Save is running.
         .disabled(model.isExporting)
     }
 
@@ -77,7 +72,6 @@ struct EditorToolbarView: View {
                 .overlay(Circle().strokeBorder(.primary.opacity(0.25), lineWidth: 1))
                 .frame(width: 16, height: 16)
                 .frame(width: 24, height: 24)
-                // A ring around the selected colour.
                 .overlay(
                     Circle().strokeBorder(Color.accentColor, lineWidth: model.color == color ? 2 : 0)
                 )
@@ -92,7 +86,6 @@ struct EditorToolbarView: View {
         Button {
             model.size = size
         } label: {
-            // A dot whose diameter hints at the stroke width.
             Circle()
                 .fill(.primary)
                 .frame(width: size.lineWidth + 3, height: size.lineWidth + 3)
@@ -119,8 +112,6 @@ struct EditorToolbarView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // `help` is the tooltip; the accessibility label is what VoiceOver
-        // reads, since the button shows only an icon.
         .help(label)
         .accessibilityLabel(label)
     }

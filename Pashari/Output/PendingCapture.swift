@@ -1,14 +1,10 @@
 import Foundation
 import ImageIO
 
-/// A screenshot that has been taken but not yet copied, saved or discarded.
-/// This is what a floating thumbnail stands for.
-///
 /// As soon as it is created it starts encoding the PNG in the background and
 /// writes it to a working file. Once that succeeds, only metadata stays in
 /// memory. Copy, Save and the editor read the file when they need it.
 final class PendingCapture {
-    /// The encoded image and the working file holding it.
     struct File: Sendable {
         let data: Data
         let url: URL
@@ -47,7 +43,6 @@ final class PendingCapture {
         }
     }
 
-    /// The encoded image and its working file, waiting for them if needed.
     func file() async throws -> File {
         let url = try await fileURL()
         return File(data: try await Self.readData(from: url), url: url)
@@ -130,8 +125,6 @@ final class PendingCapture {
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
     }
 
-    /// A full Retina screenshot is several megabytes. `@concurrent` writes
-    /// it off the main thread, so the screen does not stutter meanwhile.
     @concurrent
     private static func write(_ data: Data, to url: URL) async throws {
         try FileManager.default.createDirectory(

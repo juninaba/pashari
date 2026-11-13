@@ -11,7 +11,6 @@ import Testing
 struct ScreenCapturerTests {
     @Test func windowModeOffersPasharisOwnOrdinaryWindows() async throws {
         let window = try await showWindow(at: CGPoint(x: 80, y: 80), level: .normal)
-        // Thumbnails float above ordinary windows like this one.
         let floating = try await showWindow(at: CGPoint(x: 360, y: 80), level: .floating)
         defer {
             window.orderOut(nil)
@@ -54,7 +53,6 @@ struct ScreenCapturerTests {
     }
 
     @Test func screenshotsKeepPasharisDialogs() async throws {
-        // At the level macOS gives modal panels, such as alerts.
         let dialog = try await showWindow(at: CGPoint(x: 80, y: 80), level: .modalPanel)
         defer { dialog.orderOut(nil) }
 
@@ -64,8 +62,6 @@ struct ScreenCapturerTests {
         #expect(!hidden.contains(CGWindowID(dialog.windowNumber)))
     }
 
-    /// A small window of the test host, once it is on screen. It appears on
-    /// whatever Space is in front, even one that holds a full-screen app.
     private func showWindow(at origin: CGPoint, level: NSWindow.Level) async throws -> NSWindow {
         let window = NSWindow(
             contentRect: CGRect(origin: origin, size: CGSize(width: 240, height: 160)),

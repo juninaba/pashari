@@ -1,15 +1,11 @@
 import AppKit
 import CoreImage
 
-/// Draws a screenshot with its annotations.
-///
 /// The editor's canvas and the export both go through this one type, so what
 /// is saved is exactly what was shown.
 enum AnnotationRenderer {
     // MARK: - Drawing
 
-    /// Draws the screenshot and then the annotations on top of it.
-    ///
     /// The context must use image points with the origin at the top-left
     /// corner and y growing downwards.
     static func draw(
@@ -31,9 +27,6 @@ enum AnnotationRenderer {
         blurredImage: CGImage?,
         in context: CGContext
     ) {
-        // Settings such as colour and line width stick to a context. Saving
-        // and restoring keeps one annotation's settings from leaking into
-        // the next.
         context.saveGState()
         defer { context.restoreGState() }
 
@@ -84,8 +77,6 @@ enum AnnotationRenderer {
 
         case .blur(let rect):
             guard let blurredImage else { return }
-            // The whole image exists in a blurred version; show it only
-            // inside the rectangle.
             context.clip(to: rect)
             drawImage(blurredImage, in: imageBounds, context: context)
 
@@ -120,7 +111,6 @@ enum AnnotationRenderer {
         ]
     }
 
-    /// The space the text tool's text takes up, line breaks included.
     static func textSize(of string: String, size: StrokeSize) -> CGSize {
         (string as NSString).size(withAttributes: textAttributes(color: .black, size: size))
     }
@@ -190,8 +180,6 @@ enum AnnotationRenderer {
         context.restoreGState()
     }
 
-    /// Draws text with AppKit, which is far simpler than raw Core Graphics.
-    /// AppKit draws into "the current context", so make ours current first.
     private static func drawText(
         _ string: String,
         at origin: CGPoint,
@@ -206,8 +194,6 @@ enum AnnotationRenderer {
 
     // MARK: - Blur
 
-    /// A blurred copy of the whole screenshot, for the blur tool to show
-    /// through its rectangles. Made once per screenshot.
     static func blurredImage(of screenshot: Screenshot) -> CGImage? {
         let input = CIImage(cgImage: screenshot.image)
         // The radius is in pixels; scale it so the result looks the same on
@@ -250,7 +236,6 @@ enum AnnotationRenderer {
         let pixelHeight = Int((crop.maxY * scale).rounded() - top)
         guard pixelWidth > 0, pixelHeight > 0 else { throw CaptureError.cannotApplyEdits }
 
-        // Keep the screenshot's own colour space when it is an RGB one.
         var colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
         if let original = screenshot.image.colorSpace, original.model == .rgb {
             colorSpace = original
@@ -277,7 +262,6 @@ enum AnnotationRenderer {
         // corner moves to the origin, and y is flipped.
         context.translateBy(x: 0, y: CGFloat(pixelHeight))
         context.scaleBy(x: 1, y: -1)
-        // The shift is in whole pixels.
         context.translateBy(x: -left, y: -top)
         context.scaleBy(x: scale, y: scale)
 

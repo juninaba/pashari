@@ -3,8 +3,6 @@ import Testing
 
 @testable import Pashari
 
-/// Holding Shift while dragging: lines snap to 45-degree steps, rectangles
-/// and ellipses become squares and circles.
 @MainActor
 struct ShiftConstraintTests {
     private let bounds = CGRect(x: 0, y: 0, width: 1000, height: 1000)
@@ -37,7 +35,6 @@ struct ShiftConstraintTests {
             within: bounds
         )
 
-        // On the diagonal, both offsets are the same size.
         #expect(abs((end.x - 500) - (end.y - 500)) < 0.0001)
         #expect(end.x > 600 && end.x < 620)
     }
@@ -69,7 +66,6 @@ struct ShiftConstraintTests {
     }
 
     @Test func aSquareFollowsTheDirectionOfTheDrag() {
-        // Dragging up and to the left.
         let end = EditorTool.ellipse.constrainedEnd(
             from: start,
             to: CGPoint(x: 440, y: 350),

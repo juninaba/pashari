@@ -1,13 +1,10 @@
 import AppKit
 
-/// Opens editor windows and keeps them alive while they are on screen.
 final class AnnotationEditorController {
     /// Called with the result of an editor that was closed without Copy or
     /// Save, so that it can go back to a floating thumbnail.
     var onFinish: ((Screenshot) -> Void)?
 
-    // A window controller nobody references is destroyed, and its window
-    // with it. Holding the open ones here is what keeps them on screen.
     private var editors: [AnnotationEditorWindowController] = []
 
     var hasOpenEditors: Bool { !editors.isEmpty }
@@ -18,7 +15,6 @@ final class AnnotationEditorController {
         editor.show()
     }
 
-    /// Holds on to `editor` until its window closes.
     func keep(_ editor: AnnotationEditorWindowController) {
         editor.onClose = { [weak self, weak editor] result in
             if let result {
