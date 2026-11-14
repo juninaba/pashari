@@ -15,7 +15,7 @@ struct ScrollStitcherTests {
 
         #expect(stitcher.add(document.frame(at: 0, height: frameHeight)) == .started)
 
-        #expect(rows(of: stitcher) == document.rows(0..<frameHeight))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<frameHeight)))
     }
 
     @Test func framesScrolledDownAreJoinedInOrder() {
@@ -28,7 +28,7 @@ struct ScrollStitcherTests {
         }
 
         #expect(outcomes == [.started, .scrolled(1), .scrolled(10), .scrolled(29), .scrolled(45), .scrolled(45)])
-        #expect(rows(of: stitcher) == document.rows(0..<(130 + frameHeight)))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<(130 + frameHeight))))
     }
 
     @Test func anUnchangedFrameAddsNothing() {
@@ -48,7 +48,7 @@ struct ScrollStitcherTests {
             _ = stitcher.add(document.frame(at: offset, height: frameHeight))
         }
 
-        #expect(rows(of: stitcher) == document.rows(0..<(90 + frameHeight)))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<(90 + frameHeight))))
     }
 
     @Test func aFixedHeaderAndFooterAppearOnceAtTheEnds() {
@@ -66,9 +66,9 @@ struct ScrollStitcherTests {
         let picture = rows(of: stitcher)
         let contentEnd = 75 + frameHeight - 5
         #expect(picture.count == 75 + frameHeight)
-        #expect(Array(picture[0..<8]) == header.rows(0..<8))
-        #expect(Array(picture[8..<contentEnd]) == document.rows(8..<contentEnd))
-        #expect(Array(picture[contentEnd...]) == footer.rows(0..<5))
+        #expect(isClose(Array(picture[0..<8]), header.rows(0..<8)))
+        #expect(isClose(Array(picture[8..<contentEnd]), document.rows(8..<contentEnd)))
+        #expect(isClose(Array(picture[contentEnd...]), footer.rows(0..<5)))
     }
 
     @Test func blankRowsOnlyCountAroundTheRowsThatShowWhatMoved() {
@@ -80,7 +80,7 @@ struct ScrollStitcherTests {
             #expect(stitcher.add(document.frame(at: offset, height: frameHeight)) != .lost)
         }
 
-        #expect(rows(of: stitcher) == document.rows(0..<(100 + frameHeight)))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<(100 + frameHeight))))
     }
 
     @Test func aScrollBarAtTheRightEdgeDoesNotHideTheShift() {
@@ -109,7 +109,7 @@ struct ScrollStitcherTests {
 
         // The user scrolls back up, to where the last placed frame overlaps.
         #expect(stitcher.add(document.frame(at: 60, height: frameHeight)) == .scrolled(40))
-        #expect(rows(of: stitcher) == document.rows(0..<(60 + frameHeight)))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<(60 + frameHeight))))
     }
 
     @Test func aSmallChangeThatCannotBePlacedIsIgnored() {
@@ -122,7 +122,7 @@ struct ScrollStitcherTests {
         frame.paint(columns: 5..<7, rows: 30..<36, value: 0)
 
         #expect(stitcher.add(frame) == .ignored)
-        #expect(rows(of: stitcher) == document.rows(0..<frameHeight))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<frameHeight)))
     }
 
     @Test func contentThatChangedInPlaceShowsItsNewLookOnceItScrolls() {
@@ -137,13 +137,13 @@ struct ScrollStitcherTests {
         loaded.paint(columns: 0..<width, rows: 40..<80, value: 200)
 
         #expect(stitcher.add(loaded.frame(at: 30, height: frameHeight, header: header)) == .changedInPlace)
-        #expect(rows(of: stitcher)[40] == document.rows[40])
+        #expect(isClose([rows(of: stitcher)[40]], [document.rows[40]]))
 
         #expect(stitcher.add(loaded.frame(at: 35, height: frameHeight, header: header)) == .scrolled(5))
         let picture = rows(of: stitcher)
         #expect(picture.count == 35 + frameHeight)
-        #expect(Array(picture[4..<35]) == document.rows(4..<35))
-        #expect(Array(picture[40..<80]) == loaded.rows(40..<80))
+        #expect(isClose(Array(picture[4..<35]), document.rows(4..<35)))
+        #expect(isClose(Array(picture[40..<80]), loaded.rows(40..<80)))
     }
 
     @Test func aSeeThroughHeaderAndFooterStayOutOfTheContent() {
@@ -165,9 +165,9 @@ struct ScrollStitcherTests {
         var last = document.slice(at: 80, height: frameHeight)
         last.dim(rows: (frameHeight - 4)..<frameHeight)
         #expect(picture.count == 80 + frameHeight)
-        #expect(Array(picture[0..<6]) == Array(first.rows[0..<6]))
-        #expect(Array(picture[6..<(80 + frameHeight - 4)]) == document.rows(6..<(80 + frameHeight - 4)))
-        #expect(Array(picture[(80 + frameHeight - 4)...]) == Array(last.rows[(frameHeight - 4)...]))
+        #expect(isClose(Array(picture[0..<6]), Array(first.rows[0..<6])))
+        #expect(isClose(Array(picture[6..<(80 + frameHeight - 4)]), document.rows(6..<(80 + frameHeight - 4))))
+        #expect(isClose(Array(picture[(80 + frameHeight - 4)...]), Array(last.rows[(frameHeight - 4)...])))
     }
 
     @Test func aHeaderThatSticksOnlyLaterIsNotCopiedIntoThePicture() {
@@ -184,7 +184,7 @@ struct ScrollStitcherTests {
             _ = stitcher.add(document.frame(at: offset, height: frameHeight, header: header))
         }
 
-        #expect(rows(of: stitcher) == document.rows(0..<(90 + frameHeight)))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<(90 + frameHeight))))
     }
 
     @Test func blankSpaceShownWhileSpringingBackFromTheEndIsLeftOut() {
@@ -203,7 +203,7 @@ struct ScrollStitcherTests {
         }
         _ = stitcher.add(document.frame(at: end, height: frameHeight))
 
-        #expect(rows(of: stitcher) == document.rows(0..<200))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<200)))
     }
 
     @Test func thePictureStopsGrowingAtTheMaximumHeight() {
@@ -214,7 +214,7 @@ struct ScrollStitcherTests {
 
         #expect(stitcher.add(document.frame(at: 60, height: frameHeight)) == .full)
         #expect(stitcher.add(document.frame(at: 70, height: frameHeight)) == .full)
-        #expect(rows(of: stitcher) == document.rows(0..<100))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<100)))
     }
 
     @Test func thePictureIsABGRAImage() throws {
@@ -257,7 +257,7 @@ struct ScrollStitcherTests {
             }
         }
 
-        #expect(rows(of: stitcher) == document.rows(0..<(17 + frameHeight)))
+        #expect(isClose(rows(of: stitcher), document.rows(0..<(17 + frameHeight))))
     }
 
     // MARK: - Helpers
@@ -269,6 +269,14 @@ struct ScrollStitcherTests {
             maximumHeight: 10_000,
             ignoringRightColumns: ignoringRightColumns
         )
+    }
+
+    /// Whether two lists of rows are the same, give or take the noise that
+    /// every frame gets on its way to the stitcher (see the end of the file).
+    private func isClose(_ a: [[UInt8]], _ b: [[UInt8]]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy { rowA, rowB in
+            rowA.count == rowB.count && zip(rowA, rowB).allSatisfy { abs(Int($0) - Int($1)) <= 1 }
+        }
     }
 
     /// The picture's rows, each as its bytes.
@@ -345,6 +353,21 @@ private struct Document {
             }
         }
 
+        /// Adds 0 or 1 at random to the colour bytes, but not to alpha.
+        func withNoise() -> Slice {
+            Self.noiseCount += 1
+            var generator = Generator(seed: 1000 + Self.noiseCount)
+            var noisy = self
+            for y in noisy.rows.indices {
+                for index in noisy.rows[y].indices where index % 4 != 3 && noisy.rows[y][index] < 255 {
+                    noisy.rows[y][index] += UInt8(generator.next() & 1)
+                }
+            }
+            return noisy
+        }
+
+        private static var noiseCount: UInt64 = 0
+
         /// Halves every byte, the way a see-through bar dims what is under it.
         mutating func dim(rows rowRange: Range<Int>) {
             for y in rowRange {
@@ -367,7 +390,7 @@ private struct Document {
         }
     }
 
-    private struct Generator {
+    fileprivate struct Generator {
         var state: UInt64
 
         init(seed: UInt64) {
@@ -386,7 +409,10 @@ private struct Document {
 }
 
 private extension ScrollStitcher {
+    /// Every frame gets faint noise first, as on a real screen: macOS adds
+    /// some to the colours each time it draws (dithering), so the same
+    /// content never comes out exactly the same twice.
     mutating func add(_ slice: Document.Slice) -> Outcome {
-        slice.withFrame { add($0) }
+        slice.withNoise().withFrame { add($0) }
     }
 }

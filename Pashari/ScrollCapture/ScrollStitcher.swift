@@ -1,13 +1,18 @@
+import Accelerate
 import CoreGraphics
 import Foundation
 
 /// Joins the frames of an area that the user scrolls into one tall picture.
 ///
 /// Each frame is compared with the last one that found its place, a row of
-/// pixels at a time. Every row gets a fingerprint, and the distance at which
-/// the most fingerprints of the two frames line up is how far the content
-/// scrolled. Rows that scroll into view are added to the bottom of the
-/// picture.
+/// pixels at a time. The distance at which the most rows of the two frames
+/// look alike is how far the content scrolled. Rows that scroll into view
+/// are added to the bottom of the picture.
+///
+/// Rows are compared by their brightness in a few dozen blocks across, with
+/// a little room for error. macOS adds faint noise to the colours each time
+/// it draws something (dithering), so the same content is never exactly the
+/// same twice, and averaging over a block smooths the noise out.
 ///
 /// Above and below the content there may be rows that do not scroll along:
 /// a toolbar, a page's fixed header or footer, or a see-through bar that
@@ -17,8 +22,8 @@ import Foundation
 /// picture gets once, at its top from the first frame and at its bottom
 /// from the last.
 ///
-/// Frames are 4 bytes per pixel. The stitcher only copies bytes around, so
-/// the channel order is up to the caller (`makeImage` expects BGRA).
+/// Frames are 4 bytes per pixel, in BGRA order, as ScreenCaptureKit
+/// delivers them.
 nonisolated struct ScrollStitcher {
     /// One frame's pixels, top row first. The pointer only needs to stay
     /// valid during the call the frame is passed to.
@@ -77,14 +82,18 @@ nonisolated struct ScrollStitcher {
     private var header: Int?
     private var footer: Int?
     private var lastFrame = Data()
-    private var lastFingerprints: Fingerprints?
+    private var lastSignatures: Signatures?
     private var isFull = false
 
     private let rowLength: Int
-    private let fingerprintLength: Int
+    private let summarizer: Summarizer
 
-    /// Rows that occur more often than this in a frame, such as blank lines,
-    /// say nothing about how far the content moved.
+    /// How much two rows' block brightnesses may differ, on a scale of 0 to
+    /// 255, for the rows to count as the same. The noise from dithering
+    /// moves them by well under one.
+    static let tolerance: Float = 1.5
+    /// A row that matches more rows than this, such as a blank line, says
+    /// nothing about how far the content moved.
     private static let maximumRepeats = 3
     /// The fewest rows that must line up before a shift is believed.
     private static let minimumSupport = 8
@@ -103,7 +112,7 @@ nonisolated struct ScrollStitcher {
         self.maximumHeight = max(maximumHeight, height)
         rowLength = width * 4
         let ignored = min(max(ignoringRightColumns, 0), width - 1)
-        fingerprintLength = (width - ignored) * 4
+        summarizer = Summarizer(comparedWidth: width - ignored)
     }
 
     var pictureHeight: Int {
@@ -119,28 +128,29 @@ nonisolated struct ScrollStitcher {
     mutating func add(_ frame: Frame) -> Outcome {
         precondition(frame.width == width && frame.height == height, "Every frame must be the same size")
         guard !isFull else { return .full }
-        let fingerprints = Fingerprints(of: frame, length: fingerprintLength)
+        let signatures = summarizer.signatures(of: frame)
 
-        guard let last = lastFingerprints else {
-            keep(frame, fingerprints)
+        guard let last = lastSignatures else {
+            keep(frame, signatures)
             canvas = lastFrame
             return .started
         }
 
         // The rows at the top and bottom that did not change.
+        let changes = signatures.distances(0..<height, to: last, from: 0)
         var top = 0
-        while top < height, fingerprints.values[top] == last.values[top] {
+        while top < height, changes[top] <= Self.tolerance {
             top += 1
         }
         guard top < height else { return .unchanged }
         var bottom = height
-        while fingerprints.values[bottom - 1] == last.values[bottom - 1] {
+        while changes[bottom - 1] <= Self.tolerance {
             bottom -= 1
         }
 
         guard
-            let shift = Self.shift(from: last, to: fingerprints, within: top..<bottom)
-                ?? inPlaceChange(of: fingerprints, unchangedAbove: top, below: bottom)
+            let shift = Self.shift(from: last, to: signatures, within: top..<bottom)
+                ?? inPlaceChange(of: signatures, unchangedAbove: top, below: bottom)
         else {
             return (bottom - top) * 3 >= height ? .lost : .ignored
         }
@@ -150,11 +160,11 @@ nonisolated struct ScrollStitcher {
             // appeared in place, such as a tooltip or a bar sliding in, would
             // only spoil it. Later frames are compared with the new look, and
             // bring the changed rows along once they scroll.
-            keep(frame, fingerprints)
+            keep(frame, signatures)
             return .changedInPlace
         }
 
-        let fixed = Self.fixedRows(from: last, to: fingerprints, shift: shift)
+        let fixed = Self.fixedRows(from: last, to: signatures, shift: shift)
             ?? (header: top, footer: height - bottom)
         if canvasHeader == nil {
             // The first scroll. Until now the whole first frame stood in for
@@ -175,7 +185,7 @@ nonisolated struct ScrollStitcher {
         footer = fixed.footer
         frameTop += shift
         write(rows: fixed.header..<(height - fixed.footer), of: frame)
-        keep(frame, fingerprints)
+        keep(frame, signatures)
 
         return isFull ? .full : .scrolled(shift)
     }
@@ -211,7 +221,7 @@ nonisolated struct ScrollStitcher {
         }
     }
 
-    private mutating func keep(_ frame: Frame, _ fingerprints: Fingerprints) {
+    private mutating func keep(_ frame: Frame, _ signatures: Signatures) {
         let (height, rowLength) = (height, rowLength)
         if lastFrame.isEmpty {
             lastFrame = Data(count: height * rowLength)
@@ -223,66 +233,242 @@ nonisolated struct ScrollStitcher {
                     .copyMemory(from: frame.row(y), byteCount: rowLength)
             }
         }
-        lastFingerprints = fingerprints
+        lastSignatures = signatures
+    }
+
+    // MARK: - Comparing rows
+
+    /// Sums up each row of a frame as the mean brightness of equal blocks
+    /// across it. Accelerate does the arithmetic, which keeps it fast even in
+    /// a debug build, where loops written here run many times slower.
+    struct Summarizer {
+        let blockCount: Int
+        let blockWidth: Int
+        /// Multiplying a row of brightnesses by this gives its block means.
+        private let blockMatrix: [Float]
+
+        init(comparedWidth: Int) {
+            blockCount = min(32, comparedWidth)
+            blockWidth = comparedWidth / blockCount
+            let usedWidth = blockCount * blockWidth
+            var matrix = [Float](repeating: 0, count: usedWidth * blockCount)
+            for x in 0..<usedWidth {
+                matrix[x * blockCount + x / blockWidth] = 1 / Float(blockWidth)
+            }
+            blockMatrix = matrix
+        }
+
+        func signatures(of frame: Frame) -> Signatures {
+            let usedWidth = blockCount * blockWidth
+            let rows = frame.height
+            var gray = [UInt8](repeating: 0, count: usedWidth * rows)
+            gray.withUnsafeMutableBytes { gray in
+                var source = vImage_Buffer(
+                    data: UnsafeMutableRawPointer(mutating: frame.pixels),
+                    height: vImagePixelCount(rows),
+                    width: vImagePixelCount(usedWidth),
+                    rowBytes: frame.bytesPerRow
+                )
+                var destination = vImage_Buffer(
+                    data: gray.baseAddress,
+                    height: vImagePixelCount(rows),
+                    width: vImagePixelCount(usedWidth),
+                    rowBytes: usedWidth
+                )
+                // (blue + green + red) / 3, rounded; alpha does not count.
+                let weights: [Int16] = [1, 1, 1, 0]
+                vImageMatrixMultiply_ARGB8888ToPlanar8(
+                    &source, &destination, weights, 3, nil, 1, vImage_Flags(kvImageNoFlags)
+                )
+            }
+            var brightness = [Float](repeating: 0, count: gray.count)
+            vDSP_vfltu8(gray, 1, &brightness, 1, vDSP_Length(gray.count))
+            var values = [Float](repeating: 0, count: rows * blockCount)
+            vDSP_mmul(
+                brightness, 1, blockMatrix, 1, &values, 1,
+                vDSP_Length(rows), vDSP_Length(blockCount), vDSP_Length(usedWidth)
+            )
+            return Signatures(rows: rows, length: blockCount, values: values)
+        }
+    }
+
+    /// The block brightnesses of every row of a frame.
+    struct Signatures {
+        let rows: Int
+        let length: Int
+        let values: [Float]
+        /// Rows that differ from the rows next to them. Unlike the rows of a
+        /// blank or evenly shaded stretch, they can be told apart.
+        let isDistinct: [Bool]
+        /// Each row's values squared and added up.
+        let squaredLengths: [Float]
+
+        init(rows: Int, length: Int, values: [Float]) {
+            self.rows = rows
+            self.length = length
+            self.values = values
+
+            var isDistinct = [Bool](repeating: false, count: rows)
+            let structure = 2 * ScrollStitcher.tolerance
+            for step in 1...2 where rows > step {
+                let differences = Self.distances(values, 0, values, step, count: rows - step, length: length)
+                for (row, difference) in differences.enumerated() where difference > structure {
+                    isDistinct[row] = true
+                    isDistinct[row + step] = true
+                }
+            }
+            self.isDistinct = isDistinct
+
+            var squares = [Float](repeating: 0, count: values.count)
+            vDSP_vsq(values, 1, &squares, 1, vDSP_Length(values.count))
+            squaredLengths = Self.rowSums(squares, rows: rows, length: length)
+        }
+
+        /// Whether `row` here and `otherRow` of `other` show the same thing,
+        /// give or take the noise.
+        func matches(_ row: Int, _ other: Signatures, _ otherRow: Int) -> Bool {
+            Self.distances(values, row, other.values, otherRow, count: 1, length: length)[0]
+                <= ScrollStitcher.tolerance
+        }
+
+        /// How far each of `rows` here is from the row as far on in `other`,
+        /// counting from `otherStart`.
+        func distances(_ rows: Range<Int>, to other: Signatures, from otherStart: Int) -> [Float] {
+            Self.distances(values, rows.lowerBound, other.values, otherStart, count: rows.count, length: length)
+        }
+
+        /// The largest difference between two rows' block brightnesses, for
+        /// `count` pairs of rows at once: from `startA` in `a` and from
+        /// `startB` in `b`.
+        static func distances(
+            _ a: [Float],
+            _ startA: Int,
+            _ b: [Float],
+            _ startB: Int,
+            count: Int,
+            length: Int
+        ) -> [Float] {
+            guard count > 0 else { return [] }
+            var differences = [Float](repeating: 0, count: count * length)
+            a.withUnsafeBufferPointer { a in
+                b.withUnsafeBufferPointer { b in
+                    differences.withUnsafeMutableBufferPointer { differences in
+                        let all = vDSP_Length(count * length)
+                        vDSP_vsub(
+                            b.baseAddress! + startB * length, 1,
+                            a.baseAddress! + startA * length, 1,
+                            differences.baseAddress!, 1, all
+                        )
+                        vDSP_vabs(differences.baseAddress!, 1, differences.baseAddress!, 1, all)
+                    }
+                }
+            }
+            return rowMaxima(differences, rows: count, length: length)
+        }
+
+        /// The largest value of each row, worked out a column at a time.
+        private static func rowMaxima(_ values: [Float], rows: Int, length: Int) -> [Float] {
+            var maxima = [Float](repeating: 0, count: rows)
+            values.withUnsafeBufferPointer { values in
+                maxima.withUnsafeMutableBufferPointer { maxima in
+                    for column in 0..<length {
+                        vDSP_vmax(
+                            maxima.baseAddress!, 1, values.baseAddress! + column, vDSP_Stride(length),
+                            maxima.baseAddress!, 1, vDSP_Length(rows)
+                        )
+                    }
+                }
+            }
+            return maxima
+        }
+
+        private static func rowSums(_ values: [Float], rows: Int, length: Int) -> [Float] {
+            var sums = [Float](repeating: 0, count: rows)
+            values.withUnsafeBufferPointer { values in
+                sums.withUnsafeMutableBufferPointer { sums in
+                    for column in 0..<length {
+                        vDSP_vadd(
+                            sums.baseAddress!, 1, values.baseAddress! + column, vDSP_Stride(length),
+                            sums.baseAddress!, 1, vDSP_Length(rows)
+                        )
+                    }
+                }
+            }
+            return sums
+        }
     }
 
     // MARK: - Finding the shift
-
-    /// Every row's fingerprint, and the rows where each fingerprint occurs.
-    struct Fingerprints {
-        let values: [UInt64]
-        let rows: [UInt64: [Int]]
-
-        init(values: [UInt64]) {
-            self.values = values
-            var rows: [UInt64: [Int]] = [:]
-            for (row, value) in values.enumerated() {
-                rows[value, default: []].append(row)
-            }
-            self.rows = rows
-        }
-
-        init(of frame: Frame, length: Int) {
-            self.init(values: (0..<frame.height).map { Self.fingerprint(of: frame.row($0), length: length) })
-        }
-
-        func isDistinctive(_ value: UInt64) -> Bool {
-            (rows[value]?.count ?? 0) <= ScrollStitcher.maximumRepeats
-        }
-
-        /// Swift's own 64-bit hash of the row's bytes. The standard library
-        /// is always built optimised, so this stays fast in a debug build,
-        /// where a hash loop written here would take several times as long
-        /// as the frames have between them. The hash is seeded anew for each
-        /// run of the app, which does not matter: fingerprints are only ever
-        /// compared with others from the same run.
-        static func fingerprint(of row: UnsafeRawPointer, length: Int) -> UInt64 {
-            var hasher = Hasher()
-            hasher.combine(bytes: UnsafeRawBufferPointer(start: row, count: length))
-            return UInt64(bitPattern: Int64(hasher.finalize()))
-        }
-    }
 
     /// How far the content within `band` moved from `old` to `new`, in rows,
     /// or nil when that cannot be told. Positive means it moved up, that is,
     /// the user scrolled down.
     ///
-    /// Each distinctive row of `new` votes for the shifts at which `old` has
-    /// the same row. The shift with the most votes wins, and ties go to the
-    /// smaller shift, since frames come many times a second.
-    static func shift(from old: Fingerprints, to new: Fingerprints, within band: Range<Int>) -> Int? {
+    /// Distinct rows of `new` vote for the shifts at which `old` has a row
+    /// that looks the same. The shift with the most votes wins, and ties go
+    /// to the smaller shift, since frames come many times a second.
+    static func shift(from old: Signatures, to new: Signatures, within band: Range<Int>) -> Int? {
         let span = band.count
+        let length = new.length
         guard span > 0 else { return nil }
+        let voters = evenlySpread(band.filter { new.isDistinct[$0] }, count: 96)
+        guard voters.count >= minimumSupport else { return nil }
+
+        // Every voter against every row of the band at once: the squared
+        // distance |a - b|² is |a|² + |b|² - 2 a·b, and Accelerate works out
+        // all the dot products a·b in one matrix product. Rows that are
+        // close enough by that measure are checked properly.
+        var oldRows = [Float](repeating: 0, count: length * span)
+        old.values.withUnsafeBufferPointer { values in
+            vDSP_mtrans(
+                values.baseAddress! + band.lowerBound * length, 1, &oldRows, 1,
+                vDSP_Length(length), vDSP_Length(span)
+            )
+        }
+        var voterRows = [Float]()
+        voterRows.reserveCapacity(voters.count * length)
+        for row in voters {
+            voterRows += new.values[(row * length)..<((row + 1) * length)]
+        }
+        var dotProducts = [Float](repeating: 0, count: voters.count * span)
+        vDSP_mmul(
+            voterRows, 1, oldRows, 1, &dotProducts, 1,
+            vDSP_Length(voters.count), vDSP_Length(span), vDSP_Length(length)
+        )
+        let oldLengths = Array(old.squaredLengths[band])
+        let closeEnough = Float(length) * tolerance * tolerance
+
         // votes[shift + span - 1] counts the rows that line up at `shift`.
         var votes = [Int](repeating: 0, count: 2 * span - 1)
-        for row in band {
-            let value = new.values[row]
-            guard
-                new.isDistinctive(value),
-                old.isDistinctive(value),
-                let oldRows = old.rows[value]
-            else { continue }
-            for oldRow in oldRows where band.contains(oldRow) {
+        var squaredDistances = [Float](repeating: 0, count: span)
+        for (index, row) in voters.enumerated() {
+            var minusTwo: Float = -2
+            var newLength = new.squaredLengths[row]
+            dotProducts.withUnsafeBufferPointer { dotProducts in
+                squaredDistances.withUnsafeMutableBufferPointer { distances in
+                    vDSP_vsmsa(
+                        dotProducts.baseAddress! + index * span, 1, &minusTwo, &newLength,
+                        distances.baseAddress!, 1, vDSP_Length(span)
+                    )
+                    vDSP_vadd(distances.baseAddress!, 1, oldLengths, 1, distances.baseAddress!, 1, vDSP_Length(span))
+                }
+            }
+            // The closest rows first, checked properly one by one.
+            var matches: [Int] = []
+            for _ in 0..<(2 * maximumRepeats + 2) {
+                var smallest: Float = 0
+                var position: vDSP_Length = 0
+                vDSP_minvi(squaredDistances, 1, &smallest, &position, vDSP_Length(span))
+                guard smallest <= closeEnough else { break }
+                squaredDistances[Int(position)] = .infinity
+                let oldRow = band.lowerBound + Int(position)
+                if new.matches(row, old, oldRow) {
+                    matches.append(oldRow)
+                    if matches.count > maximumRepeats { break }
+                }
+            }
+            guard matches.count <= maximumRepeats else { continue }
+            for oldRow in matches {
                 votes[oldRow - row + span - 1] += 1
             }
         }
@@ -299,40 +485,56 @@ nonisolated struct ScrollStitcher {
                 bestVotes = votes[span - 1 - distance]
             }
         }
-        guard bestVotes >= minimumSupport else { return nil }
+        guard bestVotes > 0 else { return nil }
 
-        // The rows of `new` that should line up if `best` is right.
+        // Every distinct row of `new` that should line up if `best` is right.
+        let overlap = max(band.lowerBound, band.lowerBound - best)..<min(band.upperBound, band.upperBound - best)
+        let distances = new.distances(overlap, to: old, from: overlap.lowerBound + best)
         var expected = 0
-        for row in band where band.contains(row + best) && new.isDistinctive(new.values[row]) {
+        var agreeing = 0
+        for (row, distance) in zip(overlap, distances) where new.isDistinct[row] {
             expected += 1
+            if distance <= tolerance {
+                agreeing += 1
+            }
         }
-        guard Double(bestVotes) >= minimumAgreement * Double(expected) else { return nil }
+        guard
+            agreeing >= minimumSupport,
+            Double(agreeing) >= minimumAgreement * Double(expected)
+        else { return nil }
         return best
+    }
+
+    /// At most `count` of `rows`, picked at even steps.
+    private static func evenlySpread(_ rows: [Int], count: Int) -> [Int] {
+        guard rows.count > count else { return rows }
+        return (0..<count).map { rows[$0 * rows.count / count] }
     }
 
     /// The rows at the top and bottom of `new` that did not scroll along
     /// with the content, which moved by `shift` (not zero) since `old`.
     ///
-    /// A row moved along when it is the row `shift` further on in `old`, and
-    /// not merely the same as before: blank rows look alike either way, and
-    /// count as not moving. That errs on the safe side, since rows taken for
-    /// the header or footer are simply not copied this time. Rows that just
-    /// scrolled into view have nothing to match yet; they lie between the
-    /// last moving row and the footer, or between the header and the first.
+    /// A row moved along when it matches the row `shift` further on in
+    /// `old`, and not merely the same row as before: blank rows look alike
+    /// either way, and count as not moving. That errs on the safe side,
+    /// since rows taken for the header or footer are simply not copied this
+    /// time. Rows that just scrolled into view have nothing to match yet;
+    /// they lie between the last moving row and the footer, or between the
+    /// header and the first.
     static func fixedRows(
-        from old: Fingerprints,
-        to new: Fingerprints,
+        from old: Signatures,
+        to new: Signatures,
         shift: Int
     ) -> (header: Int, footer: Int)? {
-        let height = new.values.count
+        let height = new.rows
+        let rows = max(0, -shift)..<min(height, height - shift)
+        let moved = new.distances(rows, to: old, from: rows.lowerBound + shift)
+        let stayed = new.distances(rows, to: old, from: rows.lowerBound)
         var first: Int?
         var last: Int?
-        for row in max(0, -shift)..<min(height, height - shift) {
-            let value = new.values[row]
-            if value == old.values[row + shift], value != old.values[row] {
-                first = first ?? row
-                last = row
-            }
+        for (index, row) in rows.enumerated() where moved[index] <= tolerance && stayed[index] > tolerance {
+            first = first ?? row
+            last = row
         }
         guard let first, let last else { return nil }
         return shift > 0
@@ -346,18 +548,16 @@ nonisolated struct ScrollStitcher {
     /// they stay put while the content scrolls, so this can only be told
     /// once those are known.
     private func inPlaceChange(
-        of fingerprints: Fingerprints,
+        of signatures: Signatures,
         unchangedAbove top: Int,
         below bottom: Int
     ) -> Int? {
         guard let header, let footer, header < height - footer else { return nil }
-        var distinctive = 0
-        for row in header..<height - footer where row < top || row >= bottom {
-            if fingerprints.isDistinctive(fingerprints.values[row]) {
-                distinctive += 1
-            }
+        var distinct = 0
+        for row in header..<height - footer where (row < top || row >= bottom) && signatures.isDistinct[row] {
+            distinct += 1
         }
-        return distinctive >= Self.minimumSupport ? 0 : nil
+        return distinct >= Self.minimumSupport ? 0 : nil
     }
 
     // MARK: - The picture
@@ -396,18 +596,23 @@ nonisolated struct ScrollStitcher {
     private var pictureContentHeight: Int {
         guard let footer else { return canvasHeight }
         let lastContentEnd = max(frameTop + height - footer, canvasHeader ?? 0, 0)
-        guard lastContentEnd < canvasHeight else { return canvasHeight }
+        let tailHeight = canvasHeight - lastContentEnd
+        // Taller than a frame, it cannot be such a moment.
+        guard tailHeight > 0, tailHeight <= height else { return canvasHeight }
 
-        let rowLength = rowLength
-        let isBlank = canvas.withUnsafeBytes { bytes in
-            let tail = bytes.baseAddress! + lastContentEnd * rowLength
-            let tailLength = bytes.count - lastContentEnd * rowLength
-            // Bytes that equal themselves one pixel further on are all one
-            // colour, and rows that equal themselves one row further on are
-            // all alike.
-            return memcmp(tail, tail + 4, rowLength - 4) == 0
-                && memcmp(tail, tail + rowLength, tailLength - rowLength) == 0
+        let tail = canvas.withUnsafeBytes { bytes in
+            summarizer.signatures(
+                of: Frame(
+                    width: width,
+                    height: tailHeight,
+                    bytesPerRow: rowLength,
+                    pixels: bytes.baseAddress! + lastContentEnd * rowLength
+                )
+            )
         }
+        let firstRow = tail.values[0..<tail.length]
+        let isBlank = firstRow.max()! - firstRow.min()! <= Self.tolerance
+            && (0..<tailHeight).allSatisfy { tail.matches($0, tail, 0) }
         return isBlank ? lastContentEnd : canvasHeight
     }
 }
