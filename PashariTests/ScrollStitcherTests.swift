@@ -125,7 +125,7 @@ struct ScrollStitcherTests {
         #expect(rows(of: stitcher) == document.rows(0..<frameHeight))
     }
 
-    @Test func contentThatChangesInPlaceShowsItsNewLook() {
+    @Test func contentThatChangedInPlaceShowsItsNewLookOnceItScrolls() {
         let document = Document.noise(width: width, height: 400, seed: 4)
         let header = Document.noise(width: width, height: 4, seed: 5)
         var stitcher = makeStitcher()
@@ -133,15 +133,58 @@ struct ScrollStitcherTests {
         _ = stitcher.add(document.frame(at: 30, height: frameHeight, header: header))
 
         // An image finishes loading over most of the frame.
-        var frame = document.slice(at: 30, height: frameHeight, header: header)
-        frame.paint(columns: 0..<width, rows: 10..<50, value: 200)
+        var loaded = document
+        loaded.paint(columns: 0..<width, rows: 40..<80, value: 200)
 
-        #expect(stitcher.add(frame) == .changedInPlace)
+        #expect(stitcher.add(loaded.frame(at: 30, height: frameHeight, header: header)) == .changedInPlace)
+        #expect(rows(of: stitcher)[40] == document.rows[40])
+
+        #expect(stitcher.add(loaded.frame(at: 35, height: frameHeight, header: header)) == .scrolled(5))
         let picture = rows(of: stitcher)
-        #expect(picture.count == 30 + frameHeight)
-        #expect(picture[30 + 10] == [UInt8](repeating: 200, count: width * 4))
-        #expect(picture[30 + 49] == [UInt8](repeating: 200, count: width * 4))
-        #expect(picture[30 + 50] == document.rows(80..<81)[0])
+        #expect(picture.count == 35 + frameHeight)
+        #expect(Array(picture[4..<35]) == document.rows(4..<35))
+        #expect(Array(picture[40..<80]) == loaded.rows(40..<80))
+    }
+
+    @Test func aSeeThroughHeaderAndFooterStayOutOfTheContent() {
+        let document = Document.noise(width: width, height: 400, seed: 8)
+        var stitcher = makeStitcher()
+
+        for offset in [0, 12, 30, 51, 80] {
+            // Bars that show the content under them, dimmed, as macOS's
+            // toolbars do: their rows change with every scroll.
+            var frame = document.slice(at: offset, height: frameHeight)
+            frame.dim(rows: 0..<6)
+            frame.dim(rows: (frameHeight - 4)..<frameHeight)
+            _ = stitcher.add(frame)
+        }
+
+        let picture = rows(of: stitcher)
+        var first = document.slice(at: 0, height: frameHeight)
+        first.dim(rows: 0..<6)
+        var last = document.slice(at: 80, height: frameHeight)
+        last.dim(rows: (frameHeight - 4)..<frameHeight)
+        #expect(picture.count == 80 + frameHeight)
+        #expect(Array(picture[0..<6]) == Array(first.rows[0..<6]))
+        #expect(Array(picture[6..<(80 + frameHeight - 4)]) == document.rows(6..<(80 + frameHeight - 4)))
+        #expect(Array(picture[(80 + frameHeight - 4)...]) == Array(last.rows[(frameHeight - 4)...]))
+    }
+
+    @Test func aHeaderThatSticksOnlyLaterIsNotCopiedIntoThePicture() {
+        let document = Document.noise(width: width, height: 400, seed: 9)
+        let header = Document.noise(width: width, height: 10, seed: 10)
+        var stitcher = makeStitcher()
+
+        for offset in [0, 20, 40] {
+            _ = stitcher.add(document.frame(at: offset, height: frameHeight))
+        }
+        // A bar slides in over the top, then stays while the page scrolls.
+        #expect(stitcher.add(document.frame(at: 40, height: frameHeight, header: header)) == .changedInPlace)
+        for offset in [55, 70, 90] {
+            _ = stitcher.add(document.frame(at: offset, height: frameHeight, header: header))
+        }
+
+        #expect(rows(of: stitcher) == document.rows(0..<(90 + frameHeight)))
     }
 
     @Test func thePictureStopsGrowingAtTheMaximumHeight() {
@@ -249,6 +292,12 @@ private struct Document {
         Array(rows[range])
     }
 
+    mutating func paint(columns: Range<Int>, rows rowRange: Range<Int>, value: UInt8) {
+        var slice = Slice(rows: rows)
+        slice.paint(columns: columns, rows: rowRange, value: value)
+        rows = slice.rows
+    }
+
     /// What the area shows when scrolled down by `offset` rows, under a
     /// fixed header and over a fixed footer if given.
     func slice(at offset: Int, height: Int, header: Document? = nil, footer: Document? = nil) -> Slice {
@@ -274,6 +323,13 @@ private struct Document {
                 for x in columns {
                     rows[y].replaceSubrange((x * 4)..<(x * 4 + 4), with: [value, value, value, value])
                 }
+            }
+        }
+
+        /// Halves every byte, the way a see-through bar dims what is under it.
+        mutating func dim(rows rowRange: Range<Int>) {
+            for y in rowRange {
+                rows[y] = rows[y].map { $0 / 2 }
             }
         }
 

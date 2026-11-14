@@ -9,11 +9,13 @@ import Foundation
 /// scrolled. Rows that scroll into view are added to the bottom of the
 /// picture.
 ///
-/// A toolbar, or a page's fixed header and footer, stays where it is while
-/// the rest scrolls. Those are the rows at the top and bottom of a frame that
-/// line up without any shift. The picture gets the header once at its top
-/// and the footer once at its bottom, rather than a copy of them with every
-/// scroll.
+/// Above and below the content there may be rows that do not scroll along:
+/// a toolbar, a page's fixed header or footer, or a see-through bar that
+/// shows the content blurred. Only the rows from the first to the last one
+/// that moved with the content go into the picture, plus those that just
+/// scrolled into view. The rest is the header and the footer, which the
+/// picture gets once, at its top from the first frame and at its bottom
+/// from the last.
 ///
 /// Frames are 4 bytes per pixel. The stitcher only copies bytes around, so
 /// the channel order is up to the caller (`makeImage` expects BGRA).
@@ -39,7 +41,7 @@ nonisolated struct ScrollStitcher {
         /// when negative.
         case scrolled(Int)
         /// Part of the content changed without scrolling, say an image that
-        /// finished loading. The picture shows the new version.
+        /// finished loading. Later frames are compared with its new look.
         case changedInPlace
         /// The content changed too much to tell where it went, most likely
         /// because it scrolled further between two frames than the area is
@@ -66,10 +68,12 @@ nonisolated struct ScrollStitcher {
     /// copy one byte at a time.
     private var canvas = Data()
     /// The row of the canvas that the top of the last placed frame shows.
-    /// The header's rows are the exception: they show the header, always.
     private var frameTop = 0
-    /// How many rows at the top and bottom of a frame stay put while the rest
-    /// scrolls. Unknown (nil) until the content first scrolls.
+    /// The rows at the top of the canvas that show the first frame's header.
+    /// Unknown (nil) until the content first scrolls.
+    private var canvasHeader: Int?
+    /// How many rows at the top and bottom of the last placed frame did not
+    /// scroll along. Unknown (nil) until the content first scrolls.
     private var header: Int?
     private var footer: Int?
     private var lastFrame = Data()
@@ -141,68 +145,54 @@ nonisolated struct ScrollStitcher {
             return (bottom - top) * 3 >= height ? .lost : .ignored
         }
 
-        if shift != 0 {
-            learnFixedRows(top: top, bottom: bottom)
+        guard shift != 0 else {
+            // Nothing moved, so nothing new joins the picture. Something that
+            // appeared in place, such as a tooltip or a bar sliding in, would
+            // only spoil it. Later frames are compared with the new look, and
+            // bring the changed rows along once they scroll.
+            keep(frame, fingerprints)
+            return .changedInPlace
         }
-        frameTop += shift
-        write(frame)
-        keep(frame, fingerprints)
 
-        if isFull { return .full }
-        return shift == 0 ? .changedInPlace : .scrolled(shift)
-    }
-
-    /// Takes the rows that stayed put during a scroll as the header and
-    /// footer. Rows that stay put only by chance, say blank ones next to a
-    /// toolbar, are counted in at first; the next scrolls tell them apart,
-    /// so each estimate only ever shrinks.
-    private mutating func learnFixedRows(top: Int, bottom: Int) {
-        let newHeader = min(header ?? top, top)
-        let newFooter = min(footer ?? (height - bottom), height - bottom)
-
-        if let footer {
-            if newFooter < footer {
-                // The rows just above the old footer line turn out to be
-                // content. The last frame shows them where they belong.
-                let last = lastFrame
-                last.withUnsafeBytes { bytes in
-                    let frame = Frame(
-                        width: width,
-                        height: height,
-                        bytesPerRow: rowLength,
-                        pixels: bytes.baseAddress!
-                    )
-                    write(rows: (height - footer)..<(height - newFooter), of: frame, header: newHeader)
-                }
-            }
-        } else {
+        let fixed = Self.fixedRows(from: last, to: fingerprints, shift: shift)
+            ?? (header: top, footer: height - bottom)
+        if canvasHeader == nil {
             // The first scroll. Until now the whole first frame stood in for
             // the content, but its bottom rows are the footer, which goes in
             // at the end, from the last frame.
-            canvas.removeSubrange((height - newFooter) * rowLength..<canvas.count)
+            canvasHeader = fixed.header
+            canvas.removeSubrange((height - fixed.footer) * rowLength..<canvas.count)
+        } else if let footer, fixed.footer < footer {
+            // Rows of the last frame just above its footer turn out to be
+            // content, and may be about to scroll past the header unseen.
+            let last = lastFrame
+            last.withUnsafeBytes { bytes in
+                let frame = Frame(width: width, height: height, bytesPerRow: rowLength, pixels: bytes.baseAddress!)
+                write(rows: (height - footer)..<(height - fixed.footer), of: frame)
+            }
         }
-        header = newHeader
-        footer = newFooter
+        header = fixed.header
+        footer = fixed.footer
+        frameTop += shift
+        write(rows: fixed.header..<(height - fixed.footer), of: frame)
+        keep(frame, fingerprints)
+
+        return isFull ? .full : .scrolled(shift)
     }
 
-    /// Copies the rows of `frame` between the header and the footer into the
-    /// canvas. Rows the canvas already has get overwritten, so each part of
-    /// the picture shows how it looked the last time it was on screen: by
-    /// then an image has loaded, and the scroll bar, which shows only while
-    /// scrolling, has usually moved on.
-    private mutating func write(_ frame: Frame) {
-        let header = header ?? 0
-        write(rows: header..<(height - (footer ?? 0)), of: frame, header: header)
-    }
-
-    private mutating func write(rows: Range<Int>, of frame: Frame, header: Int) {
+    /// Copies rows of `frame` into the canvas. Rows the canvas already has
+    /// get overwritten, so each part of the picture shows how it looked the
+    /// last time it scrolled by: by then an image has loaded, and the scroll
+    /// bar, which shows only while scrolling, has usually moved on.
+    private mutating func write(rows: Range<Int>, of frame: Frame) {
         let rowLength = rowLength
+        let canvasHeader = canvasHeader ?? 0
         let maximumCanvasHeight = maximumHeight - (footer ?? 0)
         for y in rows {
             let row = frameTop + y
-            // Above the header lies content scrolled back past the start,
-            // which the picture does not grow upwards for.
-            guard row >= header else { continue }
+            // Above that lies the header, or content scrolled back past the
+            // start, which the picture does not grow upwards for.
+            guard row >= canvasHeader else { continue }
             if row < canvasHeight {
                 canvas.withUnsafeMutableBytes { canvas in
                     canvas.baseAddress!
@@ -320,6 +310,36 @@ nonisolated struct ScrollStitcher {
         return best
     }
 
+    /// The rows at the top and bottom of `new` that did not scroll along
+    /// with the content, which moved by `shift` (not zero) since `old`.
+    ///
+    /// A row moved along when it is the row `shift` further on in `old`, and
+    /// not merely the same as before: blank rows look alike either way, and
+    /// count as not moving. That errs on the safe side, since rows taken for
+    /// the header or footer are simply not copied this time. Rows that just
+    /// scrolled into view have nothing to match yet; they lie between the
+    /// last moving row and the footer, or between the header and the first.
+    static func fixedRows(
+        from old: Fingerprints,
+        to new: Fingerprints,
+        shift: Int
+    ) -> (header: Int, footer: Int)? {
+        let height = new.values.count
+        var first: Int?
+        var last: Int?
+        for row in max(0, -shift)..<min(height, height - shift) {
+            let value = new.values[row]
+            if value == old.values[row + shift], value != old.values[row] {
+                first = first ?? row
+                last = row
+            }
+        }
+        guard let first, let last else { return nil }
+        return shift > 0
+            ? (header: first, footer: height - shift - last - 1)
+            : (header: first + shift, footer: height - last - 1)
+    }
+
     /// Recognises a change in place, such as an image that loaded, when no
     /// shift can be found: the content rows around the change are still
     /// where they were. Rows of the header and footer do not count, since
@@ -330,7 +350,7 @@ nonisolated struct ScrollStitcher {
         unchangedAbove top: Int,
         below bottom: Int
     ) -> Int? {
-        guard let header, let footer else { return nil }
+        guard let header, let footer, header < height - footer else { return nil }
         var distinctive = 0
         for row in header..<height - footer where row < top || row >= bottom {
             if fingerprints.isDistinctive(fingerprints.values[row]) {
@@ -353,7 +373,7 @@ nonisolated struct ScrollStitcher {
         guard let provider = CGDataProvider(data: pixels as CFData) else { return nil }
         return CGImage(
             width: width,
-            height: pictureHeight,
+            height: pixels.count / rowLength,
             bitsPerComponent: 8,
             bitsPerPixel: 32,
             bytesPerRow: rowLength,
