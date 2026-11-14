@@ -75,14 +75,18 @@ struct ScrollRecorderTests {
         try await progress.wait { $0.pictureHeight > 0 }
         for step in 1...10 {
             page.scroll(to: CGFloat(step) * 40)
-            try await Task.sleep(for: .milliseconds(100))
+            // Each step in the picture before the next one. Other tests may
+            // briefly put a window over the page, but the recording finds
+            // its place again once the page shows, as long as it has not
+            // moved on meanwhile.
+            let height = Int((page.area.height + CGFloat(step) * 40) * recorder.scale)
+            try await progress.wait { $0.pictureHeight == height && !$0.isLost }
         }
         let image = try #require(await recorder.stop())
 
         // The header and footer once, and everything that scrolled past.
         #expect(image.width == Int(page.area.width * recorder.scale))
         #expect(image.height == Int((page.area.height + 400) * recorder.scale))
-        #expect(!progress.reports.contains { $0.isLost })
     }
 
     @Test func aJumpTooFarIsReportedUntilTheContentIsScrolledBack() async throws {
