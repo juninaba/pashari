@@ -19,6 +19,24 @@ struct ThumbnailLayoutTests {
         #expect(size.width == ThumbnailLayout.minimumPreviewSize.width)
     }
 
+    @Test func aVeryTallScreenshotShowsItsTopAsWideAsThePreview() {
+        let part = ThumbnailLayout.previewedPart(of: CGSize(width: 296, height: 5000))
+
+        // The preview is 148 × 160: the top of the same shape, twice as large.
+        #expect(part == CGRect(x: 0, y: 0, width: 296, height: 320))
+    }
+
+    @Test func aNarrowVeryTallScreenshotShowsItsTopAtItsRealSize() {
+        let part = ThumbnailLayout.previewedPart(of: CGSize(width: 50, height: 5000))
+
+        #expect(part == CGRect(x: 0, y: 0, width: 50, height: 160))
+    }
+
+    @Test func aTallWindowStillShowsWhole() {
+        #expect(ThumbnailLayout.previewedPart(of: CGSize(width: 400, height: 800)) == nil)
+        #expect(ThumbnailLayout.previewedPart(of: CGSize(width: 1728, height: 1080)) == nil)
+    }
+
     @Test func smallScreenshotIsNotScaledUp() {
         let size = ThumbnailLayout.previewSize(for: CGSize(width: 200, height: 100))
 
@@ -302,6 +320,29 @@ struct PendingCaptureTests {
         #expect(pixelsReleased)
         #expect(thumbnail.width == 20)
         #expect(try await capture.screenshot().image.width == 60)
+    }
+
+    @Test func aThumbnailOfAPartShowsOnlyThatPart() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // Red at the top, blue below.
+        let original = Screenshot(
+            image: TestImages.make(width: 20, height: 200, patchRect: CGRect(x: 0, y: 0, width: 20, height: 20)),
+            scale: 2,
+            capturedAt: Date()
+        )
+        let capture = PendingCapture(screenshot: original, directory: directory)
+        let top = CGRect(x: 0, y: 0, width: 10, height: 10)
+
+        let fromMemory = try await capture.thumbnail(of: top, maxPixelSize: 20)
+        _ = try await capture.fileURL()
+        let fromFile = try await capture.thumbnail(of: top, maxPixelSize: 20)
+
+        for thumbnail in [fromMemory, fromFile] {
+            #expect(thumbnail.width == 20)
+            #expect(thumbnail.height == 20)
+            #expect(TestImages.pixel(of: thumbnail, x: 10, y: 18) == .red)
+        }
     }
 
     @Test func keepsTheOriginalWhenWritingTheTemporaryFileFails() async throws {

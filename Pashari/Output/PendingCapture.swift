@@ -62,12 +62,24 @@ final class PendingCapture {
         return Screenshot(image: image, scale: scale, capturedAt: capturedAt)
     }
 
-    /// A standalone small bitmap, so a preview never retains a full frame.
-    func thumbnail(maxPixelSize: Int) async throws -> CGImage {
-        if let original {
-            return try await Self.resize(original.image, maxPixelSize: maxPixelSize)
+    /// A standalone small bitmap, so a preview never retains a full frame,
+    /// of `part` of the screenshot (in points, origin at the top-left
+    /// corner), or of all of it.
+    func thumbnail(of part: CGRect? = nil, maxPixelSize: Int) async throws -> CGImage {
+        guard let part else {
+            if let original {
+                return try await Self.resize(original.image, maxPixelSize: maxPixelSize)
+            }
+            return try await Self.readImage(from: url, maxPixelSize: maxPixelSize)
         }
-        return try await Self.readImage(from: url, maxPixelSize: maxPixelSize)
+        let image: CGImage
+        if let original {
+            image = original.image
+        } else {
+            image = try await Self.readImage(from: url)
+        }
+        let screenshot = Screenshot(image: image, scale: scale, capturedAt: capturedAt)
+        return try await Self.resize(screenshot.cropped(to: part)?.image ?? image, maxPixelSize: maxPixelSize)
     }
 
     @concurrent

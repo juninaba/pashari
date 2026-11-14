@@ -27,6 +27,21 @@ enum ThumbnailLayout {
         )
     }
 
+    /// The part of a screenshot of `imageSize` (in points, origin at the
+    /// top-left corner) that its preview shows, or nil for all of it.
+    ///
+    /// A picture far taller than the preview, such as a scroll capture,
+    /// would shrink to a thin strip in it. Its preview shows its top
+    /// instead, as wide as the preview, or at its real size if narrower.
+    static func previewedPart(of imageSize: CGSize) -> CGRect? {
+        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+        let preview = previewSize(for: imageSize)
+        let fittedWidth = imageSize.width * preview.height / imageSize.height
+        guard fittedWidth < preview.width / 2 else { return nil }
+        let height = max(imageSize.width * preview.height / preview.width, preview.height)
+        return CGRect(x: 0, y: 0, width: imageSize.width, height: min(height, imageSize.height))
+    }
+
     static func cardSize(for imageSize: CGSize) -> CGSize {
         let preview = previewSize(for: imageSize)
         return CGSize(width: preview.width, height: preview.height + toolbarHeight)
