@@ -366,7 +366,7 @@ nonisolated struct ScrollStitcher {
     /// The pixels are read as BGRA, the layout ScreenCaptureKit delivers.
     func makeImage(colorSpace: CGColorSpace) -> CGImage? {
         guard !canvas.isEmpty else { return nil }
-        var pixels = canvas
+        var pixels = canvas.subdata(in: 0..<(pictureContentHeight * rowLength))
         if let footer, footer > 0 {
             pixels.append(lastFrame.subdata(in: ((height - footer) * rowLength)..<lastFrame.count))
         }
@@ -386,5 +386,28 @@ nonisolated struct ScrollStitcher {
             shouldInterpolate: false,
             intent: .defaultIntent
         )
+    }
+
+    /// The canvas rows that go into the picture. Scrolling past the end of a
+    /// page makes it spring back, and for a moment the frames show blank
+    /// space below it. If the canvas ends in rows like that, all alike and
+    /// each of one colour, below where the last frame's content ends, they
+    /// are left out.
+    private var pictureContentHeight: Int {
+        guard let footer else { return canvasHeight }
+        let lastContentEnd = max(frameTop + height - footer, canvasHeader ?? 0, 0)
+        guard lastContentEnd < canvasHeight else { return canvasHeight }
+
+        let rowLength = rowLength
+        let isBlank = canvas.withUnsafeBytes { bytes in
+            let tail = bytes.baseAddress! + lastContentEnd * rowLength
+            let tailLength = bytes.count - lastContentEnd * rowLength
+            // Bytes that equal themselves one pixel further on are all one
+            // colour, and rows that equal themselves one row further on are
+            // all alike.
+            return memcmp(tail, tail + 4, rowLength - 4) == 0
+                && memcmp(tail, tail + rowLength, tailLength - rowLength) == 0
+        }
+        return isBlank ? lastContentEnd : canvasHeight
     }
 }

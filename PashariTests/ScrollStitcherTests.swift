@@ -187,6 +187,25 @@ struct ScrollStitcherTests {
         #expect(rows(of: stitcher) == document.rows(0..<(90 + frameHeight)))
     }
 
+    @Test func blankSpaceShownWhileSpringingBackFromTheEndIsLeftOut() {
+        let document = Document.noise(width: width, height: 200, seed: 11)
+        let end = 200 - frameHeight
+        var stitcher = makeStitcher()
+
+        for offset in [0, 50, 100, end] {
+            _ = stitcher.add(document.frame(at: offset, height: frameHeight))
+        }
+        // Past the end, blank space shows below the page, then it springs back.
+        for overshoot in [10, 20, 12] {
+            var frame = document.slice(at: end + overshoot, height: frameHeight - overshoot)
+            frame.rows += Array(repeating: [UInt8](repeating: 236, count: width * 4), count: overshoot)
+            _ = stitcher.add(frame)
+        }
+        _ = stitcher.add(document.frame(at: end, height: frameHeight))
+
+        #expect(rows(of: stitcher) == document.rows(0..<200))
+    }
+
     @Test func thePictureStopsGrowingAtTheMaximumHeight() {
         let document = Document.noise(width: width, height: 400)
         var stitcher = ScrollStitcher(width: width, height: frameHeight, maximumHeight: 100)
