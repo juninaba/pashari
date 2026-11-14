@@ -25,7 +25,7 @@ final class CaptureCoordinator {
     func captureArea() {
         run {
             let frozenScreens = try await ScreenCapturer.captureAllDisplays()
-            return await AreaSelectionSession().run(with: frozenScreens)
+            return await AreaSelectionSession().run(with: frozenScreens)?.screenshot
         }
     }
 
