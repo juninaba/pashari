@@ -135,6 +135,8 @@ private final class ScrollingPage {
             defer: false
         )
         window.isReleasedWhenClosed = false
+        // Without the fade-in, which the first frames would catch halfway.
+        window.animationBehavior = .none
         // Above ordinary windows, but not on a level whose windows of
         // Pashari's are left out of screenshots.
         window.level = .modalPanel
@@ -192,6 +194,8 @@ private final class ScrollingPage {
     func scroll(to y: CGFloat) {
         scrollView.contentView.scroll(to: CGPoint(x: 0, y: y))
         scrollView.reflectScrolledClipView(scrollView.contentView)
+        // Draw now rather than at the end of this turn of the run loop.
+        window.displayIfNeeded()
     }
 
     func close() {
