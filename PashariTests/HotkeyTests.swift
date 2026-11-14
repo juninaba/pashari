@@ -9,11 +9,14 @@ struct HotkeyTests {
         KeyboardShortcuts.Name.captureArea,
         .captureWindow,
         .captureFullscreen,
-        .captureScrollingArea,
     ].compactMap(\.defaultShortcut)
 
-    @Test func everyCaptureModeHasADefault() {
-        #expect(defaults.count == 4)
+    @Test func areaWindowAndFullscreenCaptureHaveADefault() {
+        #expect(defaults.count == 3)
+    }
+
+    @Test func scrollCaptureHasNoDefault() {
+        #expect(KeyboardShortcuts.Name.captureScrollingArea.defaultShortcut == nil)
     }
 
     @Test func theDefaultsAreDifferentFromEachOther() {

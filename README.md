@@ -31,12 +31,13 @@ only that run's files. Files left by an interrupted run are kept.
 
 Default hotkeys (change them under Settings):
 
-| Action                 | Hotkey |
-| ---------------------- | ------ |
-| Capture area           | ⇧⌘2    |
-| Capture window         | ⇧⌘3    |
-| Capture fullscreen     | ⇧⌘4    |
-| Capture scrolling area | ⌥⇧⌘2   |
+| Action             | Hotkey |
+| ------------------ | ------ |
+| Capture area       | ⇧⌘2    |
+| Capture window     | ⇧⌘3    |
+| Capture fullscreen | ⇧⌘4    |
+
+Capture Scrolling Area has no hotkey until you set one under Settings.
 
 macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
 System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that
