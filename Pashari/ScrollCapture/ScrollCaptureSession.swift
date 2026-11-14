@@ -48,11 +48,14 @@ final class ScrollCaptureSession {
             return nil
         case .failed(let error):
             // Keep what was recorded until then, if anything.
-            guard image != nil else { throw error }
+            guard let image else { throw error }
+            return Screenshot(image: image, scale: scale, capturedAt: startedAt)
         case .done:
-            break
+            // Without a single frame, the area as it was when picked is the
+            // next best thing.
+            guard let image else { return selection.screenshot }
+            return Screenshot(image: image, scale: scale, capturedAt: startedAt)
         }
-        return image.map { Screenshot(image: $0, scale: scale, capturedAt: startedAt) }
     }
 
     // MARK: - Recording
