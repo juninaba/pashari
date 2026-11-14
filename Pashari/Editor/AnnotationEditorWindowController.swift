@@ -85,13 +85,24 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
 
     /// Zooms out when the image does not fit in the window. Smaller images
     /// are shown at their real size.
+    ///
+    /// A picture far taller than the window, such as a scroll capture, would
+    /// shrink to a thin strip to fit whole. It is fitted to the window's
+    /// width instead, and shown from its top, to be scrolled through.
     func zoomToFit() {
         // Make sure the window has worked out its layout, so the scroll
         // view's size is the real one.
         window.layoutIfNeeded()
         let available = scrollView.contentSize
         let padded = canvas.frame.insetBy(dx: -Self.canvasPadding, dy: -Self.canvasPadding)
-        if padded.width > available.width || padded.height > available.height {
+        let fittingWidth = min(available.width / padded.width, 1)
+        let fittingWhole = min(fittingWidth, available.height / padded.height)
+        guard fittingWhole < 1 else { return }
+
+        if fittingWhole < fittingWidth / 2 {
+            scrollView.magnification = fittingWidth
+            canvas.scroll(.zero)
+        } else {
             scrollView.magnify(toFit: padded)
         }
     }

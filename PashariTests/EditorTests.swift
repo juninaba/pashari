@@ -425,6 +425,38 @@ struct EditorWindowTests {
         #expect(editor.window.contentMinSize.width >= toolbar.fittingSize.width - 0.5)
     }
 
+    @Test func aVeryTallPictureIsFittedToTheWidthAndShownFromItsTop() throws {
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 400, height: 8000),
+            scale: 1,
+            capturedAt: Date()
+        )
+        let editor = AnnotationEditorWindowController(screenshot: screenshot)
+        editor.onClose = nil
+
+        editor.zoomToFit()
+
+        let scrollView = try #require(editor.window.contentView?.subviews.first { $0 is NSScrollView } as? NSScrollView)
+        // 400 points wide fit in the window as they are.
+        #expect(scrollView.magnification == 1)
+        #expect(scrollView.documentVisibleRect.minY == 0)
+    }
+
+    @Test func aLargePictureIsStillFittedWhole() throws {
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 3000, height: 2000),
+            scale: 1,
+            capturedAt: Date()
+        )
+        let editor = AnnotationEditorWindowController(screenshot: screenshot)
+        editor.onClose = nil
+
+        editor.zoomToFit()
+
+        let scrollView = try #require(editor.window.contentView?.subviews.first { $0 is NSScrollView } as? NSScrollView)
+        #expect(scrollView.documentVisibleRect.contains(editor.canvas.frame))
+    }
+
     @Test func theWindowStaysOpenUntilCopyOrSaveIsDone() {
         let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
         editor.onClose = nil
