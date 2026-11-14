@@ -6,6 +6,15 @@ import AppKit
 /// A non-activating panel like the selection overlays, so the app being
 /// scrolled stays the active one.
 final class ScrollCaptureControlPanel: NSPanel {
+    enum Status {
+        /// Recording has not begun yet. Whatever scrolls by now would be
+        /// missing from the top of the picture.
+        case preparing
+        case recording
+        /// The frames cannot be placed; see `ScrollRecorder.Progress`.
+        case lost
+    }
+
     var onDone: (() -> Void)?
     var onCancel: (() -> Void)?
 
@@ -14,6 +23,7 @@ final class ScrollCaptureControlPanel: NSPanel {
     private let cancelButton = PanelButton(title: String(localized: "Cancel"))
     private let doneButton = PanelButton(title: String(localized: "Done"))
 
+    private static let preparingHint = String(localized: "Getting ready…")
     private static let scrollHint = String(localized: "Scroll to capture more")
     private static let lostHint = String(localized: "Scroll back a little, then more slowly")
     private static let gap: CGFloat = 12
@@ -48,10 +58,19 @@ final class ScrollCaptureControlPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 
     /// `size` is the picture's size in points.
-    func show(size: CGSize, isLost: Bool) {
+    func show(size: CGSize, status: Status) {
         sizeLabel.stringValue = "\(Int(size.width)) × \(Int(size.height))"
-        hintLabel.stringValue = isLost ? Self.lostHint : Self.scrollHint
-        hintLabel.textColor = isLost ? .systemYellow : .secondaryLabelColor
+        switch status {
+        case .preparing:
+            hintLabel.stringValue = Self.preparingHint
+            hintLabel.textColor = .secondaryLabelColor
+        case .recording:
+            hintLabel.stringValue = Self.scrollHint
+            hintLabel.textColor = .secondaryLabelColor
+        case .lost:
+            hintLabel.stringValue = Self.lostHint
+            hintLabel.textColor = .systemYellow
+        }
     }
 
     /// Once the user has decided, the buttons have done their part.
@@ -114,10 +133,10 @@ final class ScrollCaptureControlPanel: NSPanel {
             stack.bottomAnchor.constraint(equalTo: background.bottomAnchor),
             sizeLabel.widthAnchor.constraint(equalToConstant: Self.width(of: ["00000 × 00000"], in: sizeLabel)),
             hintLabel.widthAnchor.constraint(
-                equalToConstant: Self.width(of: [Self.scrollHint, Self.lostHint], in: hintLabel)
+                equalToConstant: Self.width(of: [Self.preparingHint, Self.scrollHint, Self.lostHint], in: hintLabel)
             ),
         ])
-        show(size: .zero, isLost: false)
+        show(size: .zero, status: .preparing)
         return background
     }
 

@@ -102,9 +102,11 @@ final class ScrollCaptureSession {
 
     private func update(_ progress: ScrollRecorder.Progress) {
         guard ending == nil, let recorder else { return }
+        // The first report comes with the first frame: from then on,
+        // scrolling adds to the picture.
         controls?.show(
             size: CGSize(width: areaSize.width, height: CGFloat(progress.pictureHeight) / recorder.scale),
-            isLost: progress.isLost
+            status: progress.isLost ? .lost : .recording
         )
         if progress.isFull {
             Log.capture.info("Scroll capture reached the height limit")
@@ -148,7 +150,7 @@ final class ScrollCaptureSession {
         let controls = ScrollCaptureControlPanel()
         controls.onDone = { [weak self] in self?.end(.done) }
         controls.onCancel = { [weak self] in self?.end(.cancelled) }
-        controls.show(size: area.size, isLost: false)
+        controls.show(size: area.size, status: .preparing)
         let areaOnScreen = CGRect(
             x: screen.frame.minX + area.minX,
             y: screen.frame.maxY - area.maxY,

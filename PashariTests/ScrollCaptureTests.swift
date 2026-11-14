@@ -40,6 +40,20 @@ struct ScrollCaptureControlPanelTests {
         #expect(frame.minX == 12)
     }
 
+    @Test func theBarAsksToWaitUntilRecordingHasBegun() {
+        let controls = ScrollCaptureControlPanel()
+        #expect(texts(in: controls.contentView).contains(String(localized: "Getting ready…")))
+
+        controls.show(size: CGSize(width: 300, height: 900), status: .recording)
+        #expect(texts(in: controls.contentView).contains(String(localized: "Scroll to capture more")))
+    }
+
+    private func texts(in view: NSView?) -> [String] {
+        guard let view else { return [] }
+        let own = (view as? NSTextField).map { [$0.stringValue] } ?? []
+        return own + view.subviews.flatMap { texts(in: $0) }
+    }
+
     @Test func aWiderPictureMayBeLessTall() {
         #expect(ScrollRecorder.maximumHeight(forWidth: 1600) == 30_000)
         #expect(ScrollRecorder.maximumHeight(forWidth: 6000) == 10_000)

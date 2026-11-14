@@ -201,6 +201,16 @@
         }
       }
     },
+    "Getting ready…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備中…"
+          }
+        }
+      }
+    },
     "Green" : {
       "localizations" : {
         "ja" : {
