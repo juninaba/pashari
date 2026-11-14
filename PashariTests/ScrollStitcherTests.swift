@@ -125,25 +125,28 @@ struct ScrollStitcherTests {
         #expect(isClose(rows(of: stitcher), document.rows(0..<frameHeight)))
     }
 
-    @Test func contentThatChangedInPlaceShowsItsNewLookOnceItScrolls() {
+    @Test func contentThatChangedInPlaceShowsItsNewLookOnceItScrollsUp() {
         let document = Document.noise(width: width, height: 400, seed: 4)
         let header = Document.noise(width: width, height: 4, seed: 5)
         var stitcher = makeStitcher()
         _ = stitcher.add(document.frame(at: 0, height: frameHeight, header: header))
         _ = stitcher.add(document.frame(at: 30, height: frameHeight, header: header))
 
-        // An image finishes loading over most of the frame.
+        // An image finishes loading low in the area.
         var loaded = document
-        loaded.paint(columns: 0..<width, rows: 40..<80, value: 200)
+        loaded.paint(columns: 0..<width, rows: 70..<85, value: 200)
 
         #expect(stitcher.add(loaded.frame(at: 30, height: frameHeight, header: header)) == .changedInPlace)
-        #expect(isClose([rows(of: stitcher)[40]], [document.rows[40]]))
+        #expect(isClose([rows(of: stitcher)[75]], [document.rows[75]]))
 
-        #expect(stitcher.add(loaded.frame(at: 35, height: frameHeight, header: header)) == .scrolled(5))
+        // Then it scrolls up past the middle.
+        for offset in [35, 45, 55] {
+            _ = stitcher.add(loaded.frame(at: offset, height: frameHeight, header: header))
+        }
         let picture = rows(of: stitcher)
-        #expect(picture.count == 35 + frameHeight)
-        #expect(isClose(Array(picture[4..<35]), document.rows(4..<35)))
-        #expect(isClose(Array(picture[40..<80]), loaded.rows(40..<80)))
+        #expect(picture.count == 55 + frameHeight)
+        #expect(isClose(Array(picture[4..<70]), document.rows(4..<70)))
+        #expect(isClose(Array(picture[70..<85]), loaded.rows(70..<85)))
     }
 
     @Test func aSeeThroughHeaderAndFooterStayOutOfTheContent() {
@@ -168,6 +171,32 @@ struct ScrollStitcherTests {
         #expect(isClose(Array(picture[0..<6]), Array(first.rows[0..<6])))
         #expect(isClose(Array(picture[6..<(80 + frameHeight - 4)]), document.rows(6..<(80 + frameHeight - 4))))
         #expect(isClose(Array(picture[(80 + frameHeight - 4)...]), Array(last.rows[(frameHeight - 4)...])))
+    }
+
+    @Test func seeThroughBarsTallerThanEachScrollStayOutOfTheContent() {
+        let document = Document.noise(width: width, height: 400, seed: 12)
+        var stitcher = makeStitcher()
+
+        // Under a bar that only dims, rows a few apart still look alike
+        // after a small scroll, so the dimmed rows seem to move along with
+        // the content.
+        for offset in stride(from: 0, through: 40, by: 4) {
+            var frame = document.slice(at: offset, height: frameHeight)
+            frame.dim(rows: 0..<12)
+            frame.dim(rows: (frameHeight - 8)..<frameHeight)
+            _ = stitcher.add(frame)
+        }
+
+        let picture = rows(of: stitcher)
+        let contentEnd = 40 + frameHeight - 8
+        var first = document.slice(at: 0, height: frameHeight)
+        first.dim(rows: 0..<12)
+        var last = document.slice(at: 40, height: frameHeight)
+        last.dim(rows: (frameHeight - 8)..<frameHeight)
+        #expect(picture.count == 40 + frameHeight)
+        #expect(isClose(Array(picture[0..<12]), Array(first.rows[0..<12])))
+        #expect(isClose(Array(picture[12..<contentEnd]), document.rows(12..<contentEnd)))
+        #expect(isClose(Array(picture[contentEnd...]), Array(last.rows[(frameHeight - 8)...])))
     }
 
     @Test func aHeaderThatSticksOnlyLaterIsNotCopiedIntoThePicture() {

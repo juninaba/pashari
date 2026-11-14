@@ -20,7 +20,8 @@ import Foundation
 /// that moved with the content go into the picture, plus those that just
 /// scrolled into view. The rest is the header and the footer, which the
 /// picture gets once, at its top from the first frame and at its bottom
-/// from the last.
+/// from the last. Of the looks a row had on its way through the area, the
+/// picture keeps the one from nearest the middle, well away from any bar.
 ///
 /// Frames are 4 bytes per pixel, in BGRA order, as ScreenCaptureKit
 /// delivers them.
@@ -72,8 +73,14 @@ nonisolated struct ScrollStitcher {
     /// copies its bytes in bulk even in a debug build, where an array would
     /// copy one byte at a time.
     private var canvas = Data()
+    /// For each canvas row, how far from the middle of the area it was when
+    /// the look the canvas has was taken.
+    private var canvasDistances: [Int] = []
     /// The row of the canvas that the top of the last placed frame shows.
     private var frameTop = 0
+    /// The middle of the last placed frame's content, between its header and
+    /// its footer.
+    private var lastMiddle = 0
     /// The rows at the top of the canvas that show the first frame's header.
     /// Unknown (nil) until the content first scrolls.
     private var canvasHeader: Int?
@@ -133,6 +140,8 @@ nonisolated struct ScrollStitcher {
         guard let last = lastSignatures else {
             keep(frame, signatures)
             canvas = lastFrame
+            lastMiddle = height / 2
+            canvasDistances = (0..<height).map { abs($0 - lastMiddle) }
             return .started
         }
 
@@ -172,29 +181,35 @@ nonisolated struct ScrollStitcher {
             // at the end, from the last frame.
             canvasHeader = fixed.header
             canvas.removeSubrange((height - fixed.footer) * rowLength..<canvas.count)
+            canvasDistances.removeSubrange((height - fixed.footer)...)
         } else if let footer, fixed.footer < footer {
             // Rows of the last frame just above its footer turn out to be
             // content, and may be about to scroll past the header unseen.
             let last = lastFrame
+            let middle = lastMiddle
             last.withUnsafeBytes { bytes in
                 let frame = Frame(width: width, height: height, bytesPerRow: rowLength, pixels: bytes.baseAddress!)
-                write(rows: (height - footer)..<(height - fixed.footer), of: frame)
+                write(rows: (height - footer)..<(height - fixed.footer), of: frame, middle: middle)
             }
         }
         header = fixed.header
         footer = fixed.footer
         frameTop += shift
-        write(rows: fixed.header..<(height - fixed.footer), of: frame)
+        lastMiddle = (fixed.header + height - fixed.footer) / 2
+        write(rows: fixed.header..<(height - fixed.footer), of: frame, middle: lastMiddle)
         keep(frame, signatures)
 
         return isFull ? .full : .scrolled(shift)
     }
 
-    /// Copies rows of `frame` into the canvas. Rows the canvas already has
-    /// get overwritten, so each part of the picture shows how it looked the
-    /// last time it scrolled by: by then an image has loaded, and the scroll
-    /// bar, which shows only while scrolling, has usually moved on.
-    private mutating func write(rows: Range<Int>, of frame: Frame) {
+    /// Copies rows of `frame` into the canvas, `middle` being the middle of
+    /// its content. A row the canvas already has is replaced only by a look
+    /// from nearer the middle of the area. By the edges a row may be dimmed
+    /// or blurred under a see-through bar, which cannot always be told from
+    /// content: under a bar that only dims, rows a few apart look alike in
+    /// two frames, as if they had moved along. Nearer the middle the row
+    /// shows plainly, and an image that loads on its way there shows too.
+    private mutating func write(rows: Range<Int>, of frame: Frame, middle: Int) {
         let rowLength = rowLength
         let canvasHeader = canvasHeader ?? 0
         let maximumCanvasHeight = maximumHeight - (footer ?? 0)
@@ -203,7 +218,10 @@ nonisolated struct ScrollStitcher {
             // Above that lies the header, or content scrolled back past the
             // start, which the picture does not grow upwards for.
             guard row >= canvasHeader else { continue }
+            let distance = abs(y - middle)
             if row < canvasHeight {
+                guard distance <= canvasDistances[row] else { continue }
+                canvasDistances[row] = distance
                 canvas.withUnsafeMutableBytes { canvas in
                     canvas.baseAddress!
                         .advanced(by: row * rowLength)
@@ -217,6 +235,7 @@ nonisolated struct ScrollStitcher {
                     return
                 }
                 canvas.append(frame.row(y).assumingMemoryBound(to: UInt8.self), count: rowLength)
+                canvasDistances.append(distance)
             }
         }
     }
