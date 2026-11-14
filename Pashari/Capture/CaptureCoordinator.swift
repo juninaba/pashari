@@ -29,6 +29,18 @@ final class CaptureCoordinator {
         }
     }
 
+    /// Area selection first, then the area is recorded while the user
+    /// scrolls it, and the frames are joined into one tall picture.
+    func captureScrollingArea() {
+        run {
+            let frozenScreens = try await ScreenCapturer.captureAllDisplays()
+            guard let selection = await AreaSelectionSession().run(with: frozenScreens) else {
+                return nil
+            }
+            return try await ScrollCaptureSession().run(selection)
+        }
+    }
+
     func captureWindow() {
         run {
             let windows = try await ScreenCapturer.selectableWindows()

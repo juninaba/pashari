@@ -19,6 +19,14 @@ extension KeyboardShortcuts.Name {
         "captureFullscreen",
         default: .init(.four, modifiers: [.command, .shift])
     )
+    // Area capture's shortcut with Option, since scroll capture starts with
+    // picking an area too. macOS keeps Command-Shift-5 for its toolbar, which
+    // also records the screen, and Command-Shift-6 for a picture of the
+    // Touch Bar.
+    static let captureScrollingArea = Self(
+        "captureScrollingArea",
+        default: .init(.two, modifiers: [.command, .shift, .option])
+    )
 }
 
 enum Hotkeys {
@@ -31,6 +39,9 @@ enum Hotkeys {
         }
         KeyboardShortcuts.onKeyDown(for: .captureFullscreen) {
             captureCoordinator.captureFullscreen()
+        }
+        KeyboardShortcuts.onKeyDown(for: .captureScrollingArea) {
+            captureCoordinator.captureScrollingArea()
         }
     }
 }

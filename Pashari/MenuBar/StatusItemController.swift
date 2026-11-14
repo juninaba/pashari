@@ -35,6 +35,13 @@ final class StatusItemController: NSObject {
                 shortcut: .captureFullscreen
             )
         )
+        menu.addItem(
+            makeItem(
+                String(localized: "Capture Scrolling Area"),
+                #selector(captureScrollingArea),
+                shortcut: .captureScrollingArea
+            )
+        )
 
         menu.addItem(.separator())
 
@@ -74,6 +81,10 @@ final class StatusItemController: NSObject {
 
     @objc private func captureFullscreen() {
         captureCoordinator.captureFullscreen()
+    }
+
+    @objc private func captureScrollingArea() {
+        captureCoordinator.captureScrollingArea()
     }
 
     @objc private func showSettings() {
