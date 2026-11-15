@@ -11,6 +11,8 @@ final class ScrollCaptureSession {
     private enum Ending {
         case done
         case cancelled
+        /// A dialog opened, such as an error, and needs the user now.
+        case interrupted
         case failed(Error)
     }
 
@@ -47,6 +49,10 @@ final class ScrollCaptureSession {
             // thrown away: a copy of every row, up to a few hundred MB.
             await recorder.cancel()
             return nil
+        case .interrupted:
+            // The user did not ask to throw away what was recorded.
+            guard let image = await recorder.stop() else { return nil }
+            return Screenshot(image: image, scale: recorder.scale, capturedAt: startedAt)
         case .failed(let error):
             // Keep what was recorded until then, if anything.
             guard let image = await recorder.stop() else { throw error }
@@ -145,8 +151,9 @@ final class ScrollCaptureSession {
             frame: CGRect(origin: .zero, size: screen.frame.size),
             area: area
         )
-        // A dialog that opens meanwhile, such as an error, ends the capture.
-        overlay.onCancel = { [weak self] in self?.end(.cancelled) }
+        // A dialog that opens meanwhile, such as an error, ends the capture,
+        // with what was recorded until then (see `ModalPresentation`).
+        overlay.onCancel = { [weak self] in self?.end(.interrupted) }
         overlay.orderFrontRegardless()
         self.overlay = overlay
 

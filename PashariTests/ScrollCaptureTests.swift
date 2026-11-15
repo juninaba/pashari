@@ -48,12 +48,6 @@ struct ScrollCaptureControlPanelTests {
         #expect(texts(in: controls.contentView).contains(String(localized: "Scroll to capture more")))
     }
 
-    private func texts(in view: NSView?) -> [String] {
-        guard let view else { return [] }
-        let own = (view as? NSTextField).map { [$0.stringValue] } ?? []
-        return own + view.subviews.flatMap { texts(in: $0) }
-    }
-
     @Test func aWiderPictureMayBeLessTall() {
         #expect(ScrollRecorder.maximumHeight(forWidth: 1600) == 30_000)
         #expect(ScrollRecorder.maximumHeight(forWidth: 6000) == 10_000)
@@ -128,6 +122,49 @@ struct ScrollRecorderTests {
         try await progress.wait { $0.pictureHeight == height && !$0.isLost }
         _ = await recorder.stop()
     }
+
+    @Test func aDialogThatOpensWhileRecordingKeepsWhatWasRecorded() async throws {
+        let page = try await ScrollingPage.show()
+        defer { page.close() }
+        let screen = try #require(page.window.screen)
+        // The area as it was when picked, which this capture does not need.
+        let frozen = FrozenScreen(
+            screen: screen,
+            screenshot: Screenshot(image: TestImages.make(width: 4, height: 4), scale: 1, capturedAt: Date())
+        )
+        let capture = Task { try await ScrollCaptureSession().run(AreaSelection(frozen: frozen, rect: page.area)) }
+
+        // Once recording has begun, a dialog opens. Before it shows,
+        // `ModalPresentation` ends the overlays, this one too.
+        try await waitForTheBar(saying: String(localized: "Scroll to capture more"))
+        let overlay = try #require(
+            NSApp.windows.compactMap { $0 as? OverlayPanel }.first { $0.contentView is ScrollCaptureOverlayView }
+        )
+        overlay.onCancel?()
+
+        let screenshot = try #require(try await capture.value)
+        #expect(screenshot.image.height == Int(page.area.height * screenshot.scale))
+    }
+
+    /// Waits until the bar of a scroll capture shows `text`.
+    private func waitForTheBar(saying text: String) async throws {
+        for _ in 0..<100 {
+            let bars = NSApp.windows.compactMap { $0 as? ScrollCaptureControlPanel }.filter(\.isVisible)
+            if bars.contains(where: { texts(in: $0.contentView).contains(text) }) {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        Issue.record("The bar never said “\(text)”")
+    }
+}
+
+/// Every text shown in `view` and the views inside it.
+@MainActor
+private func texts(in view: NSView?) -> [String] {
+    guard let view else { return [] }
+    let own = (view as? NSTextField).map { [$0.stringValue] } ?? []
+    return own + view.subviews.flatMap { texts(in: $0) }
 }
 
 /// An opaque panel of Pashari's at the level of its overlays.
