@@ -39,22 +39,23 @@ final class ScrollCaptureSession {
         let recorder = try await startRecording(area, on: screen)
         Log.capture.info("Scroll recording started")
         let ending = await waitForEnding()
-        let image = await recorder.stop()
         self.recorder = nil
-        let scale = recorder.scale
 
         switch ending {
         case .cancelled:
+            // Not `stop()`, which would make the picture only for it to be
+            // thrown away: a copy of every row, up to a few hundred MB.
+            await recorder.cancel()
             return nil
         case .failed(let error):
             // Keep what was recorded until then, if anything.
-            guard let image else { throw error }
-            return Screenshot(image: image, scale: scale, capturedAt: startedAt)
+            guard let image = await recorder.stop() else { throw error }
+            return Screenshot(image: image, scale: recorder.scale, capturedAt: startedAt)
         case .done:
             // Without a single frame, the area as it was when picked is the
             // next best thing.
-            guard let image else { return selection.screenshot }
-            return Screenshot(image: image, scale: scale, capturedAt: startedAt)
+            guard let image = await recorder.stop() else { return selection.screenshot }
+            return Screenshot(image: image, scale: recorder.scale, capturedAt: startedAt)
         }
     }
 

@@ -94,6 +94,12 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
         }
     }
 
+    /// Stops recording and throws away what was recorded.
+    func cancel() async {
+        try? await stream?.stopCapture()
+        stream = nil
+    }
+
     /// Stops recording and returns the picture: everything placed so far.
     func stop() async -> CGImage? {
         try? await stream?.stopCapture()
