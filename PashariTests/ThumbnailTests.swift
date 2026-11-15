@@ -19,17 +19,22 @@ struct ThumbnailLayoutTests {
         #expect(size.width == ThumbnailLayout.minimumPreviewSize.width)
     }
 
-    @Test func aVeryTallScreenshotShowsItsTopAsWideAsThePreview() {
-        let part = ThumbnailLayout.previewedPart(of: CGSize(width: 296, height: 5000))
+    @Test func aVeryTallScreenshotShowsItsTopInTheWidestPreview() {
+        let size = CGSize(width: 480, height: 5000)
 
-        // The preview is 148 × 160: the top of the same shape, twice as large.
-        #expect(part == CGRect(x: 0, y: 0, width: 296, height: 320))
+        // Whole, it would be a strip 15 points wide. Its top instead, in the
+        // shape of the largest preview, 240 × 160, at half its size.
+        #expect(ThumbnailLayout.previewedPart(of: size) == CGRect(x: 0, y: 0, width: 480, height: 320))
+        #expect(ThumbnailLayout.previewSize(for: size) == CGSize(width: 240, height: 160))
+        #expect(ThumbnailLayout.cardSize(for: size).width == 240)
     }
 
     @Test func aNarrowVeryTallScreenshotShowsItsTopAtItsRealSize() {
-        let part = ThumbnailLayout.previewedPart(of: CGSize(width: 50, height: 5000))
+        let size = CGSize(width: 50, height: 5000)
 
-        #expect(part == CGRect(x: 0, y: 0, width: 50, height: 160))
+        #expect(ThumbnailLayout.previewedPart(of: size) == CGRect(x: 0, y: 0, width: 50, height: 160))
+        // Widened to the minimum, so the buttons fit.
+        #expect(ThumbnailLayout.previewSize(for: size) == CGSize(width: 148, height: 160))
     }
 
     @Test func aTallWindowStillShowsWhole() {
