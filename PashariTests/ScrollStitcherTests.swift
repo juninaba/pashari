@@ -131,6 +131,20 @@ struct ScrollStitcherTests {
         #expect(isClose(rows(of: stitcher), document.rows(0..<(60 + frameHeight))))
     }
 
+    @Test func somethingPlayingBeforeTheFirstScrollIsNotTakenForAJump() {
+        let document = Document.noise(width: width, height: 400, seed: 17)
+        var stitcher = makeStitcher()
+        _ = stitcher.add(document.frame(at: 0, height: frameHeight))
+
+        // A video plays over half of the area before the user scrolls.
+        var playing = document
+        playing.rows.replaceSubrange(15..<45, with: Document.noise(width: width, height: 30, seed: 18).rows)
+        #expect(stitcher.add(playing.frame(at: 0, height: frameHeight)) == .ignored)
+
+        // A first scroll further than the area is tall still is one.
+        #expect(stitcher.add(document.frame(at: 100, height: frameHeight)) == .lost)
+    }
+
     @Test func aSmallChangeThatCannotBePlacedIsIgnored() {
         let document = Document.noise(width: width, height: 400)
         var stitcher = makeStitcher()

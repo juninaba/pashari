@@ -55,8 +55,9 @@ nonisolated struct ScrollStitcher {
         /// tall. The frame is left out; once the content is back where a
         /// frame can be placed, the picture carries on.
         case lost
-        /// A change too small to place, such as a blinking text cursor. The
-        /// frame is left out.
+        /// A change too small to place, such as a blinking text cursor, or
+        /// before the first scroll one that may be in place, such as a
+        /// playing video. The frame is left out.
         case ignored
         /// The picture has reached `maximumHeight`. This frame and all later
         /// ones are left out.
@@ -167,7 +168,12 @@ nonisolated struct ScrollStitcher {
             let shift = Self.shift(from: last, to: signatures, within: top..<bottom)
                 ?? inPlaceChange(of: signatures, unchangedAbove: top, below: bottom)
         else {
-            return (bottom - top) * 3 >= height ? .lost : .ignored
+            // Most likely the content scrolled too far, if a third of the
+            // area or more changed. Until the first scroll, though, a change
+            // in place, such as a playing video, cannot be told yet, so only
+            // a change over most of the area counts as lost.
+            let thirds = canvasHeader == nil ? 2 : 1
+            return (bottom - top) * 3 >= height * thirds ? .lost : .ignored
         }
 
         guard shift != 0 else {
