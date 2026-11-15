@@ -237,6 +237,36 @@ struct ScrollStitcherTests {
         #expect(isClose(rows(of: stitcher), document.rows(0..<(90 + frameHeight))))
     }
 
+    @Test func aFooterThatAppearsLaterLeavesTheContentSeenBeforeIt() {
+        let document = Document.noise(width: width, height: 400, seed: 14)
+        let footer = Document.noise(width: width, height: 20, seed: 15)
+        var stitcher = makeStitcher()
+
+        for offset in [0, 20, 40] {
+            _ = stitcher.add(document.frame(at: offset, height: frameHeight))
+        }
+        // A bar slides in over the bottom and stays, while the page scrolls
+        // on by less than the bar is tall.
+        #expect(stitcher.add(document.frame(at: 40, height: frameHeight, footer: footer)) == .changedInPlace)
+        _ = stitcher.add(document.frame(at: 45, height: frameHeight, footer: footer))
+
+        // What came into view before the bar did, then the bar, once.
+        let seen = 40 + frameHeight
+        var picture = rows(of: stitcher)
+        #expect(picture.count == seen + 20)
+        #expect(isClose(Array(picture[0..<seen]), document.rows(0..<seen)))
+        #expect(isClose(Array(picture[seen...]), footer.rows(0..<20)))
+
+        for offset in [60, 80] {
+            _ = stitcher.add(document.frame(at: offset, height: frameHeight, footer: footer))
+        }
+        let contentEnd = 80 + frameHeight - 20
+        picture = rows(of: stitcher)
+        #expect(picture.count == 80 + frameHeight)
+        #expect(isClose(Array(picture[0..<contentEnd]), document.rows(0..<contentEnd)))
+        #expect(isClose(Array(picture[contentEnd...]), footer.rows(0..<20)))
+    }
+
     @Test func blankSpaceShownWhileSpringingBackFromTheEndIsLeftOut() {
         let document = Document.noise(width: width, height: 200, seed: 11)
         let end = 200 - frameHeight
