@@ -594,10 +594,13 @@ nonisolated struct ScrollStitcher {
     /// The pixels are read as BGRA, the layout ScreenCaptureKit delivers.
     func makeImage(colorSpace: CGColorSpace) -> CGImage? {
         guard !canvas.isEmpty else { return nil }
-        var pixels = canvas.subdata(in: 0..<(pictureContentHeight * rowLength))
-        if let footer, footer > 0 {
-            pixels.append(lastFrame.subdata(in: ((height - footer) * rowLength)..<lastFrame.count))
-        }
+        let contentLength = pictureContentHeight * rowLength
+        let footerLength = (footer ?? 0) * rowLength
+        // The picture may take a few hundred MB. Room for all of it at once
+        // means each byte is copied only once, not again as it grows.
+        var pixels = Data(capacity: contentLength + footerLength)
+        pixels.append(canvas.prefix(contentLength))
+        pixels.append(lastFrame.suffix(footerLength))
         guard let provider = CGDataProvider(data: pixels as CFData) else { return nil }
         return CGImage(
             width: width,
