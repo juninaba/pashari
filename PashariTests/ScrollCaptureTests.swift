@@ -108,6 +108,63 @@ struct ScrollRecorderTests {
 
         #expect(image.height == Int((page.area.height + 80) * recorder.scale))
     }
+
+    @Test func pasharisPanelsThatOpenWhileRecordingStayOutOfIt() async throws {
+        let page = try await ScrollingPage.show()
+        defer { page.close() }
+        let progress = ProgressLog()
+        let recorder = try await page.makeRecorder(reportingTo: progress)
+
+        try await recorder.start()
+        try await progress.wait { $0.pictureHeight > 0 }
+        // Over the page, like the bar of a scroll capture when there is no
+        // room beside the area, and on screen too late to be listed when
+        // the recording began.
+        let cover = try await Cover.show(over: page.window.frame)
+        defer { cover.orderOut(nil) }
+        page.scroll(to: 40)
+
+        let height = Int((page.area.height + 40) * recorder.scale)
+        try await progress.wait { $0.pictureHeight == height && !$0.isLost }
+        _ = await recorder.stop()
+    }
+}
+
+/// An opaque panel of Pashari's at the level of its overlays.
+@MainActor
+private enum Cover {
+    static func show(over frame: CGRect) async throws -> NSPanel {
+        let panel = NSPanel(
+            contentRect: frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = OverlayPanel.windowLevel
+        panel.backgroundColor = .systemRed
+        panel.isOpaque = true
+        panel.animationBehavior = .none
+        panel.isReleasedWhenClosed = false
+        panel.orderFrontRegardless()
+        try await waitUntilOnScreen(panel)
+        return panel
+    }
+}
+
+/// A window comes on screen a moment after it is ordered front, once the
+/// main thread is free to finish showing it.
+@MainActor
+private func waitUntilOnScreen(_ window: NSWindow) async throws {
+    let id = CGWindowID(window.windowNumber)
+    for _ in 0..<100 {
+        let onScreen = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID)
+            as? [[CFString: Any]] ?? []
+        if onScreen.contains(where: { $0[kCGWindowNumber] as? CGWindowID == id }) {
+            return
+        }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    Issue.record("The test window did not come on screen")
 }
 
 /// A window with a fixed header and footer around a part that scrolls,
@@ -176,30 +233,18 @@ private final class ScrollingPage {
         }
         window.contentView = content
         window.orderFrontRegardless()
-
-        // The window comes on screen a moment later, once the main thread is
-        // free to finish showing it.
-        let id = CGWindowID(window.windowNumber)
-        for _ in 0..<100 {
-            let onScreen = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID)
-                as? [[CFString: Any]] ?? []
-            if onScreen.contains(where: { $0[kCGWindowNumber] as? CGWindowID == id }) {
-                return ScrollingPage(window: window, scrollView: scrollView)
-            }
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        Issue.record("The test window did not come on screen")
+        try await waitUntilOnScreen(window)
         return ScrollingPage(window: window, scrollView: scrollView)
     }
 
     func makeRecorder(reportingTo log: ProgressLog) async throws -> ScrollRecorder {
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        let content = try await shareableContentListingThePage()
         let displayID = try #require(window.screen?.displayID)
         let display = try #require(content.displays.first { $0.displayID == displayID })
         return ScrollRecorder(
             area: area,
             of: display,
-            excludingWindows: ScreenCapturer.ownWindowsToHide(in: content),
+            filter: ScreenCapturer.recordingFilter(of: display, in: content),
             onProgress: { progress in
                 Task { @MainActor in log.reports.append(progress) }
             },
@@ -207,6 +252,21 @@ private final class ScrollingPage {
                 Issue.record(error, "The recording stopped")
             }
         )
+    }
+
+    /// The recording leaves out the windows of Pashari's, the test host,
+    /// that were not listed when it began: the page must be by then.
+    private func shareableContentListingThePage() async throws -> SCShareableContent {
+        let id = CGWindowID(window.windowNumber)
+        for _ in 0..<50 {
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            if content.windows.contains(where: { $0.windowID == id }) {
+                return content
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        Issue.record("The test window was never listed")
+        return try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
     }
 
     func scroll(to y: CGFloat) {

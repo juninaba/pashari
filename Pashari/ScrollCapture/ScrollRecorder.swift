@@ -48,15 +48,15 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
     /// `area` is in points, with the origin at the display's top-left
     /// corner, and must lie on whole points: ScreenCaptureKit would scale
     /// the frames of any other area, which blurs them, and then no two of
-    /// them line up. `excludingWindows` are left out of the frames.
+    /// them line up. `filter` is what to record of `display`, see
+    /// `ScreenCapturer.recordingFilter`.
     init(
         area: CGRect,
         of display: SCDisplay,
-        excludingWindows windows: [SCWindow],
+        filter: SCContentFilter,
         onProgress: @escaping @Sendable (Progress) -> Void,
         onFailure: @escaping @Sendable (Error) -> Void
     ) {
-        let filter = SCContentFilter(display: display, excludingWindows: windows)
         scale = CGFloat(filter.pointPixelScale)
         let configuration = SCStreamConfiguration()
         configuration.sourceRect = area

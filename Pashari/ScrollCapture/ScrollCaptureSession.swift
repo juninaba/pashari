@@ -61,7 +61,7 @@ final class ScrollCaptureSession {
     // MARK: - Recording
 
     private func startRecording(_ area: CGRect, on screen: NSScreen) async throws -> ScrollRecorder {
-        let content = try await shareableContentListingOwnPanels()
+        let content = try await shareableContentListingPashari()
         guard
             let displayID = screen.displayID,
             let display = content.displays.first(where: { $0.displayID == displayID })
@@ -72,7 +72,7 @@ final class ScrollCaptureSession {
         let recorder = ScrollRecorder(
             area: area,
             of: display,
-            excludingWindows: ScreenCapturer.ownWindowsToHide(in: content),
+            filter: ScreenCapturer.recordingFilter(of: display, in: content),
             onProgress: { [weak self] progress in
                 Task { @MainActor in self?.update(progress) }
             },
@@ -85,14 +85,16 @@ final class ScrollCaptureSession {
         return recorder
     }
 
-    /// The overlay and the controls must be left out of the recording, so
-    /// they have to be listed first. A window that was just put on screen
-    /// shows up in the list only a moment later.
-    private func shareableContentListingOwnPanels() async throws -> SCShareableContent {
-        let ownPanels = Set([overlay, controls].compactMap { $0.map { CGWindowID($0.windowNumber) } })
+    /// The overlay and the controls must be left out of the recording.
+    /// They were only just put on screen and may not be listed yet, which
+    /// does not matter as long as Pashari itself is: the recording then
+    /// leaves out all its windows but those a screenshot shows. Pashari is
+    /// listed once any of its windows is, such as its menu bar icon.
+    private func shareableContentListingPashari() async throws -> SCShareableContent {
+        let ownProcessID = ProcessInfo.processInfo.processIdentifier
         var content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         var attempts = 1
-        while !ownPanels.isSubset(of: content.windows.map(\.windowID)), attempts < 10 {
+        while !content.applications.contains(where: { $0.processID == ownProcessID }), attempts < 10 {
             try await Task.sleep(for: .milliseconds(30))
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             attempts += 1
