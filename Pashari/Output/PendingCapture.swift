@@ -72,14 +72,19 @@ final class PendingCapture {
             }
             return try await Self.readImage(from: url, maxPixelSize: maxPixelSize)
         }
-        let image: CGImage
+        let screenshot: Screenshot
         if let original {
-            image = original.image
+            screenshot = original
         } else {
-            image = try await Self.readImage(from: url)
+            // Read only as large as the part needs to fill the thumbnail. At
+            // full size, a tall scroll capture would take hundreds of MB.
+            let factor = min(CGFloat(maxPixelSize) / (max(part.width, part.height) * scale), 1)
+            let longestSide = max(pointSize.width, pointSize.height) * scale * factor
+            let image = try await Self.readImage(from: url, maxPixelSize: Int(longestSide.rounded(.up)))
+            screenshot = Screenshot(image: image, scale: CGFloat(image.width) / pointSize.width, capturedAt: capturedAt)
         }
-        let screenshot = Screenshot(image: image, scale: scale, capturedAt: capturedAt)
-        return try await Self.resize(screenshot.cropped(to: part)?.image ?? image, maxPixelSize: maxPixelSize)
+        let image = screenshot.cropped(to: part)?.image ?? screenshot.image
+        return try await Self.resize(image, maxPixelSize: maxPixelSize)
     }
 
     @concurrent
