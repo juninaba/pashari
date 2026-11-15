@@ -149,6 +149,27 @@ struct ScrollStitcherTests {
         #expect(isClose(Array(picture[70..<85]), loaded.rows(70..<85)))
     }
 
+    @Test func whatChangedInPlaceBeforeTheFirstScrollShowsInThePicture() {
+        let document = Document.noise(width: width, height: 400, seed: 13)
+        var stitcher = makeStitcher()
+        _ = stitcher.add(document.frame(at: 0, height: frameHeight))
+
+        // Two images finish loading before the user starts scrolling, one
+        // of them high in the area: no later frame shows it nearer the
+        // middle.
+        var loaded = document
+        loaded.paint(columns: 0..<width, rows: 10..<16, value: 200)
+        loaded.paint(columns: 0..<width, rows: 40..<46, value: 90)
+
+        #expect(stitcher.add(loaded.frame(at: 0, height: frameHeight)) == .changedInPlace)
+        #expect(isClose(rows(of: stitcher), loaded.rows(0..<frameHeight)))
+
+        for offset in [15, 30] {
+            _ = stitcher.add(loaded.frame(at: offset, height: frameHeight))
+        }
+        #expect(isClose(rows(of: stitcher), loaded.rows(0..<(30 + frameHeight))))
+    }
+
     @Test func aSeeThroughHeaderAndFooterStayOutOfTheContent() {
         let document = Document.noise(width: width, height: 400, seed: 8)
         var stitcher = makeStitcher()

@@ -19,9 +19,10 @@ import Foundation
 /// shows the content blurred. Only the rows from the first to the last one
 /// that moved with the content go into the picture, plus those that just
 /// scrolled into view. The rest is the header and the footer, which the
-/// picture gets once, at its top from the first frame and at its bottom
-/// from the last. Of the looks a row had on its way through the area, the
-/// picture keeps the one from nearest the middle, well away from any bar.
+/// picture gets once: at its top as it looked when the scrolling began,
+/// and at its bottom from the last frame. Of the looks a row had on its
+/// way through the area, the picture keeps the one from nearest the
+/// middle, well away from any bar.
 ///
 /// Frames are 4 bytes per pixel, in BGRA order, as ScreenCaptureKit
 /// delivers them.
@@ -170,6 +171,14 @@ nonisolated struct ScrollStitcher {
             // only spoil it. Later frames are compared with the new look, and
             // bring the changed rows along once they scroll.
             keep(frame, signatures)
+            if canvasHeader == nil {
+                // Until the first scroll, though, the picture is just the
+                // area, and should look as it does now: say with the images
+                // that have finished loading. Later frames show its upper
+                // half only further from the middle, and would never bring
+                // the new look there.
+                canvas = lastFrame
+            }
             return .changedInPlace
         }
 
