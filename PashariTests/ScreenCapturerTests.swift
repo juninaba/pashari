@@ -52,6 +52,25 @@ struct ScreenCapturerTests {
         #expect(hidden.contains(CGWindowID(floating.windowNumber)))
     }
 
+    @Test func screenshotsAndRecordingsLeaveOutTheScrollCaptureBar() async throws {
+        let bar = ScrollCaptureControlPanel()
+        bar.setFrameOrigin(CGPoint(x: 80, y: 80))
+        bar.orderFrontRegardless()
+        defer { bar.orderOut(nil) }
+        let id = CGWindowID(bar.windowNumber)
+
+        // It is listed a moment after it comes on screen.
+        var content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        var attempts = 1
+        while !content.windows.contains(where: { $0.windowID == id }), attempts < 50 {
+            try await Task.sleep(for: .milliseconds(20))
+            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            attempts += 1
+        }
+
+        #expect(ScreenCapturer.ownWindowsToHide(in: content).map(\.windowID).contains(id))
+    }
+
     @Test func screenshotsKeepPasharisDialogs() async throws {
         let dialog = try await showWindow(at: CGPoint(x: 80, y: 80), level: .modalPanel)
         defer { dialog.orderOut(nil) }
