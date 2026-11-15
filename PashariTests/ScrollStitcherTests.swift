@@ -97,6 +97,25 @@ struct ScrollStitcherTests {
         #expect(stitcher.pictureHeight == 50 + frameHeight)
     }
 
+    @Test func aScrollBarThatFadesOnceTheScrollingStopsLeavesNoTrace() {
+        let document = Document.noise(width: width, height: 400, seed: 16)
+        var stitcher = makeStitcher(ignoringRightColumns: 4)
+        _ = stitcher.add(document.frame(at: 0, height: frameHeight))
+
+        // While the page scrolls, its scroll bar shows over its right edge,
+        // low in the area, as near the end of a page.
+        for (offset, thumbTop) in [(20, 40), (40, 42)] {
+            var frame = document.slice(at: offset, height: frameHeight)
+            frame.paint(columns: (width - 3)..<width, rows: thumbTop..<(thumbTop + 14), value: 40)
+            _ = stitcher.add(frame)
+        }
+        // Then it fades, which changes only columns the frames are not
+        // compared by.
+        #expect(stitcher.add(document.frame(at: 40, height: frameHeight)) == .unchanged)
+
+        #expect(isClose(rows(of: stitcher), document.rows(0..<(40 + frameHeight))))
+    }
+
     @Test func aJumpTooFarToPlaceIsLeftOutUntilTheContentComesBack() {
         let document = Document.noise(width: width, height: 400)
         var stitcher = makeStitcher()
@@ -125,19 +144,20 @@ struct ScrollStitcherTests {
         #expect(isClose(rows(of: stitcher), document.rows(0..<frameHeight)))
     }
 
-    @Test func contentThatChangedInPlaceShowsItsNewLookOnceItScrollsUp() {
+    @Test func contentThatChangesInPlaceShowsItsNewLook() {
         let document = Document.noise(width: width, height: 400, seed: 4)
         let header = Document.noise(width: width, height: 4, seed: 5)
         var stitcher = makeStitcher()
         _ = stitcher.add(document.frame(at: 0, height: frameHeight, header: header))
         _ = stitcher.add(document.frame(at: 30, height: frameHeight, header: header))
 
-        // An image finishes loading low in the area.
+        // An image finishes loading low in the area. Should the recording
+        // end now, the picture ends as the area looks now.
         var loaded = document
         loaded.paint(columns: 0..<width, rows: 70..<85, value: 200)
 
         #expect(stitcher.add(loaded.frame(at: 30, height: frameHeight, header: header)) == .changedInPlace)
-        #expect(isClose([rows(of: stitcher)[75]], [document.rows[75]]))
+        #expect(isClose(Array(rows(of: stitcher)[70..<85]), loaded.rows(70..<85)))
 
         // Then it scrolls up past the middle.
         for offset in [35, 45, 55] {

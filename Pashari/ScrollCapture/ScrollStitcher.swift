@@ -152,7 +152,12 @@ nonisolated struct ScrollStitcher {
         while top < height, changes[top] <= Self.tolerance {
             top += 1
         }
-        guard top < height else { return .unchanged }
+        guard top < height else {
+            // It may still differ where frames are not compared: the scroll
+            // bar may have faded.
+            keepLatestLook(frame, signatures)
+            return .unchanged
+        }
         var bottom = height
         while changes[bottom - 1] <= Self.tolerance {
             bottom -= 1
@@ -168,17 +173,10 @@ nonisolated struct ScrollStitcher {
         guard shift != 0 else {
             // Nothing moved, so nothing new joins the picture. Something that
             // appeared in place, such as a tooltip or a bar sliding in, would
-            // only spoil it. Later frames are compared with the new look, and
-            // bring the changed rows along once they scroll.
-            keep(frame, signatures)
-            if canvasHeader == nil {
-                // Until the first scroll, though, the picture is just the
-                // area, and should look as it does now: say with the images
-                // that have finished loading. Later frames show its upper
-                // half only further from the middle, and would never bring
-                // the new look there.
-                canvas = lastFrame
-            }
+            // only spoil it once the content scrolls on. Later frames are
+            // compared with the new look, and bring the changed rows along
+            // once they scroll.
+            keepLatestLook(frame, signatures)
             return .changedInPlace
         }
 
@@ -246,6 +244,20 @@ nonisolated struct ScrollStitcher {
                 canvas.append(frame.row(y).assumingMemoryBound(to: UInt8.self), count: rowLength)
                 canvasDistances.append(distance)
             }
+        }
+    }
+
+    /// Keeps a frame that shows the content where the last placed one did,
+    /// as the look of the area now: later frames are compared with it, and
+    /// the picture ends with it (see `makeImage`).
+    private mutating func keepLatestLook(_ frame: Frame, _ signatures: Signatures) {
+        keep(frame, signatures)
+        if canvasHeader == nil {
+            // Until the first scroll the picture is just the area, the way
+            // it looks now: say with the images that have finished loading.
+            // Later frames show its upper half only further from the middle,
+            // and would never bring the new look there.
+            canvas = lastFrame
         }
     }
 
@@ -594,12 +606,13 @@ nonisolated struct ScrollStitcher {
     /// The pixels are read as BGRA, the layout ScreenCaptureKit delivers.
     func makeImage(colorSpace: CGColorSpace) -> CGImage? {
         guard !canvas.isEmpty else { return nil }
-        let contentLength = pictureContentHeight * rowLength
+        let contentHeight = pictureContentHeight
         let footerLength = (footer ?? 0) * rowLength
         // The picture may take a few hundred MB. Room for all of it at once
         // means each byte is copied only once, not again as it grows.
-        var pixels = Data(capacity: contentLength + footerLength)
-        pixels.append(canvas.prefix(contentLength))
+        var pixels = Data(capacity: contentHeight * rowLength + footerLength)
+        pixels.append(canvas.prefix(contentHeight * rowLength))
+        showLatestLook(in: &pixels, above: contentHeight)
         pixels.append(lastFrame.suffix(footerLength))
         guard let provider = CGDataProvider(data: pixels as CFData) else { return nil }
         return CGImage(
@@ -617,6 +630,32 @@ nonisolated struct ScrollStitcher {
             shouldInterpolate: false,
             intent: .defaultIntent
         )
+    }
+
+    /// Since the content last moved, the area may have changed in place: an
+    /// image finished loading, or the scroll bar faded. The rows of the
+    /// picture above `contentHeight` that the latest frame shows at least
+    /// as near the middle as their own look take the latest one, so that
+    /// the picture ends as the area looks now, like its footer. Rows seen
+    /// nearer the middle keep that look: by the edges, a bar may dim them.
+    private func showLatestLook(in pixels: inout Data, above contentHeight: Int) {
+        let rowLength = rowLength
+        let firstRow = canvasHeader ?? 0
+        let contentRows = (header ?? 0)..<(height - (footer ?? 0))
+        lastFrame.withUnsafeBytes { latest in
+            pixels.withUnsafeMutableBytes { pixels in
+                for y in contentRows {
+                    let row = frameTop + y
+                    guard
+                        row >= firstRow, row < contentHeight,
+                        abs(y - lastMiddle) <= canvasDistances[row]
+                    else { continue }
+                    pixels.baseAddress!
+                        .advanced(by: row * rowLength)
+                        .copyMemory(from: latest.baseAddress! + y * rowLength, byteCount: rowLength)
+                }
+            }
+        }
     }
 
     /// The canvas rows that go into the picture. Scrolling past the end of a
