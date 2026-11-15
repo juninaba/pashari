@@ -19,6 +19,8 @@ extension KeyboardShortcuts.Name {
         "captureFullscreen",
         default: .init(.four, modifiers: [.command, .shift])
     )
+    // No shortcut until the user records one under Settings.
+    static let captureScrollingArea = Self("captureScrollingArea")
 }
 
 enum Hotkeys {
@@ -31,6 +33,9 @@ enum Hotkeys {
         }
         KeyboardShortcuts.onKeyDown(for: .captureFullscreen) {
             captureCoordinator.captureFullscreen()
+        }
+        KeyboardShortcuts.onKeyDown(for: .captureScrollingArea) {
+            captureCoordinator.captureScrollingArea()
         }
     }
 }

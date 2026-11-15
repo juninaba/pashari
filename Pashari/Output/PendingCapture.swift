@@ -62,12 +62,29 @@ final class PendingCapture {
         return Screenshot(image: image, scale: scale, capturedAt: capturedAt)
     }
 
-    /// A standalone small bitmap, so a preview never retains a full frame.
-    func thumbnail(maxPixelSize: Int) async throws -> CGImage {
-        if let original {
-            return try await Self.resize(original.image, maxPixelSize: maxPixelSize)
+    /// A standalone small bitmap, so a preview never retains a full frame,
+    /// of `part` of the screenshot (in points, origin at the top-left
+    /// corner), or of all of it.
+    func thumbnail(of part: CGRect? = nil, maxPixelSize: Int) async throws -> CGImage {
+        guard let part else {
+            if let original {
+                return try await Self.resize(original.image, maxPixelSize: maxPixelSize)
+            }
+            return try await Self.readImage(from: url, maxPixelSize: maxPixelSize)
         }
-        return try await Self.readImage(from: url, maxPixelSize: maxPixelSize)
+        let screenshot: Screenshot
+        if let original {
+            screenshot = original
+        } else {
+            // Read only as large as the part needs to fill the thumbnail. At
+            // full size, a tall scroll capture would take hundreds of MB.
+            let factor = min(CGFloat(maxPixelSize) / (max(part.width, part.height) * scale), 1)
+            let longestSide = max(pointSize.width, pointSize.height) * scale * factor
+            let image = try await Self.readImage(from: url, maxPixelSize: Int(longestSide.rounded(.up)))
+            screenshot = Screenshot(image: image, scale: CGFloat(image.width) / pointSize.width, capturedAt: capturedAt)
+        }
+        let image = screenshot.cropped(to: part)?.image ?? screenshot.image
+        return try await Self.resize(image, maxPixelSize: maxPixelSize)
     }
 
     @concurrent

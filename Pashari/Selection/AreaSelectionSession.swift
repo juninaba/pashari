@@ -1,5 +1,18 @@
 import AppKit
 
+/// What the user picked in area selection.
+struct AreaSelection {
+    let frozen: FrozenScreen
+    /// In points, with the origin at the top-left corner of the screen.
+    let rect: CGRect
+
+    /// The selected part of the screen as it was when selection began.
+    /// Nil when nothing is left of `rect` inside the screen.
+    var screenshot: Screenshot? {
+        frozen.screenshot.cropped(to: rect)
+    }
+}
+
 final class AreaSelectionSession {
     private struct Overlay {
         let panel: OverlayPanel
@@ -9,7 +22,7 @@ final class AreaSelectionSession {
     }
 
     private var overlays: [Overlay] = []
-    private var continuation: CheckedContinuation<Screenshot?, Never>?
+    private var continuation: CheckedContinuation<AreaSelection?, Never>?
     private var spaceObserver: SpaceChangeObserver?
     /// Counts Space changes, so screenshots that arrive late, after the user
     /// has already moved on to yet another Space, can be told apart.
@@ -17,8 +30,8 @@ final class AreaSelectionSession {
     /// True from a Space change until the screens are captured again.
     private var isCatchingUp = false
 
-    /// Returns the selected part of the screen, or nil when the user cancelled.
-    func run(with frozenScreens: [FrozenScreen]) async -> Screenshot? {
+    /// Returns what the user selected, or nil when they cancelled.
+    func run(with frozenScreens: [FrozenScreen]) async -> AreaSelection? {
         await withCheckedContinuation { continuation in
             self.continuation = continuation
             show(frozenScreens)
@@ -72,7 +85,7 @@ final class AreaSelectionSession {
             overlays[index].selectionView.clearSelection()
             return
         }
-        finish(with: overlays[index].frozen.screenshot.cropped(to: rect))
+        finish(with: AreaSelection(frozen: overlays[index].frozen, rect: rect))
     }
 
     private func spaceDidChange() {
@@ -118,7 +131,7 @@ final class AreaSelectionSession {
         return true
     }
 
-    private func finish(with result: Screenshot?) {
+    private func finish(with result: AreaSelection?) {
         // A continuation must be resumed exactly once. Clearing it first
         // makes a second call (say, Escape during mouse-up) a no-op.
         guard let continuation else { return }

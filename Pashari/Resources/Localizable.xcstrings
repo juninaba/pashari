@@ -91,6 +91,16 @@
         }
       }
     },
+    "Capture Scrolling Area" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクロールキャプチャ"
+          }
+        }
+      }
+    },
     "Capture Window" : {
       "localizations" : {
         "ja" : {
@@ -161,6 +171,16 @@
         }
       }
     },
+    "Done" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了"
+          }
+        }
+      }
+    },
     "Ellipse" : {
       "localizations" : {
         "ja" : {
@@ -177,6 +197,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "一般"
+          }
+        }
+      }
+    },
+    "Getting ready…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "準備中…"
           }
         }
       }
@@ -377,6 +407,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "サムネイルやエディタに残っているスクリーンショットは、まだコピーも保存もしていないため失われます。"
+          }
+        }
+      }
+    },
+    "Scroll back a little, then more slowly" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "少し戻してから、ゆっくりスクロールしてください"
+          }
+        }
+      }
+    },
+    "Scroll to capture more" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクロールすると続きもキャプチャします"
           }
         }
       }

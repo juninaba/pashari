@@ -85,11 +85,12 @@ final class ThumbnailController {
         panel.alphaValue = 0
         // Keep Retina detail when a display change moves this card to another screen.
         let maxPixelSize = Int(ThumbnailLayout.maximumPreviewSize.width * max(2, screen.backingScaleFactor))
+        let part = ThumbnailLayout.previewedPart(of: capture.pointSize)
         let showError = self.showError
         entry.previewTask = Task { [weak card] in
             do {
                 try Task.checkCancellation()
-                let image = try await capture.thumbnail(maxPixelSize: maxPixelSize)
+                let image = try await capture.thumbnail(of: part, maxPixelSize: maxPixelSize)
                 guard !Task.isCancelled else { return }
                 card?.previewView.show(image)
             } catch {

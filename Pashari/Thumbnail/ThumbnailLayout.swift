@@ -14,7 +14,29 @@ enum ThumbnailLayout {
 
     /// The size of the preview for a screenshot of `imageSize` (in points):
     /// scaled down to fit, never scaled up, never smaller than the minimum.
+    /// Of a very tall one it shows only the top (see `previewedPart`).
     static func previewSize(for imageSize: CGSize) -> CGSize {
+        fittedSize(for: previewedPart(of: imageSize)?.size ?? imageSize)
+    }
+
+    /// The part of a screenshot of `imageSize` (in points, origin at the
+    /// top-left corner) that its preview shows, or nil for all of it.
+    ///
+    /// A picture far taller than the preview, such as a scroll capture,
+    /// would shrink to a thin strip in it. Its preview shows its top
+    /// instead, in the shape of the largest preview, or at its real size
+    /// if narrower.
+    static func previewedPart(of imageSize: CGSize) -> CGRect? {
+        guard imageSize.width > 0, imageSize.height > 0 else { return nil }
+        let whole = fittedSize(for: imageSize)
+        let fittedWidth = imageSize.width * whole.height / imageSize.height
+        guard fittedWidth < whole.width / 2 else { return nil }
+        let factor = min(maximumPreviewSize.width / imageSize.width, 1)
+        let height = maximumPreviewSize.height / factor
+        return CGRect(x: 0, y: 0, width: imageSize.width, height: min(height, imageSize.height))
+    }
+
+    private static func fittedSize(for imageSize: CGSize) -> CGSize {
         guard imageSize.width > 0, imageSize.height > 0 else { return minimumPreviewSize }
         let factor = min(
             maximumPreviewSize.width / imageSize.width,

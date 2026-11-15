@@ -8,6 +8,8 @@ A menu bar screenshot app for macOS, written in Swift.
 
 - Capture an area, a window or the full screen, from the menu bar or with
   global hotkeys
+- Scroll capture: pick an area, scroll its content, and get one tall
+  picture of everything that scrolled past
 - A floating thumbnail after each capture: copy, save, annotate, drag it
   into another app, or close it
 - An annotation editor: arrow, rectangle, ellipse, line, pen, multi-line
@@ -35,9 +37,27 @@ Default hotkeys (change them under Settings):
 | Capture window     | ⇧⌘3    |
 | Capture fullscreen | ⇧⌘4    |
 
+Capture Scrolling Area has no hotkey until you set one under Settings.
+
 macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
 System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that
 Pashari gets them.
+
+### Scroll capture
+
+Select the part of a window that scrolls, then scroll it as usual.
+Pashari records the area and adds whatever scrolls into view to the bottom
+of the picture. Click Done or press Return to finish; Escape cancels. After
+a click in another app, Return and Escape go to that app until you click
+Pashari's bar again.
+
+- A fixed header or footer inside the area, such as a toolbar, appears
+  once, at the top or bottom of the picture.
+- Leave out parts beside the content that do not scroll along, such as a
+  sidebar: they keep Pashari from telling how far the content moved.
+- If you scroll faster than Pashari can follow, it says so. Scroll back a
+  little, and carry on more slowly.
+- The picture stops growing at 30,000 pixels (less for very wide areas).
 
 Settings opens from the menu bar icon. If the icon is hidden, for example
 behind the notch, open Pashari again from Spotlight or the Finder and

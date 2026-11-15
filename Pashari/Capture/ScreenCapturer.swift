@@ -141,4 +141,27 @@ enum ScreenCapturer {
                 && levelsToHide.contains(window.windowLayer)
         }
     }
+
+    /// What to record of `display` so that the recording, like a
+    /// screenshot, leaves out the windows of Pashari's that
+    /// `ownWindowsToHide` picks, and also any that Pashari puts on screen
+    /// later: those are not in `content` yet. A window just put on screen
+    /// shows up in the list only a moment later.
+    ///
+    /// So it leaves out all of Pashari, except for the windows a
+    /// screenshot would show. Only if Pashari itself is not listed, which
+    /// takes a window of its own on screen, are the windows to hide left
+    /// out one by one.
+    static func recordingFilter(of display: SCDisplay, in content: SCShareableContent) -> SCContentFilter {
+        let ownProcessID = ProcessInfo.processInfo.processIdentifier
+        let hidden = ownWindowsToHide(in: content)
+        guard let pashari = content.applications.first(where: { $0.processID == ownProcessID }) else {
+            return SCContentFilter(display: display, excludingWindows: hidden)
+        }
+        let hiddenIDs = Set(hidden.map(\.windowID))
+        let shown = content.windows.filter { window in
+            window.owningApplication?.processID == ownProcessID && !hiddenIDs.contains(window.windowID)
+        }
+        return SCContentFilter(display: display, excludingApplications: [pashari], exceptingWindows: shown)
+    }
 }

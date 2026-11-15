@@ -19,6 +19,29 @@ struct ThumbnailLayoutTests {
         #expect(size.width == ThumbnailLayout.minimumPreviewSize.width)
     }
 
+    @Test func aVeryTallScreenshotShowsItsTopInTheWidestPreview() {
+        let size = CGSize(width: 480, height: 5000)
+
+        // Whole, it would be a strip 15 points wide. Its top instead, in the
+        // shape of the largest preview, 240 × 160, at half its size.
+        #expect(ThumbnailLayout.previewedPart(of: size) == CGRect(x: 0, y: 0, width: 480, height: 320))
+        #expect(ThumbnailLayout.previewSize(for: size) == CGSize(width: 240, height: 160))
+        #expect(ThumbnailLayout.cardSize(for: size).width == 240)
+    }
+
+    @Test func aNarrowVeryTallScreenshotShowsItsTopAtItsRealSize() {
+        let size = CGSize(width: 50, height: 5000)
+
+        #expect(ThumbnailLayout.previewedPart(of: size) == CGRect(x: 0, y: 0, width: 50, height: 160))
+        // Widened to the minimum, so the buttons fit.
+        #expect(ThumbnailLayout.previewSize(for: size) == CGSize(width: 148, height: 160))
+    }
+
+    @Test func aTallWindowStillShowsWhole() {
+        #expect(ThumbnailLayout.previewedPart(of: CGSize(width: 400, height: 800)) == nil)
+        #expect(ThumbnailLayout.previewedPart(of: CGSize(width: 1728, height: 1080)) == nil)
+    }
+
     @Test func smallScreenshotIsNotScaledUp() {
         let size = ThumbnailLayout.previewSize(for: CGSize(width: 200, height: 100))
 
@@ -302,6 +325,50 @@ struct PendingCaptureTests {
         #expect(pixelsReleased)
         #expect(thumbnail.width == 20)
         #expect(try await capture.screenshot().image.width == 60)
+    }
+
+    @Test func aThumbnailOfAPartShowsOnlyThatPart() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // Red at the top, blue below.
+        let original = Screenshot(
+            image: TestImages.make(width: 20, height: 200, patchRect: CGRect(x: 0, y: 0, width: 20, height: 20)),
+            scale: 2,
+            capturedAt: Date()
+        )
+        let capture = PendingCapture(screenshot: original, directory: directory)
+        let top = CGRect(x: 0, y: 0, width: 10, height: 10)
+
+        let fromMemory = try await capture.thumbnail(of: top, maxPixelSize: 20)
+        _ = try await capture.fileURL()
+        let fromFile = try await capture.thumbnail(of: top, maxPixelSize: 20)
+
+        for thumbnail in [fromMemory, fromFile] {
+            #expect(thumbnail.width == 20)
+            #expect(thumbnail.height == 20)
+            #expect(TestImages.pixel(of: thumbnail, x: 10, y: 18) == .red)
+        }
+    }
+
+    @Test func aSmallerThumbnailOfAPartReadFromTheFileShowsOnlyThatPart() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // Red at the top, blue below.
+        let original = Screenshot(
+            image: TestImages.make(width: 20, height: 200, patchRect: CGRect(x: 0, y: 0, width: 20, height: 20)),
+            scale: 2,
+            capturedAt: Date()
+        )
+        let capture = PendingCapture(screenshot: original, directory: directory)
+        _ = try await capture.fileURL()
+
+        // Half as many pixels as the part has: the file is read at half its
+        // size, where a point is one pixel.
+        let thumbnail = try await capture.thumbnail(of: CGRect(x: 0, y: 0, width: 10, height: 10), maxPixelSize: 10)
+
+        #expect(thumbnail.width == 10)
+        #expect(thumbnail.height == 10)
+        #expect(TestImages.pixel(of: thumbnail, x: 5, y: 5) == .red)
     }
 
     @Test func keepsTheOriginalWhenWritingTheTemporaryFileFails() async throws {

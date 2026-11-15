@@ -11,8 +11,12 @@ struct HotkeyTests {
         .captureFullscreen,
     ].compactMap(\.defaultShortcut)
 
-    @Test func everyCaptureModeHasADefault() {
+    @Test func areaWindowAndFullscreenCaptureHaveADefault() {
         #expect(defaults.count == 3)
+    }
+
+    @Test func scrollCaptureHasNoDefault() {
+        #expect(KeyboardShortcuts.Name.captureScrollingArea.defaultShortcut == nil)
     }
 
     @Test func theDefaultsAreDifferentFromEachOther() {
@@ -26,6 +30,10 @@ struct HotkeyTests {
             .init(.five, modifiers: [.command, .shift]),
             .init(.three, modifiers: [.command, .shift, .control]),
             .init(.four, modifiers: [.command, .shift, .control]),
+            .init(.five, modifiers: [.command, .shift, .control]),
+            // Pictures of the Touch Bar
+            .init(.six, modifiers: [.command, .shift]),
+            .init(.six, modifiers: [.command, .shift, .control]),
             // The ChatGPT app's screenshots
             .init(.four, modifiers: [.control, .shift]),
             .init(.four, modifiers: [.control, .option, .shift]),

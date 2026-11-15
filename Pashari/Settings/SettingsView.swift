@@ -36,6 +36,7 @@ struct SettingsView: View {
                 KeyboardShortcuts.Recorder("Capture Area", name: .captureArea)
                 KeyboardShortcuts.Recorder("Capture Window", name: .captureWindow)
                 KeyboardShortcuts.Recorder("Capture Fullscreen", name: .captureFullscreen)
+                KeyboardShortcuts.Recorder("Capture Scrolling Area", name: .captureScrollingArea)
             }
         }
         .formStyle(.grouped)
