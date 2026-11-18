@@ -250,7 +250,7 @@ struct ThumbnailControllerTests {
         #expect(panel.frame == expected.first)
     }
 
-    @Test func aRecoveredThumbnailKeepsItsFullSizePNGAvailableAfterADrop() async throws {
+    @Test func aDroppedThumbnailKeepsItsFullSizePNGUntilANormalQuit() async throws {
         let manager = FileManager.default
         let root = manager.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? manager.removeItem(at: root) }
@@ -276,8 +276,11 @@ struct ThumbnailControllerTests {
         }
 
         // The app was interrupted after handing off the URL.
-        try CaptureStorage(rootDirectory: root).withInterruptedFiles(includeLegacy: { true }) { #expect($0.isEmpty) }
+        let next = CaptureStorage(rootDirectory: root)
+        try next.withInterruptedFiles(includeLegacy: { true }) { #expect($0.isEmpty) }
         #expect(try Data(contentsOf: dragURL) == png)
+        next.removeFiles()
+        #expect(!manager.fileExists(atPath: dragURL.deletingLastPathComponent().deletingLastPathComponent().path))
     }
 
     @Test func thumbnailsAreLaidOutAgainWhenDisplaysChange() async throws {

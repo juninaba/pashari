@@ -106,6 +106,41 @@ struct CaptureStorageTests {
         #expect(!manager.fileExists(atPath: stopped.url.path))
     }
 
+    @Test func normalQuitCleansUpDroppedFilesOnlyFromUnlockedRuns() async throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? manager.removeItem(at: root) }
+        let screenshot = makeScreenshot()
+        let live = CaptureStorage(rootDirectory: root)
+        let liveDrop = try await PendingCapture(screenshot: screenshot, storage: live).fileURL()
+        live.recordDrop(of: liveDrop)
+
+        let oldDrop: PendingCapture.File
+        let oldPending: URL
+        do {
+            let interrupted = CaptureStorage(rootDirectory: root)
+            oldDrop = try await PendingCapture(screenshot: screenshot, storage: interrupted).file()
+            interrupted.recordDrop(of: oldDrop.url)
+            oldPending = try await PendingCapture(screenshot: screenshot, storage: interrupted).fileURL()
+        }
+        let note = oldDrop.url.deletingLastPathComponent().appending(path: "notes.txt")
+        try Data("keep".utf8).write(to: note)
+
+        let next = CaptureStorage(rootDirectory: root)
+        try next.withInterruptedFiles(includeLegacy: { true }) { files in
+            #expect(files.map(\.standardizedFileURL.path) == [oldPending.path])
+        }
+        #expect(try Data(contentsOf: oldDrop.url) == oldDrop.data)
+
+        next.removeFiles()
+
+        #expect(!manager.fileExists(atPath: oldDrop.url.path))
+        #expect(manager.fileExists(atPath: oldPending.path))
+        #expect(manager.fileExists(atPath: liveDrop.path))
+        #expect(manager.fileExists(atPath: note.path))
+        live.removeFiles()
+    }
+
     private func writeAndReleaseRun(_ screenshot: Screenshot, root: URL) async throws -> PendingCapture.File {
         let run = CaptureStorage(rootDirectory: root)
         let file = try await PendingCapture(screenshot: screenshot, storage: run).file()

@@ -46,10 +46,7 @@ final class CaptureStorage {
         var locks: [RunLock] = []
         var files: [URL] = []
         for run in directories {
-            let name = run.lastPathComponent
-            let isCurrentFormat = name.hasPrefix(Self.runPrefix)
-                && UUID(uuidString: String(name.dropFirst(Self.runPrefix.count))) != nil
-            guard isCurrentFormat || (recoverLegacy && UUID(uuidString: name) != nil),
+            guard isCurrentFormat(run) || (recoverLegacy && UUID(uuidString: run.lastPathComponent) != nil),
                   let lock = try? RunLock(run, wait: false),
                   let pending = try? pendingFiles(in: run), !pending.isEmpty else { continue }
             locks.append(lock)
@@ -61,13 +58,13 @@ final class CaptureStorage {
     func restore(_ file: URL) throws -> URL {
         let destination = try makeCaptureDirectory().appending(path: file.lastPathComponent)
         try FileManager.default.moveItem(at: file, to: destination)
-        removeEmptyDirectories(around: file)
+        removeEmptyCaptureDirectory(file.deletingLastPathComponent())
         return destination
     }
 
     func discard(_ file: URL) throws {
         try FileManager.default.removeItem(at: file)
-        removeEmptyDirectories(around: file)
+        removeEmptyCaptureDirectory(file.deletingLastPathComponent())
     }
 
     /// A drop receiver may still be using the original URL after we exit.
@@ -78,11 +75,43 @@ final class CaptureStorage {
         }
     }
 
-    /// Called on normal termination, for this process's run only.
+    /// A normal quit also ends the lifetime of drop URLs from interrupted runs.
     func removeFiles() {
-        guard runLock != nil else { return }
-        try? FileManager.default.removeItem(at: directory)
-        runLock = nil
+        if runLock != nil {
+            try? FileManager.default.removeItem(at: directory)
+            runLock = nil
+        }
+        removeInterruptedDrops()
+    }
+
+    private func removeInterruptedDrops() {
+        guard (try? rootDirectory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
+              let runs = try? directories(in: rootDirectory) else { return }
+        let manager = FileManager.default
+        for run in runs where isCurrentFormat(run) {
+            guard let lock = try? RunLock(run, wait: false),
+                  let captures = try? captureDirectories(in: run) else { continue }
+            withExtendedLifetime(lock) {
+                for capture in captures {
+                    guard let marker = recordedDrop(in: capture) else { continue }
+                    do {
+                        for file in try pngFiles(in: capture) {
+                            try manager.removeItem(at: file)
+                        }
+                        try manager.removeItem(at: marker)
+                        removeEmptyCaptureDirectory(capture)
+                    } catch {
+                        Log.thumbnail.error("Could not clean up a completed drop")
+                    }
+                }
+            }
+        }
+    }
+
+    private func isCurrentFormat(_ directory: URL) -> Bool {
+        let name = directory.lastPathComponent
+        return name.hasPrefix(Self.runPrefix)
+            && UUID(uuidString: String(name.dropFirst(Self.runPrefix.count))) != nil
     }
 
     private func excludeRootFromBackup() throws {
@@ -101,23 +130,32 @@ final class CaptureStorage {
         ).filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
     }
 
+    private func captureDirectories(in run: URL) throws -> [URL] {
+        try directories(in: run).filter { UUID(uuidString: $0.lastPathComponent) != nil }
+    }
+
+    private func recordedDrop(in capture: URL) -> URL? {
+        let marker = capture.appending(path: Self.dropMarker)
+        return (try? marker.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true ? marker : nil
+    }
+
     private func pendingFiles(in run: URL) throws -> [URL] {
-        let manager = FileManager.default
-        let captures = try directories(in: run).filter { UUID(uuidString: $0.lastPathComponent) != nil }
-        return captures.flatMap { capture -> [URL] in
-            guard !manager.fileExists(atPath: capture.appending(path: Self.dropMarker).path) else { return [] }
-            let files = (try? manager.contentsOfDirectory(
-                at: capture, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
-            )) ?? []
-            return files.filter { file in
-                file.lastPathComponent.wholeMatch(of: /pashari-[0-9]{8}-[a-z]{4}\.png/) != nil
-                    && (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
-            }
+        try captureDirectories(in: run).filter { recordedDrop(in: $0) == nil }.flatMap {
+            (try? pngFiles(in: $0)) ?? []
         }
     }
 
-    private func removeEmptyDirectories(around file: URL) {
-        let capture = file.deletingLastPathComponent()
+    private func pngFiles(in capture: URL) throws -> [URL] {
+        let files = try FileManager.default.contentsOfDirectory(
+            at: capture, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
+        )
+        return files.filter { file in
+            file.lastPathComponent.wholeMatch(of: /pashari-[0-9]{8}-[a-z]{4}\.png/) != nil
+                && (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+        }
+    }
+
+    private func removeEmptyCaptureDirectory(_ capture: URL) {
         _ = rmdir(capture.path)
         _ = rmdir(capture.deletingLastPathComponent().path)
     }
