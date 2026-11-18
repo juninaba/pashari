@@ -80,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         } catch {
-            ErrorAlert.show(error, title: String(localized: "The working screenshots could not be processed"))
+            ErrorAlert.show(error, title: String(localized: "Unsaved screenshots could not be processed"))
         }
     }
 

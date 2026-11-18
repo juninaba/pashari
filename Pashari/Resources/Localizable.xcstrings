@@ -631,16 +631,6 @@
         }
       }
     },
-    "The working screenshots could not be processed" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "作業用のスクリーンショットを処理できませんでした"
-          }
-        }
-      }
-    },
     "Turn on Pashari under Privacy & Security > Screen & System Audio Recording in System Settings, then quit and reopen Pashari." : {
       "localizations" : {
         "ja" : {
@@ -657,6 +647,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取り消す"
+          }
+        }
+      }
+    },
+    "Unsaved screenshots could not be processed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未保存のスクリーンショットを処理できませんでした"
           }
         }
       }
