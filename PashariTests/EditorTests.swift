@@ -576,6 +576,34 @@ struct QuitTests {
         editor.window.close()
     }
 
+    @Test func cancellingQuitShowsOnlyOpenEditors() throws {
+        let controller = AnnotationEditorController()
+        let delegate = AppDelegate(editorController: controller)
+        delegate.confirmQuit = { false }
+
+        let openEditor = AnnotationEditorWindowController(screenshot: makeScreenshot())
+        controller.keep(openEditor)
+        let model = EditorModel(screenshot: makeScreenshot()) { _ in nil }
+        model.add(.blur(CGRect(x: 5, y: 5, width: 20, height: 20)))
+        let discardedEditor = AnnotationEditorWindowController(model: model)
+        controller.keep(discardedEditor)
+        discardedEditor.window.orderFrontRegardless()
+        defer {
+            openEditor.window.orderOut(nil)
+            discardedEditor.window.orderOut(nil)
+        }
+
+        discardedEditor.window.close()
+        let sheet = try #require(discardedEditor.window.attachedSheet)
+        discardedEditor.window.endSheet(sheet, returnCode: .alertSecondButtonReturn)
+        #expect(!discardedEditor.window.isVisible)
+
+        #expect(delegate.applicationShouldTerminate(NSApp) == .terminateCancel)
+
+        #expect(openEditor.window.isVisible)
+        #expect(!discardedEditor.window.isVisible)
+    }
+
     @Test(arguments: [false, true])
     func pendingThumbnailsRequireOneConfirmationEvenWithEditors(editorOpen: Bool) {
         let thumbnails = ThumbnailController()

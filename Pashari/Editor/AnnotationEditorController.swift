@@ -31,7 +31,8 @@ final class AnnotationEditorController {
 
     /// After cancelling Quit, bring the work forward to be copied or saved.
     func showEditors() {
-        for editor in editors {
+        // Closing clears the delegate before the editor is released.
+        for editor in editors where editor.window.delegate != nil {
             editor.window.makeKeyAndOrderFront(nil)
         }
     }
