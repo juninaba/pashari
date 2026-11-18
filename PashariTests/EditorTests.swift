@@ -485,6 +485,15 @@ struct EditorWindowTests {
         let result = results.first ?? nil
         #expect(result != nil)
         #expect(result?.image !== screenshot.image)
+
+        editor.window.makeKeyAndOrderFront(nil)
+        defer { editor.window.orderOut(nil) }
+        #expect(editor.window.isVisible)
+
+        editor.window.close()
+
+        #expect(!editor.window.isVisible)
+        #expect(results.count == 1)
     }
 
     @Test(arguments: [false, true])

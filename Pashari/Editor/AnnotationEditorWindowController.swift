@@ -250,7 +250,11 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         // The close button and ⌘W reach close() through performClose(_:).
         // Direct calls to close() bypass the windowShouldClose delegate hook.
         override func close() {
-            (delegate as? AnnotationEditorWindowController)?.requestClose()
+            if let editor = delegate as? AnnotationEditorWindowController {
+                editor.requestClose()
+            } else {
+                super.close()
+            }
         }
 
         fileprivate func closeNow() {
