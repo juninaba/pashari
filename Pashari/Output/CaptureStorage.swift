@@ -63,15 +63,19 @@ final class CaptureStorage {
     }
 
     func restore(_ file: URL) throws -> URL {
+        let capture = file.deletingLastPathComponent()
+        try clearAmbiguousDropMarker(in: capture)
         let destination = try makeCaptureDirectory().appending(path: file.lastPathComponent)
         try FileManager.default.moveItem(at: file, to: destination)
-        removeEmptyCaptureDirectory(file.deletingLastPathComponent())
+        removeEmptyCaptureDirectory(capture)
         return destination
     }
 
     func discard(_ file: URL) throws {
+        let capture = file.deletingLastPathComponent()
+        try clearAmbiguousDropMarker(in: capture)
         try FileManager.default.removeItem(at: file)
-        removeEmptyCaptureDirectory(file.deletingLastPathComponent())
+        removeEmptyCaptureDirectory(capture)
     }
 
     /// A drop receiver may still be using the original URL after we exit.
@@ -84,6 +88,9 @@ final class CaptureStorage {
 
     /// A normal quit also cleans up interrupted drops found at launch.
     func removeFiles() {
+        // Re-read the directory type in case the root changed after launch.
+        let root = URL(fileURLWithPath: rootDirectory.path)
+        guard (try? root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return }
         if runLock != nil {
             try? FileManager.default.removeItem(at: directory)
             runLock = nil
@@ -92,8 +99,6 @@ final class CaptureStorage {
     }
 
     private func removeInterruptedDrops() {
-        guard !interruptedDropRuns.isEmpty,
-              (try? rootDirectory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return }
         let manager = FileManager.default
         for run in interruptedDropRuns {
             guard let lock = try? RunLock(run, wait: false),
@@ -142,6 +147,16 @@ final class CaptureStorage {
 
     private func dropMarker(in capture: URL) -> URL {
         capture.appending(path: ".dropped")
+    }
+
+    private func clearAmbiguousDropMarker(in capture: URL) throws {
+        let marker = dropMarker(in: capture)
+        let properties = try? marker.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        // A blank marker beside a pending file was ambiguous at launch. Clear
+        // it before moving or removing a file could make it name a survivor.
+        if properties?.isRegularFile == true && properties?.fileSize == 0 {
+            try FileManager.default.removeItem(at: marker)
+        }
     }
 
     private func droppedFile(in files: [URL], markedBy marker: URL) -> URL? {

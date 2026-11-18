@@ -158,6 +158,65 @@ struct CaptureStorageTests {
         live.removeFiles()
     }
 
+    @Test func partialRecoveryDoesNotTurnAnAmbiguousOldDropIntoACleanupTarget() async throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? manager.removeItem(at: root) }
+        let screenshot = makeScreenshot()
+        let good: PendingCapture.File
+        let confirmedDrop: URL
+        do {
+            let run = CaptureStorage(rootDirectory: root)
+            good = try await PendingCapture(screenshot: screenshot, storage: run).file()
+            confirmedDrop = try await PendingCapture(screenshot: screenshot, storage: run).fileURL()
+            run.recordDrop(of: confirmedDrop)
+        }
+        let capture = good.url.deletingLastPathComponent()
+        let badName = ScreenshotWriter.fileName(capturedAt: screenshot.capturedAt + 1)
+        let bad = capture.appending(path: badName)
+        try good.data.dropLast(12).write(to: bad)
+        try Data().write(to: capture.appending(path: ".dropped"))
+
+        let next = CaptureStorage(rootDirectory: root)
+        try next.withInterruptedFiles(includeLegacy: { true }) { files in
+            let complete = try #require(files.first { $0.lastPathComponent == good.url.lastPathComponent })
+            let incomplete = try #require(files.first { $0.lastPathComponent == badName })
+            _ = try PendingCapture(restoring: complete, storage: next)
+            #expect(throws: CaptureError.self) { try PendingCapture(restoring: incomplete, storage: next) }
+        }
+        next.removeFiles()
+
+        #expect(!manager.fileExists(atPath: confirmedDrop.path))
+        #expect(manager.fileExists(atPath: bad.path))
+        try CaptureStorage(rootDirectory: root).withInterruptedFiles(includeLegacy: { true }) { files in
+            #expect(files.map(\.standardizedFileURL.path) == [bad.path])
+        }
+    }
+
+    @Test func normalQuitLeavesASymlinkedReplacementRootUntouched() async throws {
+        let manager = FileManager.default
+        let base = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? manager.removeItem(at: base) }
+        let root = base.appending(path: "PendingCaptures")
+        let file: PendingCapture.File
+        do {
+            let run = CaptureStorage(rootDirectory: root)
+            file = try await PendingCapture(screenshot: makeScreenshot(), storage: run).file()
+            run.recordDrop(of: file.url)
+        }
+        let next = CaptureStorage(rootDirectory: root)
+        try next.withInterruptedFiles(includeLegacy: { true }) { #expect($0.isEmpty) }
+
+        let replacement = base.appending(path: "other-fixture")
+        try manager.copyItem(at: root, to: replacement)
+        try manager.moveItem(at: root, to: base.appending(path: "original"))
+        try manager.createSymbolicLink(at: root, withDestinationURL: replacement)
+
+        next.removeFiles()
+
+        #expect(try Data(contentsOf: file.url) == file.data)
+    }
+
     private func writeAndReleaseRun(_ screenshot: Screenshot, root: URL) async throws -> PendingCapture.File {
         let run = CaptureStorage(rootDirectory: root)
         let file = try await PendingCapture(screenshot: screenshot, storage: run).file()
