@@ -171,6 +171,16 @@
         }
       }
     },
+    "Discard Screenshot" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクリーンショットを破棄"
+          }
+        }
+      }
+    },
     "Done" : {
       "localizations" : {
         "ja" : {
@@ -217,6 +227,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "緑"
+          }
+        }
+      }
+    },
+    "Keep Editing" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "編集を続ける"
           }
         }
       }
@@ -541,6 +561,16 @@
         }
       }
     },
+    "The screenshot could not be returned to the thumbnail" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクリーンショットをサムネイルに戻せませんでした"
+          }
+        }
+      }
+    },
     "The screenshot could not be saved" : {
       "localizations" : {
         "ja" : {
@@ -567,16 +597,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "スクリーンショットを撮れませんでした"
-          }
-        }
-      }
-    },
-    "The thumbnail holds the screenshot without your changes" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サムネイルには変更前のスクリーンショットが入っています"
           }
         }
       }
