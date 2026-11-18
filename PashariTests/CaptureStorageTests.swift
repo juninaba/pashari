@@ -115,29 +115,46 @@ struct CaptureStorageTests {
         let liveDrop = try await PendingCapture(screenshot: screenshot, storage: live).fileURL()
         live.recordDrop(of: liveDrop)
 
+        let alreadyRunning = CaptureStorage(rootDirectory: root)
         let oldDrop: PendingCapture.File
+        let olderDrop: URL
         let oldPending: URL
         do {
             let interrupted = CaptureStorage(rootDirectory: root)
             oldDrop = try await PendingCapture(screenshot: screenshot, storage: interrupted).file()
             interrupted.recordDrop(of: oldDrop.url)
+            olderDrop = try await PendingCapture(screenshot: screenshot, storage: interrupted).fileURL()
+            try Data().write(to: olderDrop.deletingLastPathComponent().appending(path: ".dropped"))
             oldPending = try await PendingCapture(screenshot: screenshot, storage: interrupted).fileURL()
+            try alreadyRunning.withInterruptedFiles(includeLegacy: { true }) { #expect($0.isEmpty) }
+            withExtendedLifetime(interrupted) {}
         }
-        let note = oldDrop.url.deletingLastPathComponent().appending(path: "notes.txt")
+        let dropDirectory = oldDrop.url.deletingLastPathComponent()
+        let note = dropDirectory.appending(path: "notes.txt")
         try Data("keep".utf8).write(to: note)
+        let otherName = ScreenshotWriter.fileName(capturedAt: screenshot.capturedAt + 1)
+        let otherPNG = dropDirectory.appending(path: otherName)
+        try oldDrop.data.write(to: otherPNG)
+
+        // This process was already running when the drop's owner was interrupted.
+        alreadyRunning.removeFiles()
+        #expect(try Data(contentsOf: oldDrop.url) == oldDrop.data)
+        #expect(manager.fileExists(atPath: olderDrop.path))
 
         let next = CaptureStorage(rootDirectory: root)
         try next.withInterruptedFiles(includeLegacy: { true }) { files in
-            #expect(files.map(\.standardizedFileURL.path) == [oldPending.path])
+            #expect(Set(files.map(\.standardizedFileURL.path)) == [oldPending.path, otherPNG.path])
         }
         #expect(try Data(contentsOf: oldDrop.url) == oldDrop.data)
 
         next.removeFiles()
 
         #expect(!manager.fileExists(atPath: oldDrop.url.path))
+        #expect(!manager.fileExists(atPath: olderDrop.path))
         #expect(manager.fileExists(atPath: oldPending.path))
         #expect(manager.fileExists(atPath: liveDrop.path))
         #expect(manager.fileExists(atPath: note.path))
+        #expect(try Data(contentsOf: otherPNG) == oldDrop.data)
         live.removeFiles()
     }
 

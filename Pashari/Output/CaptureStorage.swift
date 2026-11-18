@@ -7,10 +7,10 @@ final class CaptureStorage {
     static let current = CaptureStorage()
 
     private static let runPrefix = "run-"
-    private static let dropMarker = ".dropped"
     private let rootDirectory: URL
     let directory: URL
     private var runLock: RunLock?
+    private var interruptedDropRuns: [URL] = []
 
     init(
         rootDirectory: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -39,6 +39,7 @@ final class CaptureStorage {
         includeLegacy: () -> Bool,
         _ handle: ([URL]) throws -> Void
     ) throws {
+        interruptedDropRuns = []
         guard FileManager.default.fileExists(atPath: rootDirectory.path) else { return }
         try excludeRootFromBackup()
         let directories = try directories(in: rootDirectory)
@@ -46,11 +47,17 @@ final class CaptureStorage {
         var locks: [RunLock] = []
         var files: [URL] = []
         for run in directories {
-            guard isCurrentFormat(run) || (recoverLegacy && UUID(uuidString: run.lastPathComponent) != nil),
-                  let lock = try? RunLock(run, wait: false),
-                  let pending = try? pendingFiles(in: run), !pending.isEmpty else { continue }
+            let currentFormat = isCurrentFormat(run)
+            guard currentFormat || (recoverLegacy && UUID(uuidString: run.lastPathComponent) != nil),
+                  let lock = try? RunLock(run, wait: false) else { continue }
+            let contents = withExtendedLifetime(lock) { try? scanFiles(in: run) }
+            guard let captures = contents else { continue }
+            if currentFormat && captures.hasDrop {
+                interruptedDropRuns.append(run)
+            }
+            guard !captures.pending.isEmpty else { continue }
             locks.append(lock)
-            files.append(contentsOf: pending)
+            files.append(contentsOf: captures.pending)
         }
         try withExtendedLifetime(locks) { try handle(files) }
     }
@@ -69,13 +76,13 @@ final class CaptureStorage {
 
     /// A drop receiver may still be using the original URL after we exit.
     func recordDrop(of file: URL) {
-        let marker = file.deletingLastPathComponent().appending(path: Self.dropMarker)
-        if !FileManager.default.createFile(atPath: marker.path, contents: nil) {
+        let marker = dropMarker(in: file.deletingLastPathComponent())
+        if !FileManager.default.createFile(atPath: marker.path, contents: Data(file.lastPathComponent.utf8)) {
             Log.thumbnail.error("Could not record a completed drop")
         }
     }
 
-    /// A normal quit also ends the lifetime of drop URLs from interrupted runs.
+    /// A normal quit also cleans up interrupted drops found at launch.
     func removeFiles() {
         if runLock != nil {
             try? FileManager.default.removeItem(at: directory)
@@ -85,19 +92,18 @@ final class CaptureStorage {
     }
 
     private func removeInterruptedDrops() {
-        guard (try? rootDirectory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true,
-              let runs = try? directories(in: rootDirectory) else { return }
+        guard !interruptedDropRuns.isEmpty,
+              (try? rootDirectory.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return }
         let manager = FileManager.default
-        for run in runs where isCurrentFormat(run) {
+        for run in interruptedDropRuns {
             guard let lock = try? RunLock(run, wait: false),
                   let captures = try? captureDirectories(in: run) else { continue }
             withExtendedLifetime(lock) {
                 for capture in captures {
-                    guard let marker = recordedDrop(in: capture) else { continue }
+                    let marker = dropMarker(in: capture)
                     do {
-                        for file in try pngFiles(in: capture) {
-                            try manager.removeItem(at: file)
-                        }
+                        guard let file = droppedFile(in: try pngFiles(in: capture), markedBy: marker) else { continue }
+                        try manager.removeItem(at: file)
                         try manager.removeItem(at: marker)
                         removeEmptyCaptureDirectory(capture)
                     } catch {
@@ -134,15 +140,28 @@ final class CaptureStorage {
         try directories(in: run).filter { UUID(uuidString: $0.lastPathComponent) != nil }
     }
 
-    private func recordedDrop(in capture: URL) -> URL? {
-        let marker = capture.appending(path: Self.dropMarker)
-        return (try? marker.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true ? marker : nil
+    private func dropMarker(in capture: URL) -> URL {
+        capture.appending(path: ".dropped")
     }
 
-    private func pendingFiles(in run: URL) throws -> [URL] {
-        try captureDirectories(in: run).filter { recordedDrop(in: $0) == nil }.flatMap {
-            (try? pngFiles(in: $0)) ?? []
+    private func droppedFile(in files: [URL], markedBy marker: URL) -> URL? {
+        guard (try? marker.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+              let name = try? String(contentsOf: marker, encoding: .utf8) else { return nil }
+        // Earlier builds left an empty marker and wrote one PNG per capture.
+        if name.isEmpty && files.count == 1 { return files.first }
+        return files.first { $0.lastPathComponent == name }
+    }
+
+    private func scanFiles(in run: URL) throws -> (pending: [URL], hasDrop: Bool) {
+        var pending: [URL] = []
+        var hasDrop = false
+        for capture in try captureDirectories(in: run) {
+            guard let files = try? pngFiles(in: capture) else { continue }
+            let dropped = droppedFile(in: files, markedBy: dropMarker(in: capture))
+            hasDrop = hasDrop || dropped != nil
+            pending.append(contentsOf: files.filter { $0 != dropped })
         }
+        return (pending, hasDrop)
     }
 
     private func pngFiles(in capture: URL) throws -> [URL] {

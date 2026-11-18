@@ -30,8 +30,8 @@ Working PNGs live in a directory for each run under
 from Time Machine. Quitting removes that run's files. If a run is interrupted,
 Pashari offers to restore its working PNGs to the thumbnail stack, discard them,
 or leave them for a later launch. A completed drag keeps its file available at
-the original URL and out of recovery. If the app is interrupted, the file stays
-available until the next normal quit that finds its run unlocked.
+the original URL and out of recovery. If the app is interrupted, a later launch
+finds the file and removes it on normal quit when its run is unlocked.
 
 Default hotkeys (change them under Settings):
 
