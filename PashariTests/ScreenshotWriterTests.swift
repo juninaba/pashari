@@ -11,7 +11,8 @@ struct ScreenshotWriterTests {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let url = ScreenshotWriter.availableURL(in: directory, capturedAt: sampleDate)
+        let name = ScreenshotWriter.fileName(capturedAt: sampleDate)
+        let url = ScreenshotWriter.availableURL(in: directory, named: name)
 
         #expect(url.lastPathComponent == "pashari-20261110-ktwu.png")
         #expect(url.deletingLastPathComponent().path == directory.path)
@@ -21,11 +22,12 @@ struct ScreenshotWriterTests {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let first = ScreenshotWriter.availableURL(in: directory, capturedAt: sampleDate)
+        let name = ScreenshotWriter.fileName(capturedAt: sampleDate)
+        let first = ScreenshotWriter.availableURL(in: directory, named: name)
         try Data().write(to: first)
-        let second = ScreenshotWriter.availableURL(in: directory, capturedAt: sampleDate)
+        let second = ScreenshotWriter.availableURL(in: directory, named: name)
         try Data().write(to: second)
-        let third = ScreenshotWriter.availableURL(in: directory, capturedAt: sampleDate)
+        let third = ScreenshotWriter.availableURL(in: directory, named: name)
 
         #expect(second.lastPathComponent == "pashari-20261110-ktwu-2.png")
         #expect(third.lastPathComponent == "pashari-20261110-ktwu-3.png")

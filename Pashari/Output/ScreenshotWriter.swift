@@ -5,15 +5,15 @@ import UniformTypeIdentifiers
 enum ScreenshotWriter {
     static func save(_ screenshot: Screenshot, in directory: URL) async throws -> URL {
         let data = try await pngData(for: screenshot)
-        return try await write(data, in: directory, capturedAt: screenshot.capturedAt)
+        return try await write(data, in: directory, named: fileName(capturedAt: screenshot.capturedAt))
     }
 
     /// A full Retina screenshot is several megabytes, and the folder may be
     /// on a slow drive or a network share. `@concurrent` writes it off the
     /// main thread, so the screen does not freeze meanwhile.
     @concurrent
-    static func write(_ data: Data, in directory: URL, capturedAt date: Date) async throws -> URL {
-        let url = availableURL(in: directory, capturedAt: date)
+    static func write(_ data: Data, in directory: URL, named fileName: String) async throws -> URL {
+        let url = availableURL(in: directory, named: fileName)
         do {
             // Off the main thread, two saves could pick the same free name
             // at once. Failing beats writing over the other file.
@@ -29,11 +29,10 @@ enum ScreenshotWriter {
         "\(baseName(capturedAt: date)).png"
     }
 
-    /// The file name for `date` inside `directory`, with "-2", "-3"...
-    /// appended when a file of that name already exists.
-    nonisolated static func availableURL(in directory: URL, capturedAt date: Date) -> URL {
-        let baseName = baseName(capturedAt: date)
-        var url = directory.appending(path: "\(baseName).png")
+    /// Appends "-2", "-3"... to the PNG name when it is already in use.
+    nonisolated static func availableURL(in directory: URL, named fileName: String) -> URL {
+        var url = directory.appending(path: fileName)
+        let baseName = url.deletingPathExtension().lastPathComponent
         var counter = 2
         while FileManager.default.fileExists(atPath: url.path) {
             url = directory.appending(path: "\(baseName)-\(counter).png")

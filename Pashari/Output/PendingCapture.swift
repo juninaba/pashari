@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import UniformTypeIdentifiers
 
 /// As soon as it is created it starts encoding the PNG in the background and
 /// writes it to a working file. Once that succeeds, only metadata stays in
@@ -13,34 +14,67 @@ final class PendingCapture {
     let pointSize: CGSize
     let capturedAt: Date
     private let scale: CGFloat
-    private let url: URL
     private var original: Screenshot?
 
-    /// Returns no image or PNG data, so a completed task retains no large buffers.
-    private let preparation: Task<Void, Error>
+    private enum Backing {
+        case preparing(Task<URL, Error>)
+        case ready(URL)
+    }
+    private var backing: Backing
 
     /// The file, once it is ready. Drag and drop needs the answer right away
     /// and cannot wait, so it reads this instead of awaiting `fileURL()`.
-    private(set) var readyFileURL: URL?
+    var readyFileURL: URL? {
+        guard case .ready(let url) = backing else { return nil }
+        return url
+    }
 
-    init(screenshot: Screenshot, directory: URL = CaptureStorage.current.directory) {
+    init(screenshot: Screenshot, storage: CaptureStorage) {
         pointSize = screenshot.pointSize
         capturedAt = screenshot.capturedAt
         scale = screenshot.scale
         original = screenshot
         // Each capture gets a folder of its own, so the file inside can
         // carry the plain name it will have wherever it is dropped.
-        let url = directory
-            .appending(path: UUID().uuidString)
-            .appending(path: ScreenshotWriter.fileName(capturedAt: screenshot.capturedAt))
-        self.url = url
-        preparation = Task {
+        backing = .preparing(Task {
             let data = try await ScreenshotWriter.pngData(for: screenshot)
+            let url = try storage.makeCaptureDirectory()
+                .appending(path: ScreenshotWriter.fileName(capturedAt: screenshot.capturedAt))
             try await Self.write(data, to: url)
-        }
+            return url
+        })
         Task {
             _ = try? await fileURL()
         }
+    }
+
+    init(restoring file: URL, storage: CaptureStorage) throws {
+        guard try Self.hasPNGEnd(at: file),
+              let source = CGImageSourceCreateWithURL(file as CFURL, nil),
+              CGImageSourceGetType(source) == UTType.png.identifier as CFString,
+              CGImageSourceGetStatusAtIndex(source, 0) == .statusComplete,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+              let height = properties[kCGImagePropertyPixelHeight] as? CGFloat else {
+            throw CaptureError.cannotReadFile(file)
+        }
+        let dpi = properties[kCGImagePropertyDPIWidth] as? CGFloat ?? 72
+        // PNG stores pixels per metre, so Retina density may round to just under 144 dpi.
+        scale = max(1, (dpi / 72).rounded())
+        pointSize = CGSize(width: width / scale, height: height / scale)
+        capturedAt = try file.resourceValues(forKeys: [.creationDateKey]).creationDate ?? Date()
+        backing = .ready(try storage.restore(file))
+    }
+
+    private static func hasPNGEnd(at url: URL) throws -> Bool {
+        // ImageIO can decode a partially written PNG and still report success.
+        let endChunk = Data([0, 0, 0, 0, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82])
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        let size = try file.seekToEnd()
+        guard size >= endChunk.count else { return false }
+        try file.seek(toOffset: size - UInt64(endChunk.count))
+        return try file.read(upToCount: endChunk.count) == endChunk
     }
 
     func file() async throws -> File {
@@ -50,15 +84,20 @@ final class PendingCapture {
 
     /// Keeps the original if writing fails: it may be the only copy left.
     func fileURL() async throws -> URL {
-        try await preparation.value
-        original = nil
-        readyFileURL = url
-        return url
+        switch backing {
+        case .ready(let url):
+            return url
+        case .preparing(let task):
+            let url = try await task.value
+            original = nil
+            backing = .ready(url)
+            return url
+        }
     }
 
     func screenshot() async throws -> Screenshot {
         if let original { return original }
-        let image = try await Self.readImage(from: url)
+        let image = try await Self.readImage(from: fileURL())
         return Screenshot(image: image, scale: scale, capturedAt: capturedAt)
     }
 
@@ -70,7 +109,7 @@ final class PendingCapture {
             if let original {
                 return try await Self.resize(original.image, maxPixelSize: maxPixelSize)
             }
-            return try await Self.readImage(from: url, maxPixelSize: maxPixelSize)
+            return try await Self.readImage(from: fileURL(), maxPixelSize: maxPixelSize)
         }
         let screenshot: Screenshot
         if let original {
@@ -80,7 +119,7 @@ final class PendingCapture {
             // full size, a tall scroll capture would take hundreds of MB.
             let factor = min(CGFloat(maxPixelSize) / (max(part.width, part.height) * scale), 1)
             let longestSide = max(pointSize.width, pointSize.height) * scale * factor
-            let image = try await Self.readImage(from: url, maxPixelSize: Int(longestSide.rounded(.up)))
+            let image = try await Self.readImage(from: fileURL(), maxPixelSize: Int(longestSide.rounded(.up)))
             screenshot = Screenshot(image: image, scale: CGFloat(image.width) / pointSize.width, capturedAt: capturedAt)
         }
         let image = screenshot.cropped(to: part)?.image ?? screenshot.image
@@ -144,10 +183,6 @@ final class PendingCapture {
 
     @concurrent
     private static func write(_ data: Data, to url: URL) async throws {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
         try data.write(to: url)
     }
 }

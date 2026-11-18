@@ -26,8 +26,11 @@ save, or close visible thumbnails to reveal older captures. Quitting asks
 for confirmation while screenshots remain in thumbnails or editors.
 
 Working PNGs live in a directory for each run under
-`~/Library/Application Support/Pashari/PendingCaptures`. Quitting removes
-only that run's files. Files left by an interrupted run are kept.
+`~/Library/Application Support/Pashari/PendingCaptures`, which is excluded
+from Time Machine. Quitting removes that run's files. If a run is interrupted,
+Pashari offers to restore its working PNGs to the thumbnail stack, discard them,
+or leave them for a later launch. A completed drag keeps its file available at
+the original URL and out of recovery.
 
 Default hotkeys (change them under Settings):
 
