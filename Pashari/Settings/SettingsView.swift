@@ -168,10 +168,8 @@ private struct SettingsRowStyle: LabeledContentStyle {
 
 /// A card of the prints' paper, with a soft shadow on the desk.
 private struct SettingsCard: View {
-    private static let cornerRadius: CGFloat = 12
-
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: ThumbnailStyle.cornerRadius, style: .continuous)
         shape
             .fill(Color(cgColor: ThumbnailStyle.paper))
             .overlay(shape.strokeBorder(Color.black.opacity(0.12), lineWidth: 0.5))
