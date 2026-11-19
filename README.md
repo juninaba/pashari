@@ -67,8 +67,8 @@ Settings appears.
 
 Download `Pashari-<version>.dmg` from the
 [latest release](https://github.com/juninaba/pashari/releases/latest),
-open it, and drag Pashari to Applications. The `.zip` there holds the same
-app.
+open it, and drag Pashari to Applications. Or download the `.zip` there,
+unzip it, and move Pashari to Applications.
 
 Releases are not signed with an Apple Developer ID or notarized by Apple,
 so macOS blocks each new version the first time you open it:
@@ -78,7 +78,7 @@ so macOS blocks each new version the first time you open it:
 2. Open System Settings > Privacy & Security, scroll down to Security, and
    click Open Anyway next to the message about Pashari. The button stays
    for about an hour after you tried to open Pashari.
-3. Confirm that you want to open it, and enter your login password.
+3. Confirm that you want to open it. macOS may ask for your login password.
 
 From then on Pashari opens like any other app.
 
