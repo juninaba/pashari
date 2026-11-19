@@ -15,8 +15,10 @@ final class ThumbnailStackView: NSView {
     /// How long after the pointer has left the cards pile up again.
     static let pileDelay: TimeInterval = 0.4
     /// Room around the cards for their shadows, their badge and the corners
-    /// of turned cards.
-    static let outset: CGFloat = 28
+    /// of turned cards. Also for cards still gliding down when the window
+    /// shrinks after one fades away: about a seventh of a move of up to
+    /// 216 points is left by then.
+    static let outset: CGFloat = 40
 
     /// Newest first. Cards that are fading away are no longer included.
     private(set) var cards: [ThumbnailCardView] = []
