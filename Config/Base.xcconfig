@@ -3,8 +3,8 @@
 // from Config/Local.xcconfig (which is git-ignored).
 
 APP_BUNDLE_IDENTIFIER = io.github.juninaba.pashari
-MARKETING_VERSION = 0.1.0
-CURRENT_PROJECT_VERSION = 1
+MARKETING_VERSION = 0.2.0
+CURRENT_PROJECT_VERSION = 2
 
 // Signing. The default is ad-hoc ("Sign to Run Locally"), so a fresh clone
 // builds without an Apple ID. No team ID is ever committed.
