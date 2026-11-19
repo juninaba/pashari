@@ -495,33 +495,87 @@ struct ThumbnailControllerTests {
         #expect(controller.cards.contains { $0 === cards[2] })
     }
 
-    @Test func releasingAButtonWhereAnotherCardCoversItDoesNothing() throws {
+    @Test func aClickOnAnOlderCardInThePileSpreadsItInsteadOfActing() throws {
         let controller = ThumbnailController()
         defer {
             while let card = controller.cards.first { close(card) }
         }
-        // A wider card first, then a narrower one in front of it: the older
-        // card's Close sticks out past the newer card's edge.
-        controller.show(Screenshot(image: TestImages.make(width: 368, height: 240), scale: 2, capturedAt: Date()))
-        controller.show(makeScreenshot())
+        // A wider card first, then a narrower one in front of it: a sliver of
+        // the older card's Close sticks out, its icon hidden.
+        controller.show(Screenshot(image: TestImages.make(width: 480, height: 300), scale: 2, capturedAt: Date()))
+        controller.show(Screenshot(image: TestImages.make(width: 448, height: 280), scale: 2, capturedAt: Date()))
         let cards = controller.cards
         let front = cards[0]
         let behind = cards[1]
         let stack = try #require(front.superview as? ThumbnailStackView)
         let panel = try #require(stack.window)
         stack.pointerLocation = { CGPoint(x: -10_000, y: -10_000) }
-        // Upright, so that only which card lies on top matters.
         cards.forEach { $0.paper.removeAllAnimations() }
         CALayer.withoutAnimation { behind.paper.transform = CATransform3DIdentity }
         CATransaction.flush()
         let behindClose = try #require(
             behind.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }.last
         )
-        let closeFrame = behindClose.convert(behindClose.bounds, to: stack)
-        try #require(closeFrame.minX < front.frame.maxX && front.frame.maxX < closeFrame.maxX)
-        let pressed = stack.convert(CGPoint(x: (front.frame.maxX + closeFrame.maxX) / 2, y: closeFrame.midY), to: nil)
-        let released = stack.convert(CGPoint(x: (closeFrame.minX + front.frame.maxX) / 2, y: closeFrame.midY), to: nil)
-        #expect(stack.hitTest(try #require(stack.superview).convert(pressed, from: nil)) === behindClose)
+        let sliver = CGPoint(x: front.frame.maxX + 4, y: front.frame.minY + 20)
+        try #require(behindClose.convert(behindClose.bounds, to: stack).contains(sliver))
+        let click = stack.convert(sliver, to: nil)
+
+        NSApp.postEvent(try #require(NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: panel.convertPoint(toScreen: click),
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 0
+        )), atStart: false)
+        panel.sendEvent(try #require(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: click,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: panel.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        )))
+
+        #expect(controller.cards.contains { $0 === behind })
+        #expect(stack.isSpread)
+        // Nothing followed the mouse, so its mouse-up is still waiting.
+        _ = NSApp.nextEvent(matching: .leftMouseUp, until: Date(), inMode: .default, dequeue: true)
+    }
+
+    @Test func releasingAButtonWhereAnotherCardCoversItDoesNothing() throws {
+        let controller = ThumbnailController()
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        controller.show(makeScreenshot())
+        controller.show(makeScreenshot())
+        let cards = controller.cards
+        let newer = cards[0]
+        let older = cards[1]
+        let stack = try #require(newer.superview as? ThumbnailStackView)
+        let panel = try #require(stack.window)
+        let newest = panel.convertToScreen(newer.frame)
+        stack.pointerLocation = { CGPoint(x: newest.midX, y: newest.midY) }
+        stack.setSpread(true)
+        cards.forEach { $0.paper.removeAllAnimations() }
+        // The older card still gliding down, its buttons half under the
+        // newer card, which lies on top.
+        CALayer.withoutAnimation { older.paper.transform = CATransform3DMakeTranslation(0, -30, 0) }
+        CATransaction.flush()
+        let olderClose = try #require(
+            older.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }.last
+        )
+        let closeX = olderClose.convert(olderClose.bounds, to: stack).midX
+        let pressed = stack.convert(CGPoint(x: closeX, y: newer.frame.maxY + 9), to: nil)
+        let released = stack.convert(CGPoint(x: closeX, y: newer.frame.maxY - 9), to: nil)
+        #expect(stack.hitTest(try #require(stack.superview).convert(pressed, from: nil)) === olderClose)
 
         // Pressed where it shows, let go over the newer card.
         NSApp.postEvent(try #require(NSEvent.mouseEvent(

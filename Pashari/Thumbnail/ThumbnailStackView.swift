@@ -44,6 +44,12 @@ final class ThumbnailStackView: NSView {
         let point = convert(point, from: superview)
         for case let card as ThumbnailCardView in subviews.reversed() {
             if let laidOut = card.laidOutPoint(forShownPoint: point) {
+                // Piled up, only the newest card is for use. An older one's
+                // button can stick out from under it with its icon hidden;
+                // a click there spreads the pile out instead.
+                if !isSpread, card !== cards.first {
+                    return self
+                }
                 return card.hitTest(laidOut)
             }
         }
