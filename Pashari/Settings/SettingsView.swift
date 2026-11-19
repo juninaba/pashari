@@ -6,6 +6,10 @@ import SwiftUI
 /// settings on its dotted desk, on cards of the same light paper as the
 /// prints, which stays light in Dark Mode too.
 struct SettingsView: View {
+    /// Deep enough to read on the paper (5.1:1). The system red reaches only
+    /// 3.3:1 there.
+    private static let errorRed = Color(red: 196 / 255, green: 52 / 255, blue: 40 / 255)
+
     @Bindable var model: SettingsModel
 
     var body: some View {
@@ -56,7 +60,7 @@ struct SettingsView: View {
                     if let launchAtLoginError = model.launchAtLoginError {
                         Text(launchAtLoginError)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Self.errorRed)
                     }
                 }
                 .padding(.vertical, SettingsRowStyle.verticalPadding)
