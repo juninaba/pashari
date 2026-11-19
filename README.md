@@ -135,29 +135,6 @@ cp Config/Local.xcconfig.example Config/Local.xcconfig
 
 and put your team ID in `Config/Local.xcconfig`. That file is git-ignored.
 
-## Releasing
-
-Releases need no Apple Developer Program membership: they are signed ad
-hoc, whatever `Config/Local.xcconfig` says.
-
-1. Set `MARKETING_VERSION` in `Config/Base.xcconfig` to the new version,
-   and merge that into `main`.
-2. Tag the merged commit with the same version, and push the tag:
-
-   ```sh
-   git fetch origin
-   git tag v0.1.0 origin/main
-   git push origin v0.1.0
-   ```
-
-The Release workflow then builds the app, packs it as
-`Pashari-<version>.dmg` and `Pashari-<version>.zip`, and publishes a GitHub
-release with both. If the tag does not match `MARKETING_VERSION`, it stops
-without publishing.
-
-To make the same files locally, run `Scripts/package-release.sh`. They land
-in `build/release`.
-
 ## License
 
 [MIT](LICENSE)
