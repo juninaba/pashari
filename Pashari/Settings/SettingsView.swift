@@ -69,6 +69,8 @@ struct SettingsView: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                             .foregroundStyle(.secondary)
+                            // A form let the name be selected and copied.
+                            .textSelection(.enabled)
                             .help(model.saveDirectory.path)
                         Button("Choose…") {
                             chooseSaveDirectory()
