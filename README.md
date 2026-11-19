@@ -67,6 +67,8 @@ Pashari's bar again.
 
 ## Installing
 
+Pashari needs macOS 14 or later.
+
 Download `Pashari-<version>.dmg` from the
 [latest release](https://github.com/juninaba/pashari/releases/latest),
 open it, and drag Pashari to Applications. Or download the `.zip` there,
@@ -84,6 +86,9 @@ so macOS blocks each new version the first time you open it:
 
 From then on Pashari opens like any other app.
 
+The first capture asks for the Screen Recording permission. Grant it in
+System Settings, then quit and reopen Pashari.
+
 Without a Developer ID, each release has a signature of its own, so macOS
 treats an update as a different app and does not carry the Screen
 Recording permission over. After updating, select Pashari under System
@@ -91,14 +96,10 @@ Settings > Privacy & Security > Screen & System Audio Recording, remove it
 with the − button, and take a capture. macOS then asks for the permission
 as it did the first time: turn Pashari on, then quit and reopen it.
 
-## Requirements
-
-- macOS 14 or later
-- Xcode 26 or later
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
-
 ## Building
 
+Building needs Xcode 26 or later and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 The Xcode project is not checked in. It is generated from `project.yml`:
 
 ```sh
@@ -112,9 +113,6 @@ Then build and run the `Pashari` scheme. From the command line:
 xcodebuild -scheme Pashari build
 xcodebuild -scheme Pashari test
 ```
-
-The first capture asks for the Screen Recording permission. Grant it in
-System Settings, then quit and reopen Pashari.
 
 ### Signing
 
