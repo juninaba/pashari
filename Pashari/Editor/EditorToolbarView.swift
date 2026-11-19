@@ -126,10 +126,19 @@ struct EditorToolbarView: View {
 
 /// Lights up under the pointer, and dims while pressed or unavailable.
 private struct ToolButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ToolButtonBody(configuration: configuration)
+    }
+}
+
+/// A view of its own, because only a view can keep state such as whether
+/// the pointer is over it.
+private struct ToolButtonBody: View {
+    let configuration: ButtonStyleConfiguration
     @Environment(\.isEnabled) private var isEnabled
     @State private var isHovered = false
 
-    func makeBody(configuration: Configuration) -> some View {
+    var body: some View {
         configuration.label
             .background(Circle().fill(Color.primary.opacity(isHovered && isEnabled ? 0.08 : 0)))
             .opacity(isEnabled ? (configuration.isPressed ? 0.6 : 1) : 0.35)
