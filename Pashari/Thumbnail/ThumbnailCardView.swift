@@ -72,6 +72,12 @@ final class ThumbnailCardView: NSView {
         isLeaving ? nil : super.hitTest(point)
     }
 
+    /// Where the photo shows now, in the superview. While it glides to a
+    /// new place, that is not where the card is laid out.
+    var shownFrame: CGRect {
+        (paper.presentation() ?? paper).frame.offsetBy(dx: frame.minX, dy: frame.minY)
+    }
+
     /// Where `point` (in the superview), on the card as it shows on screen
     /// now, lies on the card as it is laid out; nil where the card does not
     /// show. The two differ while the photo glides to a new place.

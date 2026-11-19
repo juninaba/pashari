@@ -15,10 +15,8 @@ final class ThumbnailStackView: NSView {
     /// How long after the pointer has left the cards pile up again.
     static let pileDelay: TimeInterval = 0.4
     /// Room around the cards for their shadows, their badge and the corners
-    /// of turned cards. Also for cards still gliding down when the window
-    /// shrinks after one fades away: about a seventh of a move of up to
-    /// 216 points is left by then.
-    static let outset: CGFloat = 40
+    /// of turned cards.
+    static let outset: CGFloat = 28
 
     /// Newest first. Cards that are fading away are no longer included.
     private(set) var cards: [ThumbnailCardView] = []
@@ -122,14 +120,17 @@ final class ThumbnailStackView: NSView {
     }
 
     /// Makes the window big enough for the cards both piled up and spread
-    /// out, so that it stays the same while they move. While cards fade
-    /// away, it only grows: shrinking would cut them off.
+    /// out, so that it stays the same while they move, and for where they
+    /// still show while gliding to new places. While cards fade away, it
+    /// only grows: shrinking would cut them off.
     private func fitWindow() {
         guard let window, !cards.isEmpty else { return }
         let sizes = cards.map(\.frame.size)
+        let shown = cards.map { $0.shownFrame.offsetBy(dx: origin.x, dy: origin.y) }
         let covered = (
             ThumbnailLayout.stackFrames(for: sizes, in: area)
                 + ThumbnailLayout.pilePlacements(for: sizes, in: area).map(\.frame)
+                + shown
         ).reduce(CGRect.null) { $0.union($1) }
         var frame = CGRect(
             x: origin.x,

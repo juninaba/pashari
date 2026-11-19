@@ -601,8 +601,33 @@ struct ThumbnailControllerTests {
             pressure: 1
         )))
 
-        #expect(controller.cards.contains { $0 === behind })
-        #expect(controller.cards.contains { $0 === front })
+        #expect(controller.cards.contains { $0 === older })
+        #expect(controller.cards.contains { $0 === newer })
+    }
+
+    @Test func theWindowMakesRoomForCardsStillGlidingToTheirPlaces() throws {
+        let controller = ThumbnailController()
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        controller.show(makeScreenshot())
+        controller.show(makeScreenshot())
+        let cards = controller.cards
+        let stack = try #require(cards[0].superview as? ThumbnailStackView)
+        let panel = try #require(stack.window)
+        let newest = panel.convertToScreen(cards[0].frame)
+        stack.pointerLocation = { CGPoint(x: newest.midX, y: newest.midY) }
+        stack.setSpread(true)
+        cards.forEach { $0.paper.removeAllAnimations() }
+        // The top card shows well above its place, as if still on its way
+        // down after a card below it closed.
+        CALayer.withoutAnimation { cards[1].paper.transform = CATransform3DMakeTranslation(0, 60, 0) }
+        CATransaction.flush()
+
+        // Lays the cards out again, the window with them.
+        NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
+
+        #expect(panel.frame.contains(panel.convertToScreen(cards[1].shownFrame)))
     }
 
     @Test func theSecondClickOfADoubleClickDoesNotReachTheNextCard() throws {
