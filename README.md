@@ -14,7 +14,7 @@ A menu bar screenshot app for macOS, written in Swift.
   picture of everything that scrolled past
 - A floating thumbnail after each capture, like an instant photo: copy,
   save, annotate, drag it into another app, or close it. Captures pile up
-  in the corner; rest the pointer on the pile to spread them out
+  in the lower-left corner; rest the pointer on the pile to spread them out
 - An annotation editor: arrow, rectangle, ellipse, line, pen, multi-line
   text, numbered badges, blur, crop, with undo and redo
   - Select a mark to move or delete it
@@ -28,6 +28,10 @@ Up to five thumbnails lie on the pile, as many as fit on screen when
 spread out. Older captures wait until space is available: copy, save, or
 close thumbnails to reveal them. Quitting asks for confirmation while
 screenshots remain in thumbnails or editors.
+
+<img src="docs/images/thumbnail-pile.png" alt="Three captures pile up in the lower-left corner. Hovering spreads them into a column, with the Annotate button highlighted on the newest capture." width="696">
+
+*Illustration of the thumbnail pile before and after hovering.*
 
 Working PNGs live in a directory for each run under
 `~/Library/Application Support/Pashari/PendingCaptures`, which is excluded
