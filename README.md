@@ -1,3 +1,5 @@
+<img src="Pashari/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-256.png" alt="Pashari app icon" width="72" height="72">
+
 # Pashari
 
 A menu bar screenshot app for macOS, written in Swift.
