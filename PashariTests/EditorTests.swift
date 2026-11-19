@@ -425,6 +425,18 @@ struct EditorWindowTests {
         #expect(editor.window.contentMinSize.width >= toolbar.fittingSize.width - 0.5)
     }
 
+    @Test func thePrintKeepsItsPaperBorderAroundACroppedPicture() throws {
+        let model = makeModel()
+        let print = EditorPrintView(canvas: AnnotationCanvasView(model: model))
+        let border = EditorPrintView.border
+        #expect(print.frame.size == CGSize(width: 100 + border * 2, height: 60 + border * 2))
+
+        model.crop(to: CGRect(x: 10, y: 10, width: 50, height: 30))
+
+        #expect(print.canvas.frame == CGRect(x: border, y: border, width: 50, height: 30))
+        #expect(print.frame.size == CGSize(width: 50 + border * 2, height: 30 + border * 2))
+    }
+
     @Test func aVeryTallPictureIsFittedToTheWidthAndShownFromItsTop() throws {
         let screenshot = Screenshot(
             image: TestImages.make(width: 400, height: 8000),
@@ -619,8 +631,8 @@ struct QuitTests {
             thumbnails.show(makeScreenshot())
         }
         defer {
-            while let panel = thumbnails.panels.first {
-                (panel.contentView as? ThumbnailCardView)?.onClose?()
+            while let card = thumbnails.cards.first {
+                card.onClose?()
             }
         }
         let editor = editorOpen ? AnnotationEditorWindowController(screenshot: makeScreenshot()) : nil
@@ -636,8 +648,8 @@ struct QuitTests {
         #expect(questions == 2)
 
         if !editorOpen {
-            while let panel = thumbnails.panels.first {
-                (panel.contentView as? ThumbnailCardView)?.onClose?()
+            while let card = thumbnails.cards.first {
+                card.onClose?()
             }
             #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)
             #expect(questions == 2)

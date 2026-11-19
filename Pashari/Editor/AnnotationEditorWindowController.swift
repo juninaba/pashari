@@ -10,6 +10,7 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     let model: EditorModel
     let window: Window
     let canvas: AnnotationCanvasView
+    private let printView: EditorPrintView
     private let scrollView = NSScrollView()
     private lazy var toolbar = NSHostingView(
         rootView: EditorToolbarView(
@@ -40,6 +41,7 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     init(model: EditorModel) {
         self.model = model
         canvas = AnnotationCanvasView(model: model)
+        printView = EditorPrintView(canvas: canvas)
         let screen = NSScreen.underMouse ?? NSScreen.main
         window = Window(
             contentRect: CGRect(
@@ -56,6 +58,12 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.title = String(localized: "Annotate Screenshot")
+        // The title bar takes the toolbar's colour, so that the two read as
+        // one. The title still names the window in the Window menu and in
+        // Mission Control.
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = EditorStyle.header
         window.isReleasedWhenClosed = false
         window.contentMinSize = CGSize(
             width: Self.minimumContentWidth,
@@ -98,14 +106,14 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         // view's size is the real one.
         window.layoutIfNeeded()
         let available = scrollView.contentSize
-        let padded = canvas.frame.insetBy(dx: -Self.canvasPadding, dy: -Self.canvasPadding)
+        let padded = printView.frame.insetBy(dx: -Self.canvasPadding, dy: -Self.canvasPadding)
         let fittingWidth = min(available.width / padded.width, 1)
         let fittingWhole = min(fittingWidth, available.height / padded.height)
         guard fittingWhole < 1 else { return }
 
         if fittingWhole < fittingWidth / 2 {
             scrollView.magnification = fittingWidth
-            canvas.scroll(.zero)
+            printView.scroll(.zero)
         } else {
             scrollView.magnify(toFit: padded)
         }
@@ -115,17 +123,22 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
 
     private func makeContentView() -> NSView {
         scrollView.contentView = CenteringClipView()
-        scrollView.documentView = canvas
+        scrollView.documentView = printView
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
-        scrollView.backgroundColor = .underPageBackgroundColor
+        // The desk behind it shows through.
+        scrollView.drawsBackground = false
         scrollView.allowsMagnification = true
         scrollView.minMagnification = 0.1
         scrollView.maxMagnification = 8
 
+        let desk = EditorDeskView()
+        let separator = NSBox()
+        separator.boxType = .separator
+
         let container = NSView()
-        for view in [toolbar, scrollView] {
+        for view in [desk, scrollView, toolbar, separator] {
             view.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(view)
         }
@@ -135,19 +148,29 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
             toolbar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             toolbar.heightAnchor.constraint(equalToConstant: EditorToolbarView.height),
 
+            separator.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            separator.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            separator.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+
             scrollView.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+
+            desk.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            desk.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            desk.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            desk.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
         ])
         return container
     }
 
     static func initialContentSize(for imageSize: CGSize, screenSize: CGSize) -> CGSize {
         let maximum = CGSize(width: screenSize.width * 0.85, height: screenSize.height * 0.85)
+        let margin = (canvasPadding + EditorPrintView.border) * 2
         let wanted = CGSize(
-            width: imageSize.width + canvasPadding * 2,
-            height: imageSize.height + canvasPadding * 2 + EditorToolbarView.height
+            width: imageSize.width + margin,
+            height: imageSize.height + margin + EditorToolbarView.height
         )
         let minimumHeight = minimumCanvasHeight + EditorToolbarView.height
         return CGSize(

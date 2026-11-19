@@ -12,8 +12,9 @@ A menu bar screenshot app for macOS, written in Swift.
   global hotkeys
 - Scroll capture: pick an area, scroll its content, and get one tall
   picture of everything that scrolled past
-- A floating thumbnail after each capture: copy, save, annotate, drag it
-  into another app, or close it
+- A floating thumbnail after each capture, like an instant photo: copy,
+  save, annotate, drag it into another app, or close it. Captures pile up
+  in the corner; rest the pointer on the pile to spread them out
 - An annotation editor: arrow, rectangle, ellipse, line, pen, multi-line
   text, numbered badges, blur, crop, with undo and redo
   - Select a mark to move or delete it
@@ -23,9 +24,10 @@ A menu bar screenshot app for macOS, written in Swift.
 - Names files like `pashari-20260728-bnan.png`: the date, then the time of
   day as four letters, so sorting by name keeps them in the order taken
 
-Thumbnails that do not fit on screen wait until space is available. Copy,
-save, or close visible thumbnails to reveal older captures. Quitting asks
-for confirmation while screenshots remain in thumbnails or editors.
+Up to five thumbnails lie on the pile, as many as fit on screen when
+spread out. Older captures wait until space is available: copy, save, or
+close thumbnails to reveal them. Quitting asks for confirmation while
+screenshots remain in thumbnails or editors.
 
 Working PNGs live in a directory for each run under
 `~/Library/Application Support/Pashari/PendingCaptures`, which is excluded

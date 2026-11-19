@@ -1,5 +1,7 @@
 import AppKit
 
+/// The part of a card that the picture can be dragged out of. It draws
+/// nothing itself: the card shows the picture (see `ThumbnailCardView`).
 final class ThumbnailPreviewView: NSView, NSDraggingSource {
     /// Asked when a drag starts. Returns nil while the file is not ready yet,
     /// in which case the drag does not begin.
@@ -8,15 +10,18 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
     /// Called after a drop that the receiving app accepted.
     var onDrop: (() -> Void)?
 
+    /// Called when a drag ends, dropped or not.
+    var onDragEnd: (() -> Void)?
+
+    /// The picture, for the image that follows the pointer while dragging.
     private var image: CGImage?
     private var mouseDownEvent: NSEvent?
 
+    /// True from the start of a drag until it ends, dropped or not.
+    private(set) var isDragging = false
+
     override init(frame: CGRect) {
         super.init(frame: frame)
-
-        wantsLayer = true
-        layer?.contentsGravity = .resizeAspect
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.25).cgColor
     }
 
     @available(*, unavailable)
@@ -26,7 +31,6 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
 
     func show(_ image: CGImage) {
         self.image = image
-        layer?.contents = image
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -60,6 +64,7 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
             in: bounds
         )
         item.setDraggingFrame(pictureFrame, contents: NSImage(cgImage: image, size: pictureFrame.size))
+        isDragging = true
         beginDraggingSession(with: [item], event: mouseDownEvent, source: self)
     }
 
@@ -77,9 +82,15 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         endedAt screenPoint: NSPoint,
         operation: NSDragOperation
     ) {
+        dragDidEnd(operation: operation)
+    }
+
+    func dragDidEnd(operation: NSDragOperation) {
+        isDragging = false
         if !operation.isEmpty {
             onDrop?()
         }
+        onDragEnd?()
     }
 
     // MARK: - Geometry
