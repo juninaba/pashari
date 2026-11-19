@@ -158,6 +158,12 @@ final class ThumbnailCardView: NSView {
             CALayer.withoutAnimation {
                 badge.bounds = CGRect(x: 0, y: 0, width: width, height: height)
                 badge.cornerRadius = height / 2
+                badge.shadowPath = CGPath(
+                    roundedRect: badge.bounds,
+                    cornerWidth: height / 2,
+                    cornerHeight: height / 2,
+                    transform: nil
+                )
                 badge.position = CGPoint(x: bounds.maxX - 4, y: bounds.maxY - 4)
                 badgeLabel.string = text
                 badgeLabel.frame = CGRect(x: 0, y: (height - lineHeight) / 2, width: width, height: lineHeight)
