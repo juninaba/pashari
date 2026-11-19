@@ -108,31 +108,31 @@ enum ThumbnailLayout {
     }
 
     /// How each card behind the newest one lies on the pile: how far its
-    /// top shows above the newest card's top, how far it is moved sideways,
-    /// and how far it is turned.
-    private static let pileSlots: [(lift: CGFloat, shift: CGFloat, degrees: CGFloat)] = [
-        (lift: 10, shift: -2, degrees: -4),
-        (lift: 18, shift: 6, degrees: 5),
-        (lift: 24, shift: 1, degrees: -2),
-        (lift: 28, shift: 4, degrees: 3),
+    /// top rises above every card in front of it, how far it is moved
+    /// sideways, and how far it is turned.
+    private static let pileSlots: [(rise: CGFloat, shift: CGFloat, degrees: CGFloat)] = [
+        (rise: 10, shift: -2, degrees: -4),
+        (rise: 8, shift: 6, degrees: 5),
+        (rise: 6, shift: 1, degrees: -2),
+        (rise: 4, shift: 4, degrees: 3),
     ]
 
     /// The cards piled up in the bottom-left corner of `area`, like photos
     /// dropped on a desk. The newest (the first size) lies upright where the
-    /// first card of the stack would be. Each older one lies behind it,
-    /// turned a little, with its top showing above the newest card's top,
-    /// a little more for each card further back. None reaches below the
-    /// newest card.
+    /// first card of the stack would be. Each older one lies behind the
+    /// others, turned a little, with its top showing above all of them,
+    /// however tall they are. None reaches below the newest card.
     static func pilePlacements(for cardSizes: [CGSize], in area: CGRect) -> [Placement] {
         guard let front = cardSizes.first else { return [] }
         let corner = CGPoint(x: area.minX + margin, y: area.minY + margin)
-        let frontTop = corner.y + front.height
+        var pileTop = corner.y + front.height
         return cardSizes.enumerated().map { index, size in
             guard index > 0 else {
                 return Placement(frame: CGRect(origin: corner, size: size), angle: 0)
             }
             let slot = pileSlots[(index - 1) % pileSlots.count]
-            let bottom = max(corner.y, frontTop + slot.lift - size.height)
+            let bottom = max(corner.y, pileTop + slot.rise - size.height)
+            pileTop = bottom + size.height
             return Placement(
                 frame: CGRect(x: corner.x + slot.shift, y: bottom, width: size.width, height: size.height),
                 angle: slot.degrees * .pi / 180

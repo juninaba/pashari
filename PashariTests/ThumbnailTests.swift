@@ -109,7 +109,7 @@ struct ThumbnailLayoutTests {
         ))
     }
 
-    @Test func olderCardsShowTheirTopsAboveTheNewestOne() {
+    @Test func eachOlderCardShowsItsTopAboveAllCardsInFrontOfIt() {
         let area = CGRect(x: 0, y: 0, width: 1000, height: 800)
         let newest = CGSize(width: 256, height: 194)
         let shorter = CGSize(width: 200, height: 100)
@@ -117,20 +117,33 @@ struct ThumbnailLayoutTests {
 
         let pile = ThumbnailLayout.pilePlacements(for: [newest, shorter, taller, newest, newest], in: area)
 
-        let newestTop = 16 + newest.height
-        #expect(pile[1].frame.maxY == newestTop + 10)
+        #expect(pile[1].frame.maxY == 16 + newest.height + 10)
         // A tall card stands on the newest card's baseline instead of
-        // reaching below it, and shows even more of itself.
+        // reaching below it.
         #expect(pile[2].frame.minY == 16)
-        #expect(pile[2].frame.maxY > newestTop + 18)
         #expect(pile.allSatisfy { $0.frame.minY >= 16 })
-        // Each further back shows a little more, turned the other way.
-        #expect(pile[3].frame.maxY > pile[1].frame.maxY)
-        #expect(pile[4].frame.maxY > pile[3].frame.maxY)
+        // Even behind the tall card, the next ones still show.
+        for index in 1..<pile.count {
+            let inFront = pile[..<index].map(\.frame.maxY).max() ?? 0
+            #expect(pile[index].frame.maxY > inFront)
+        }
+        // Turned the other way from the card in front.
         for (front, back) in zip(pile.dropFirst(), pile.dropFirst(2)) {
             #expect(front.angle * back.angle < 0)
         }
         #expect(pile.dropFirst().allSatisfy { abs($0.angle) <= 6 * .pi / 180 })
+    }
+
+    @Test func aSmallCardBehindALargeOneStillShows() {
+        let small = CGSize(width: 164, height: 92)
+        let large = CGSize(width: 256, height: 204)
+
+        let pile = ThumbnailLayout.pilePlacements(
+            for: [small, large, small],
+            in: CGRect(x: 0, y: 0, width: 1000, height: 800)
+        )
+
+        #expect(pile[2].frame.maxY > pile[1].frame.maxY)
     }
 
     @Test func aspectFitCentresThePicture() {
