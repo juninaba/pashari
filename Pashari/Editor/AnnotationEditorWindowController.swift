@@ -4,11 +4,11 @@ import SwiftUI
 final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     /// Called once when the window closes. The argument is the edited
     /// screenshot when it still needs a home (the window was simply closed),
-    /// or nil when it was already copied or saved.
+    /// or nil when it was copied, saved or discarded.
     var onClose: ((Screenshot?) -> Void)?
 
     let model: EditorModel
-    let window: NSWindow
+    let window: Window
     let canvas: AnnotationCanvasView
     private let scrollView = NSScrollView()
     private lazy var toolbar = NSHostingView(
@@ -24,7 +24,7 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
             onSave: { [weak self] in self?.saveToDisk() }
         )
     )
-    private var isDelivered = false
+    private var thumbnailResult: Screenshot?
 
     /// A starting point for the narrowest the window may be. The real limit
     /// is whatever the toolbar needs, which depends on the language and is
@@ -33,15 +33,19 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     private static let minimumCanvasHeight: CGFloat = 280
     private static let canvasPadding: CGFloat = 24
 
-    init(screenshot: Screenshot) {
-        model = EditorModel(screenshot: screenshot)
+    convenience init(screenshot: Screenshot) {
+        self.init(model: EditorModel(screenshot: screenshot))
+    }
+
+    init(model: EditorModel) {
+        self.model = model
         canvas = AnnotationCanvasView(model: model)
         let screen = NSScreen.underMouse ?? NSScreen.main
-        window = NSWindow(
+        window = Window(
             contentRect: CGRect(
                 origin: .zero,
                 size: Self.initialContentSize(
-                    for: screenshot.pointSize,
+                    for: model.screenshot.pointSize,
                     screenSize: screen?.visibleFrame.size ?? CGSize(width: 1280, height: 800)
                 )
             ),
@@ -184,7 +188,7 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     ) {
         // Encoding a large screenshot takes a moment. A second click on Save
         // (or a held-down ⌘S) in that time would save it twice.
-        guard !model.isExporting else { return }
+        guard !model.isExporting, window.attachedSheet == nil else { return }
         canvas.finishEditing()
         let screenshot: Screenshot
         do {
@@ -198,8 +202,7 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         Task {
             do {
                 try await output(screenshot)
-                isDelivered = true
-                window.close()
+                window.closeNow()
             } catch {
                 model.isExporting = false
                 ErrorAlert.show(error, title: errorTitle)
@@ -207,37 +210,55 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    // MARK: - NSWindowDelegate
+    // MARK: - Closing
 
-    /// Asked when the user closes the window. While Copy or Save is still
-    /// running the answer is no: the window closes itself once that is done,
-    /// and closing it earlier would also hand the picture back as a
-    /// thumbnail.
-    func windowShouldClose(_ sender: NSWindow) -> Bool {
-        !model.isExporting
+    private func requestClose() {
+        guard !model.isExporting, window.attachedSheet == nil else { return }
+        canvas.finishEditing()
+        do {
+            thumbnailResult = try model.flattened()
+            window.closeNow()
+        } catch {
+            showCloseError(error)
+        }
+    }
+
+    private func showCloseError(_ error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "The screenshot could not be returned to the thumbnail")
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: String(localized: "Keep Editing"))
+        alert.addButton(withTitle: String(localized: "Discard Screenshot")).hasDestructiveAction = true
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertSecondButtonReturn {
+                self?.window.closeNow()
+            }
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
-        canvas.finishEditing()
-        onClose?(isDelivered ? nil : resultForThumbnail())
+        window.delegate = nil
+        let result = thumbnailResult
+        thumbnailResult = nil
+        let notify = onClose
         onClose = nil
+        notify?(result)
     }
 
-    /// The edited screenshot, or the original if the changes cannot be
-    /// applied. Then the user is told, since the thumbnail would otherwise
-    /// look like the finished work at a glance.
-    private func resultForThumbnail() -> Screenshot {
-        do {
-            return try model.flattened()
-        } catch {
-            // After the window has finished closing, not in the middle of it.
-            DispatchQueue.main.async {
-                ErrorAlert.show(
-                    error,
-                    title: String(localized: "The thumbnail holds the screenshot without your changes")
-                )
+    final class Window: NSWindow {
+        // The close button and ⌘W reach close() through performClose(_:).
+        // Direct calls to close() bypass the windowShouldClose delegate hook.
+        override func close() {
+            if let editor = delegate as? AnnotationEditorWindowController {
+                editor.requestClose()
+            } else {
+                super.close()
             }
-            return model.screenshot
+        }
+
+        fileprivate func closeNow() {
+            super.close()
         }
     }
 }

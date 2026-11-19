@@ -9,6 +9,7 @@ import Observation
 @Observable
 final class EditorModel {
     let screenshot: Screenshot
+    private let renderBlur: @MainActor (Screenshot) -> CGImage?
 
     var tool: EditorTool = .arrow {
         didSet {
@@ -40,15 +41,15 @@ final class EditorModel {
     @ObservationIgnored var onToolChange: (() -> Void)?
     @ObservationIgnored var onStyleChange: (() -> Void)?
 
-    /// See `blurredImage(for:)`. `lazy` means it is worked out on first use.
-    /// A lazy property runs its initial value only once, even when that
-    /// gives nil, so a blur that fails is not tried again at every redraw.
-    @ObservationIgnored private lazy var cachedBlurredImage = AnnotationRenderer.blurredImage(
-        of: screenshot
-    )
+    @ObservationIgnored private var hasAttemptedBlur = false
+    @ObservationIgnored private var cachedBlurredImage: CGImage?
 
-    init(screenshot: Screenshot) {
+    init(
+        screenshot: Screenshot,
+        renderBlur: @escaping @MainActor (Screenshot) -> CGImage? = AnnotationRenderer.blurredImage(of:)
+    ) {
         self.screenshot = screenshot
+        self.renderBlur = renderBlur
     }
 
     // MARK: - Document
@@ -156,12 +157,15 @@ final class EditorModel {
 
     // MARK: - Rendering
 
-    /// The blurred copy of the screenshot that blur marks show, or nil when
-    /// `annotations` holds no blur mark. Blurring a whole Retina screenshot
-    /// takes a moment, and as much memory again as the screenshot, so it is
-    /// done only once a blur mark needs it, and then kept.
-    func blurredImage(for annotations: [Annotation]) -> CGImage? {
-        annotations.contains(where: \.isBlur) ? cachedBlurredImage : nil
+    /// Generates the blurred copy when a blur mark first needs it. The
+    /// canvas remembers a failure across redraws. Flattening can retry it.
+    func blurredImage(for annotations: [Annotation], retryOnFailure: Bool = false) -> CGImage? {
+        guard annotations.contains(where: \.isBlur) else { return nil }
+        if !hasAttemptedBlur || (retryOnFailure && cachedBlurredImage == nil) {
+            hasAttemptedBlur = true
+            cachedBlurredImage = renderBlur(screenshot)
+        }
+        return cachedBlurredImage
     }
 
     /// The screenshot with everything baked in, ready to copy or save.
@@ -171,7 +175,7 @@ final class EditorModel {
         return try AnnotationRenderer.flatten(
             screenshot,
             with: document,
-            blurredImage: blurredImage(for: document.annotations)
+            blurredImage: blurredImage(for: document.annotations, retryOnFailure: true)
         )
     }
 }

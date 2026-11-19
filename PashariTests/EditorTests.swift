@@ -459,13 +459,17 @@ struct EditorWindowTests {
 
     @Test func theWindowStaysOpenUntilCopyOrSaveIsDone() {
         let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
-        editor.onClose = nil
+        editor.window.orderFrontRegardless()
+        defer { editor.window.orderOut(nil) }
 
         editor.model.isExporting = true
-        #expect(!editor.windowShouldClose(editor.window))
+        editor.window.performClose(nil)
+        editor.window.close()
+        #expect(editor.window.isVisible)
 
         editor.model.isExporting = false
-        #expect(editor.windowShouldClose(editor.window))
+        editor.window.performClose(nil)
+        #expect(!editor.window.isVisible)
     }
 
     @Test func closingWithoutCopyOrSaveHandsTheResultBack() {
@@ -481,6 +485,69 @@ struct EditorWindowTests {
         let result = results.first ?? nil
         #expect(result != nil)
         #expect(result?.image !== screenshot.image)
+
+        editor.window.makeKeyAndOrderFront(nil)
+        defer { editor.window.orderOut(nil) }
+        #expect(editor.window.isVisible)
+
+        editor.window.close()
+
+        #expect(!editor.window.isVisible)
+        #expect(results.count == 1)
+    }
+
+    @Test(arguments: [false, true])
+    func aFailedCloseKeepsTheEditsForRetryOrDiscard(discard: Bool) throws {
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 200, height: 120, patchRect: CGRect(x: 30, y: 30, width: 6, height: 6)),
+            scale: 2,
+            capturedAt: Date()
+        )
+        var blurUnavailable = true
+        let model = EditorModel(screenshot: screenshot) { screenshot in
+            blurUnavailable ? nil : AnnotationRenderer.blurredImage(of: screenshot)
+        }
+        let editor = AnnotationEditorWindowController(model: model)
+        var results: [Screenshot?] = []
+        editor.onClose = { results.append($0) }
+        model.crop(to: CGRect(x: 10, y: 10, width: 40, height: 30))
+        model.add(.blur(CGRect(x: 12, y: 12, width: 15, height: 15)))
+        let document = model.document
+        #expect(model.blurredImage(for: document.annotations) == nil)
+        editor.window.orderFrontRegardless()
+        defer { editor.window.orderOut(nil) }
+
+        if discard {
+            editor.window.close()
+        } else {
+            editor.window.performClose(nil)
+        }
+
+        #expect(editor.window.isVisible)
+        #expect(results.isEmpty)
+        #expect(model.document == document)
+        let sheet = try #require(editor.window.attachedSheet)
+        editor.window.endSheet(sheet, returnCode: discard ? .alertSecondButtonReturn : .alertFirstButtonReturn)
+
+        if discard {
+            let result = try #require(results.first)
+            #expect(result == nil)
+        } else {
+            #expect(editor.window.isVisible)
+            #expect(results.isEmpty)
+            blurUnavailable = false
+            #expect(model.blurredImage(for: document.annotations) == nil)
+            editor.window.performClose(nil)
+
+            let result = try #require(results.first ?? nil)
+            #expect(result.image.width == 80)
+            #expect(result.image.height == 60)
+            #expect(TestImages.pixel(of: result.image, x: 12, y: 12) != .red)
+        }
+        #expect(!editor.window.isVisible)
+        editor.window.close()
+        #expect(editor.window.attachedSheet == nil)
+        #expect(results.count == 1)
     }
 }
 
@@ -507,6 +574,34 @@ struct QuitTests {
         #expect(questions == 2)
 
         editor.window.close()
+    }
+
+    @Test func cancellingQuitShowsOnlyOpenEditors() throws {
+        let controller = AnnotationEditorController()
+        let delegate = AppDelegate(editorController: controller)
+        delegate.confirmQuit = { false }
+
+        let openEditor = AnnotationEditorWindowController(screenshot: makeScreenshot())
+        controller.keep(openEditor)
+        let model = EditorModel(screenshot: makeScreenshot()) { _ in nil }
+        model.add(.blur(CGRect(x: 5, y: 5, width: 20, height: 20)))
+        let discardedEditor = AnnotationEditorWindowController(model: model)
+        controller.keep(discardedEditor)
+        discardedEditor.window.orderFrontRegardless()
+        defer {
+            openEditor.window.orderOut(nil)
+            discardedEditor.window.orderOut(nil)
+        }
+
+        discardedEditor.window.close()
+        let sheet = try #require(discardedEditor.window.attachedSheet)
+        discardedEditor.window.endSheet(sheet, returnCode: .alertSecondButtonReturn)
+        #expect(!discardedEditor.window.isVisible)
+
+        #expect(delegate.applicationShouldTerminate(NSApp) == .terminateCancel)
+
+        #expect(openEditor.window.isVisible)
+        #expect(!discardedEditor.window.isVisible)
     }
 
     @Test(arguments: [false, true])
