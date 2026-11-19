@@ -47,6 +47,10 @@ macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
 System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that
 Pashari gets them.
 
+Settings opens from the menu bar icon. If the icon is hidden, for example
+behind the notch, open Pashari again from Spotlight or the Finder and
+Settings appears.
+
 ### Scroll capture
 
 Select the part of a window that scrolls, then scroll it as usual.
@@ -62,10 +66,6 @@ Pashari's bar again.
 - If you scroll faster than Pashari can follow, it says so. Scroll back a
   little, and carry on more slowly.
 - The picture stops growing at 30,000 pixels (less for very wide areas).
-
-Settings opens from the menu bar icon. If the icon is hidden, for example
-behind the notch, open Pashari again from Spotlight or the Finder and
-Settings appears.
 
 ## Installing
 
