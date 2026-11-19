@@ -4,7 +4,7 @@ A menu bar screenshot app for macOS, written in Swift.
 
 > **Status:** early development.
 
-## Features (v0.1, in progress)
+## Features
 
 - Capture an area, a window or the full screen, from the menu bar or with
   global hotkeys
@@ -29,9 +29,7 @@ Working PNGs live in a directory for each run under
 `~/Library/Application Support/Pashari/PendingCaptures`, which is excluded
 from Time Machine. Quitting removes that run's files. If a run is interrupted,
 Pashari offers to restore its working PNGs to the thumbnail stack, discard them,
-or leave them for a later launch. A completed drag keeps its file available at
-the original URL and out of recovery. If the app is interrupted, a later launch
-finds the file and removes it on normal quit when its run is unlocked.
+or leave them for a later launch.
 
 Default hotkeys (change them under Settings):
 
@@ -47,9 +45,14 @@ macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
 System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that
 Pashari gets them.
 
+Settings opens from the menu bar icon. If the icon is hidden, for example
+behind the notch, open Pashari again from Spotlight or the Finder and
+Settings appears.
+
 ### Scroll capture
 
-Select the part of a window that scrolls, then scroll it as usual.
+Select the part of a window that scrolls, wait until the bar next to it
+prompts you to scroll, then scroll it as usual.
 Pashari records the area and adds whatever scrolls into view to the bottom
 of the picture. Click Done or press Return to finish; Escape cancels. After
 a click in another app, Return and Escape go to that app until you click
@@ -63,11 +66,9 @@ Pashari's bar again.
   little, and carry on more slowly.
 - The picture stops growing at 30,000 pixels (less for very wide areas).
 
-Settings opens from the menu bar icon. If the icon is hidden, for example
-behind the notch, open Pashari again from Spotlight or the Finder and
-Settings appears.
-
 ## Installing
+
+Pashari needs macOS 14 or later.
 
 Download `Pashari-<version>.dmg` from the
 [latest release](https://github.com/juninaba/pashari/releases/latest),
@@ -86,6 +87,9 @@ so macOS blocks each new version the first time you open it:
 
 From then on Pashari opens like any other app.
 
+The first capture asks for the Screen Recording permission. Grant it in
+System Settings, then quit and reopen Pashari.
+
 Without a Developer ID, each release has a signature of its own, so macOS
 treats an update as a different app and does not carry the Screen
 Recording permission over. After updating, select Pashari under System
@@ -93,14 +97,10 @@ Settings > Privacy & Security > Screen & System Audio Recording, remove it
 with the − button, and take a capture. macOS then asks for the permission
 as it did the first time: turn Pashari on, then quit and reopen it.
 
-## Requirements
-
-- macOS 14 or later
-- Xcode 26 or later
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
-
 ## Building
 
+Building needs Xcode 26 or later and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 The Xcode project is not checked in. It is generated from `project.yml`:
 
 ```sh
@@ -114,9 +114,6 @@ Then build and run the `Pashari` scheme. From the command line:
 xcodebuild -scheme Pashari build
 xcodebuild -scheme Pashari test
 ```
-
-The first capture asks for the Screen Recording permission. Grant it in
-System Settings, then quit and reopen Pashari.
 
 ### Signing
 
