@@ -9,8 +9,9 @@ enum ThumbnailStyle {
     static let pictureBackground = CGColor(srgbRed: 236 / 255, green: 231 / 255, blue: 220 / 255, alpha: 1)
     /// The button icons, the dark blue of the app icon.
     static let ink = NSColor(srgbRed: 47 / 255, green: 76 / 255, blue: 143 / 255, alpha: 1)
-    /// The badge with the number of captures, the coral of the app icon.
-    static let badge = CGColor(srgbRed: 242 / 255, green: 107 / 255, blue: 91 / 255, alpha: 1)
+    /// The badge with the number of captures: the coral of the app icon,
+    /// deep enough for its white number to read (4.5:1).
+    static let badge = CGColor(srgbRed: 207 / 255, green: 70 / 255, blue: 55 / 255, alpha: 1)
 
     static let cornerRadius: CGFloat = 12
     static let pictureCornerRadius: CGFloat = 5

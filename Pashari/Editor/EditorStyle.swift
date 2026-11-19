@@ -5,9 +5,9 @@ import SwiftUI
 /// desk as a print on light paper; the desk and the toolbar follow the
 /// system's Light or Dark appearance.
 enum EditorStyle {
-    /// The selected tool and the Save button: the blue of the app icon, a
-    /// little deeper so that white on it stays easy to read.
-    static let accent = Color(red: 30 / 255, green: 127 / 255, blue: 219 / 255)
+    /// The selected tool and the Save button: the blue of the app icon,
+    /// deep enough for white text on it to read (4.5:1).
+    static let accent = Color(red: 28 / 255, green: 118 / 255, blue: 207 / 255)
 
     /// Behind the title bar and the toolbar.
     static let header = dynamic(
