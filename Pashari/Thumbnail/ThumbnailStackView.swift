@@ -56,6 +56,11 @@ final class ThumbnailStackView: NSView {
             card.removeFromSuperview()
         }
         let arriving = newCards.filter { $0.superview !== self }
+        for card in arriving {
+            // The pointer may have left during the drag without a word: no
+            // exit comes while the mouse button is down.
+            card.previewView.onDragEnd = { [weak self] in self?.updateHoverTracking() }
+        }
         // Newer cards lie on top of older ones.
         for (index, card) in newCards.enumerated() where card.superview !== self {
             if let newer = newCards[..<index].last(where: { $0.superview === self }) {

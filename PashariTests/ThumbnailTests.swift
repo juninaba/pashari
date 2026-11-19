@@ -605,6 +605,34 @@ struct ThumbnailControllerTests {
         _ = NSApp.nextEvent(matching: .leftMouseUp, until: Date(), inMode: .default, dequeue: true)
     }
 
+    @Test func aDragThatEndsWithoutADropPilesTheCardsUpOnceThePointerIsAway() async throws {
+        let controller = ThumbnailController()
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        controller.show(makeScreenshot())
+        controller.show(makeScreenshot())
+        let cards = controller.cards
+        let stack = try #require(cards[0].superview as? ThumbnailStackView)
+        let panel = try #require(stack.window)
+        let newest = panel.convertToScreen(cards[0].frame)
+        stack.pointerLocation = { CGPoint(x: newest.midX, y: newest.midY) }
+        stack.setSpread(true)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(stack.isSpread)
+
+        // The pointer left during a drag, which sends no exit, and the drag
+        // ended without a drop.
+        stack.pointerLocation = { CGPoint(x: -10_000, y: -10_000) }
+        cards[0].previewView.dragDidEnd(operation: [])
+        for _ in 0..<100 where stack.isSpread {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(!stack.isSpread)
+        #expect(controller.cards.count == 2)
+    }
+
     @Test func eachCardShowsItsButtonIcons() throws {
         let card = ThumbnailCardView(imageSize: CGSize(width: 400, height: 300))
         let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }

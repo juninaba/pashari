@@ -10,8 +10,11 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
     /// Called after a drop that the receiving app accepted.
     var onDrop: (() -> Void)?
 
+    /// Called when a drag ends, dropped or not.
+    var onDragEnd: (() -> Void)?
+
     /// The picture, for the image that follows the pointer while dragging.
-    private(set) var image: CGImage?
+    private var image: CGImage?
     private var mouseDownEvent: NSEvent?
 
     /// True from the start of a drag until it ends, dropped or not.
@@ -79,10 +82,15 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         endedAt screenPoint: NSPoint,
         operation: NSDragOperation
     ) {
+        dragDidEnd(operation: operation)
+    }
+
+    func dragDidEnd(operation: NSDragOperation) {
         isDragging = false
         if !operation.isEmpty {
             onDrop?()
         }
+        onDragEnd?()
     }
 
     // MARK: - Geometry
