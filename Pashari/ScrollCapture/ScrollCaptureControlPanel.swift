@@ -96,7 +96,7 @@ final class ScrollCaptureControlPanel: NSPanel {
 
     private func makeContent() -> NSView {
         let background = NSVisualEffectView()
-        // The same frosted look as the thumbnails. `.active` keeps it from
+        // The frosted look of the system's floating panels. `.active` keeps it from
         // turning grey because Pashari is not the active app.
         background.material = .hudWindow
         background.blendingMode = .behindWindow
