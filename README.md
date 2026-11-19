@@ -4,7 +4,7 @@ A menu bar screenshot app for macOS, written in Swift.
 
 > **Status:** early development.
 
-## Features (v0.1, in progress)
+## Features
 
 - Capture an area, a window or the full screen, from the menu bar or with
   global hotkeys
