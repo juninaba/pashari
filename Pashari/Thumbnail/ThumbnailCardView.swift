@@ -42,6 +42,7 @@ final class ThumbnailCardView: NSView {
             setUpPaper(previewFrame: previewFrame)
             setUpBadge()
         }
+        updateColors()
         addSubview(previewView)
         addSubview(toolbar)
         makeButtons()
@@ -97,11 +98,9 @@ final class ThumbnailCardView: NSView {
 
     private func setUpPaper(previewFrame: CGRect) {
         paper.frame = bounds
-        paper.backgroundColor = ThumbnailStyle.paper
         paper.cornerRadius = ThumbnailStyle.cornerRadius
         paper.cornerCurve = .continuous
         paper.borderWidth = 0.5
-        paper.borderColor = CGColor(gray: 0, alpha: 0.12)
         paper.shadowColor = CGColor(gray: 0, alpha: 1)
         paper.shadowOpacity = 0.32
         paper.shadowRadius = 9
@@ -116,19 +115,34 @@ final class ThumbnailCardView: NSView {
         )
 
         picture.frame = previewFrame
-        picture.backgroundColor = ThumbnailStyle.pictureBackground
         picture.cornerRadius = ThumbnailStyle.pictureCornerRadius
         picture.cornerCurve = .continuous
         picture.masksToBounds = true
         picture.contentsGravity = .resizeAspect
         picture.borderWidth = 0.5
-        picture.borderColor = CGColor(gray: 0, alpha: 0.14)
         paper.addSublayer(picture)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColors()
+    }
+
+    /// Paints the photo for the card's appearance, light or dark.
+    private func updateColors() {
+        let colors = ThumbnailStyle.colors(for: effectiveAppearance)
+        CALayer.withoutAnimation {
+            paper.backgroundColor = colors.paper
+            paper.borderColor = colors.edge
+            picture.backgroundColor = colors.pictureBackground
+            picture.borderColor = colors.pictureEdge
+            // A ring of paper sets the badge off from the photo under it.
+            badge.borderColor = colors.paper
+        }
     }
 
     private func setUpBadge() {
         badge.backgroundColor = ThumbnailStyle.badge
-        badge.borderColor = ThumbnailStyle.paper
         badge.borderWidth = 2
         badge.shadowColor = CGColor(gray: 0, alpha: 1)
         badge.shadowOpacity = 0.25
@@ -335,11 +349,13 @@ final class ThumbnailButton: NSButton {
     let look = CALayer()
     private let highlight = CALayer()
     private let icon = CALayer()
+    private let symbolName: String
     private let handler: () -> Void
     private var isHovered = false
     private var isPressed = false
 
     init(symbolName: String, label: String, action handler: @escaping () -> Void) {
+        self.symbolName = symbolName
         self.handler = handler
         super.init(frame: .zero)
 
@@ -356,14 +372,10 @@ final class ThumbnailButton: NSButton {
             highlight.cornerCurve = .continuous
             highlight.opacity = 0
             look.addSublayer(highlight)
-            if let image = Self.icon(named: symbolName) {
-                icon.contents = image.image
-                icon.bounds = CGRect(origin: .zero, size: image.size)
-            }
             icon.contentsGravity = .resizeAspect
             look.addSublayer(icon)
         }
-        updateLook(animated: false)
+        updateColors()
         addTrackingArea(NSTrackingArea(
             rect: .zero,
             options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
@@ -448,6 +460,26 @@ final class ThumbnailButton: NSButton {
         updateLook(animated: !pressed)
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColors()
+    }
+
+    /// The ink of the icon and its highlight, for the card's appearance.
+    private var ink: NSColor {
+        ThumbnailStyle.colors(for: effectiveAppearance).ink
+    }
+
+    private func updateColors() {
+        if let image = Self.icon(named: symbolName, in: ink) {
+            CALayer.withoutAnimation {
+                icon.contents = image.image
+                icon.bounds = CGRect(origin: .zero, size: image.size)
+            }
+        }
+        updateLook(animated: false)
+    }
+
     private func updateLook(animated: Bool) {
         CATransaction.begin()
         if animated {
@@ -457,7 +489,7 @@ final class ThumbnailButton: NSButton {
         }
         let isLit = isEnabled && (isHovered || isPressed)
         highlight.opacity = isLit ? 1 : 0
-        highlight.backgroundColor = ThumbnailStyle.ink.withAlphaComponent(isPressed ? 0.2 : 0.1).cgColor
+        highlight.backgroundColor = ink.withAlphaComponent(isPressed ? 0.2 : 0.1).cgColor
         icon.opacity = isEnabled ? 1 : 0.35
         CATransaction.commit()
     }
@@ -468,14 +500,20 @@ final class ThumbnailButton: NSButton {
 
     // MARK: - Icons
 
-    private static var icons: [String: (image: CGImage, size: CGSize)] = [:]
+    private struct IconKey: Hashable {
+        let symbolName: String
+        let ink: NSColor
+    }
 
-    /// The symbol in the ink colour, drawn at twice its size in points:
-    /// sharp on Retina displays, and merely sampled down on others.
-    private static func icon(named symbolName: String) -> (image: CGImage, size: CGSize)? {
-        if let icon = icons[symbolName] { return icon }
+    private static var icons: [IconKey: (image: CGImage, size: CGSize)] = [:]
+
+    /// The symbol in `ink`, drawn at twice its size in points: sharp on
+    /// Retina displays, and merely sampled down on others.
+    private static func icon(named symbolName: String, in ink: NSColor) -> (image: CGImage, size: CGSize)? {
+        let key = IconKey(symbolName: symbolName, ink: ink)
+        if let icon = icons[key] { return icon }
         let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-            .applying(NSImage.SymbolConfiguration(paletteColors: [ThumbnailStyle.ink]))
+            .applying(NSImage.SymbolConfiguration(paletteColors: [ink]))
         guard
             let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
                 .withSymbolConfiguration(configuration)
@@ -501,7 +539,7 @@ final class ThumbnailButton: NSButton {
         symbol.draw(in: CGRect(origin: .zero, size: size))
         NSGraphicsContext.restoreGraphicsState()
         guard let image = context.makeImage() else { return nil }
-        icons[symbolName] = (image, size)
+        icons[key] = (image, size)
         return (image, size)
     }
 }

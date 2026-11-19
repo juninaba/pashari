@@ -1,9 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// The editor's colours. Like the thumbnails, the picture lies on the
-/// desk as a print on light paper; the desk and the toolbar are light or
-/// dark as the app is (see `AppAppearance`).
+/// The editor's colours. The picture lies on the desk as a print on the
+/// thumbnails' cream paper, which stays light in Dark Mode here; the desk
+/// and the toolbar are light or dark as the app is (see `AppAppearance`).
 enum EditorStyle {
     /// The selected tool and the Save button: the blue of the app icon,
     /// deep enough for white text on it to read (4.5:1).
