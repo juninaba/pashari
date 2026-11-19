@@ -109,7 +109,7 @@ struct ThumbnailControllerTests {
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         var errors = 0
         let controller = ThumbnailController(
-            storageDirectory: root.appending(path: "working"),
+            storage: CaptureStorage(rootDirectory: root.appending(path: "working")),
             saveDirectory: { destination },
             showError: { _, _ in errors += 1 }
         )
@@ -146,7 +146,7 @@ struct ThumbnailControllerTests {
         try Data().write(to: destination)
         var errors = 0
         let controller = ThumbnailController(
-            storageDirectory: root.appending(path: "working"),
+            storage: CaptureStorage(rootDirectory: root.appending(path: "working")),
             saveDirectory: { destination },
             showError: { _, _ in errors += 1 }
         )
@@ -250,6 +250,39 @@ struct ThumbnailControllerTests {
         #expect(panel.frame == expected.first)
     }
 
+    @Test func aDroppedThumbnailKeepsItsFullSizePNGUntilANormalQuit() async throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? manager.removeItem(at: root) }
+        let legacy = root.appending(path: UUID().uuidString).appending(path: UUID().uuidString)
+        try manager.createDirectory(at: legacy, withIntermediateDirectories: true)
+        let screenshot = makeScreenshot()
+        let file = legacy.appending(path: ScreenshotWriter.fileName(capturedAt: screenshot.capturedAt))
+        let png = try await ScreenshotWriter.pngData(for: screenshot)
+        try png.write(to: file)
+
+        let dragURL: URL
+        do {
+            let storage = CaptureStorage(rootDirectory: root)
+            let controller = ThumbnailController(storage: storage)
+            try storage.withInterruptedFiles(includeLegacy: { true }) { try controller.restore($0) }
+            let card = try #require(controller.panels.first?.contentView as? ThumbnailCardView)
+            defer { card.onClose?() }
+            dragURL = try #require(card.previewView.fileURL?())
+
+            #expect(dragURL.lastPathComponent == file.lastPathComponent)
+            card.previewView.onDrop?()
+            #expect(!controller.hasPendingCaptures)
+        }
+
+        // The app was interrupted after handing off the URL.
+        let next = CaptureStorage(rootDirectory: root)
+        try next.withInterruptedFiles(includeLegacy: { true }) { #expect($0.isEmpty) }
+        #expect(try Data(contentsOf: dragURL) == png)
+        next.removeFiles()
+        #expect(!manager.fileExists(atPath: dragURL.deletingLastPathComponent().deletingLastPathComponent().path))
+    }
+
     @Test func thumbnailsAreLaidOutAgainWhenDisplaysChange() async throws {
         let controller = ThumbnailController()
         controller.show(makeScreenshot())
@@ -281,11 +314,12 @@ struct PendingCaptureTests {
     @Test func restoresTheFullImageAndMetadataFromItsPNG() async throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = CaptureStorage(rootDirectory: directory)
         let original = Screenshot(
             image: TestImages.make(width: 60, height: 40, patchRect: CGRect(x: 0, y: 0, width: 10, height: 10)),
             scale: 2, capturedAt: Date(timeIntervalSince1970: 1_800_000_000)
         )
-        let capture = PendingCapture(screenshot: original, directory: directory)
+        let capture = PendingCapture(screenshot: original, storage: storage)
         _ = try await capture.fileURL()
 
         let restored = try await capture.screenshot()
@@ -303,10 +337,11 @@ struct PendingCaptureTests {
     @Test func releasesTheOriginalPixelsAfterWritingEvenWhileAPreviewIsHeld() async throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = CaptureStorage(rootDirectory: directory)
         let released = DispatchSemaphore(value: 0)
         let capture = PendingCapture(
             screenshot: Screenshot(image: TestImages.tracked(released: released), scale: 2, capturedAt: Date()),
-            directory: directory
+            storage: storage
         )
         let thumbnail = try await capture.thumbnail(maxPixelSize: 20)
         _ = try await capture.fileURL()
@@ -330,13 +365,14 @@ struct PendingCaptureTests {
     @Test func aThumbnailOfAPartShowsOnlyThatPart() async throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = CaptureStorage(rootDirectory: directory)
         // Red at the top, blue below.
         let original = Screenshot(
             image: TestImages.make(width: 20, height: 200, patchRect: CGRect(x: 0, y: 0, width: 20, height: 20)),
             scale: 2,
             capturedAt: Date()
         )
-        let capture = PendingCapture(screenshot: original, directory: directory)
+        let capture = PendingCapture(screenshot: original, storage: storage)
         let top = CGRect(x: 0, y: 0, width: 10, height: 10)
 
         let fromMemory = try await capture.thumbnail(of: top, maxPixelSize: 20)
@@ -353,13 +389,14 @@ struct PendingCaptureTests {
     @Test func aSmallerThumbnailOfAPartReadFromTheFileShowsOnlyThatPart() async throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = CaptureStorage(rootDirectory: directory)
         // Red at the top, blue below.
         let original = Screenshot(
             image: TestImages.make(width: 20, height: 200, patchRect: CGRect(x: 0, y: 0, width: 20, height: 20)),
             scale: 2,
             capturedAt: Date()
         )
-        let capture = PendingCapture(screenshot: original, directory: directory)
+        let capture = PendingCapture(screenshot: original, storage: storage)
         _ = try await capture.fileURL()
 
         // Half as many pixels as the part has: the file is read at half its
@@ -376,7 +413,7 @@ struct PendingCaptureTests {
         try Data().write(to: path)
         defer { try? FileManager.default.removeItem(at: path) }
         let original = makeScreenshot()
-        let capture = PendingCapture(screenshot: original, directory: path)
+        let capture = PendingCapture(screenshot: original, storage: CaptureStorage(rootDirectory: path))
         await #expect(throws: (any Error).self) { try await capture.fileURL() }
 
         #expect(capture.readyFileURL == nil)
@@ -389,13 +426,14 @@ struct PendingCaptureTests {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "pashari-tests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = CaptureStorage(rootDirectory: directory)
         let screenshot = Screenshot(
             image: TestImages.make(width: 60, height: 40),
             scale: 2,
             capturedAt: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        let capture = PendingCapture(screenshot: screenshot, directory: directory)
+        let capture = PendingCapture(screenshot: screenshot, storage: storage)
         let file = try await capture.file()
 
         #expect(file.url.path.hasPrefix(directory.path))
@@ -409,14 +447,15 @@ struct PendingCaptureTests {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "pashari-tests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = CaptureStorage(rootDirectory: directory)
         let screenshot = Screenshot(
             image: TestImages.make(width: 10, height: 10),
             scale: 1,
             capturedAt: Date(timeIntervalSince1970: 1_800_000_000)
         )
 
-        let first = try await PendingCapture(screenshot: screenshot, directory: directory).file()
-        let second = try await PendingCapture(screenshot: screenshot, directory: directory).file()
+        let first = try await PendingCapture(screenshot: screenshot, storage: storage).file()
+        let second = try await PendingCapture(screenshot: screenshot, storage: storage).file()
 
         #expect(first.url != second.url)
         #expect(first.url.lastPathComponent == second.url.lastPathComponent)
@@ -426,12 +465,13 @@ struct PendingCaptureTests {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "pashari-tests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = CaptureStorage(rootDirectory: directory)
         let screenshot = Screenshot(
             image: TestImages.make(width: 10, height: 10),
             scale: 1,
             capturedAt: Date()
         )
-        let capture = PendingCapture(screenshot: screenshot, directory: directory)
+        let capture = PendingCapture(screenshot: screenshot, storage: storage)
         let file = try await capture.file()
 
         await capture.removeFile()
@@ -443,6 +483,7 @@ struct PendingCaptureTests {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "pashari-tests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
+        let storage = CaptureStorage(rootDirectory: directory)
         let screenshot = Screenshot(
             image: TestImages.make(width: 10, height: 10),
             scale: 1,
@@ -450,9 +491,9 @@ struct PendingCaptureTests {
         )
 
         // Closed straight away, while the PNG may still be encoding.
-        await PendingCapture(screenshot: screenshot, directory: directory).removeFile()
+        await PendingCapture(screenshot: screenshot, storage: storage).removeFile()
 
-        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: storage.directory.path).isEmpty)
     }
 }
 

@@ -231,6 +231,16 @@
         }
       }
     },
+    "Later" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "後で"
+          }
+        }
+      }
+    },
     "Launch at login" : {
       "localizations" : {
         "ja" : {
@@ -301,6 +311,16 @@
         }
       }
     },
+    "Pashari found working screenshots from earlier runs. Restore them to the thumbnail stack, or discard them to delete the working files." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以前の実行で残ったスクリーンショットがあります。復元するとサムネイルに戻ります。破棄すると作業ファイルが削除されます。"
+          }
+        }
+      }
+    },
     "Pashari needs permission to record the screen" : {
       "localizations" : {
         "ja" : {
@@ -351,6 +371,16 @@
         }
       }
     },
+    "Recover unsaved screenshots?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未保存のスクリーンショットを復元しますか？"
+          }
+        }
+      }
+    },
     "Rectangle" : {
       "localizations" : {
         "ja" : {
@@ -377,6 +407,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "やり直す"
+          }
+        }
+      }
+    },
+    "Remove Unsaved Screenshots" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未保存の画像を破棄"
+          }
+        }
+      }
+    },
+    "Restore" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "復元"
           }
         }
       }
@@ -597,6 +647,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取り消す"
+          }
+        }
+      }
+    },
+    "Unsaved screenshots could not be processed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未保存のスクリーンショットを処理できませんでした"
           }
         }
       }

@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settingsWindowController: settingsWindowController
         )
         Hotkeys.register(with: captureCoordinator)
+        recoverInterruptedCaptures()
     }
 
     /// Pashari answers by showing Settings. Otherwise the menu bar icon would
@@ -61,7 +62,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        CaptureStorage.current.removeFiles()
+        thumbnailController.storage.removeFiles()
+    }
+
+    private func recoverInterruptedCaptures() {
+        let storage = thumbnailController.storage
+        do {
+            try storage.withInterruptedFiles(includeLegacy: canRecoverLegacyCaptures) { files in
+                guard !files.isEmpty else { return }
+                switch askToRecoverCaptures() {
+                case .alertFirstButtonReturn:
+                    try thumbnailController.restore(files)
+                case .alertThirdButtonReturn:
+                    for file in files { try storage.discard(file) }
+                default:
+                    break
+                }
+            }
+        } catch {
+            ErrorAlert.show(error, title: String(localized: "Unsaved screenshots could not be processed"))
+        }
+    }
+
+    private func canRecoverLegacyCaptures() -> Bool {
+        // Older builds did not lock their run directories.
+        let bundle = Bundle.main
+        let executableName = bundle.executableURL?.lastPathComponent ?? "Pashari"
+        return !NSWorkspace.shared.runningApplications.contains { app in
+            guard app.processIdentifier != ProcessInfo.processInfo.processIdentifier, !app.isTerminated else {
+                return false
+            }
+            return app.executableURL?.lastPathComponent == executableName
+                || (bundle.bundleIdentifier != nil && app.bundleIdentifier == bundle.bundleIdentifier)
+        }
+    }
+
+    private func askToRecoverCaptures() -> NSApplication.ModalResponse {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Recover unsaved screenshots?")
+        alert.informativeText = String(
+            localized: "Pashari found working screenshots from earlier runs. Restore them to the thumbnail stack, or discard them to delete the working files."
+        )
+        alert.addButton(withTitle: String(localized: "Restore"))
+        alert.addButton(withTitle: String(localized: "Later")).keyEquivalent = "\u{1b}"
+        alert.addButton(withTitle: String(localized: "Remove Unsaved Screenshots")).hasDestructiveAction = true
+
+        return ModalPresentation.run { alert.runModal() }
     }
 
     private func askToQuit() -> Bool {

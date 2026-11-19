@@ -45,10 +45,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER)
         INFOPLIST_FILE: Pashari/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-    scheme:
-      testTargets:
-        - PashariTests
-
   PashariTests:
     type: bundle.unit-test
     platform: macOS
@@ -60,3 +56,15 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER).tests
         GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Pashari:
+    build:
+      targets:
+        Pashari: all
+    test:
+      targets:
+        - PashariTests
+      environmentVariables:
+        # The hosted app starts up during tests. Keep its recovery away from the user's files.
+        CFFIXED_USER_HOME: "$(PROJECT_TEMP_DIR)/PashariTestHome"

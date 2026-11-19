@@ -23,7 +23,7 @@ final class ThumbnailController {
 
     /// Newest first.
     private var entries: [Entry] = []
-    private let storageDirectory: URL
+    let storage: CaptureStorage
     private let saveDirectory: @MainActor () -> URL
     private let showError: @MainActor (Error, String) -> Void
 
@@ -37,11 +37,11 @@ final class ThumbnailController {
     var panels: [NSPanel] { entries.compactMap(\.panel) }
 
     init(
-        storageDirectory: URL = CaptureStorage.current.directory,
+        storage: CaptureStorage = .current,
         saveDirectory: @escaping @MainActor () -> URL = { Preferences.saveDirectory() },
         showError: @escaping @MainActor (Error, String) -> Void = { ErrorAlert.show($0, title: $1) }
     ) {
-        self.storageDirectory = storageDirectory
+        self.storage = storage
         self.saveDirectory = saveDirectory
         self.showError = showError
         _ = NotificationCenter.default.addObserver(
@@ -62,9 +62,26 @@ final class ThumbnailController {
     }
 
     func show(_ screenshot: Screenshot, onDisplay displayID: CGDirectDisplayID) {
-        let capture = PendingCapture(screenshot: screenshot, directory: storageDirectory)
+        let capture = PendingCapture(screenshot: screenshot, storage: storage)
         entries.insert(Entry(capture: capture, displayID: displayID), at: 0)
         layout()
+    }
+
+    func restore(_ files: [URL]) throws {
+        let displayID = (NSScreen.underMouse ?? NSScreen.main)?.displayID ?? CGMainDisplayID()
+        var recovered: [Entry] = []
+        var failure: Error?
+        for file in files {
+            do {
+                let capture = try PendingCapture(restoring: file, storage: storage)
+                recovered.append(Entry(capture: capture, displayID: displayID))
+            } catch {
+                failure = error
+            }
+        }
+        entries.append(contentsOf: recovered.sorted { $0.capture.capturedAt > $1.capture.capturedAt })
+        layout()
+        if let failure { throw failure }
     }
 
     private func makePanel(for entry: Entry, on screen: NSScreen) -> ThumbnailPanel {
@@ -78,7 +95,10 @@ final class ThumbnailController {
             guard self?.capturesBeingDelivered.contains(ObjectIdentifier(capture)) == false else { return nil }
             return capture.readyFileURL
         }
-        card.previewView.onDrop = { [weak self] in self?.dismiss(capture, keepingFile: true) }
+        card.previewView.onDrop = { [weak self] in
+            if let url = capture.readyFileURL { self?.storage.recordDrop(of: url) }
+            self?.dismiss(capture, keepingFile: true)
+        }
         card.setActionsEnabled(!capturesBeingDelivered.contains(ObjectIdentifier(capture)))
 
         let panel = ThumbnailPanel(contentView: card)
@@ -114,7 +134,7 @@ final class ThumbnailController {
             _ = try await ScreenshotWriter.write(
                 file.data,
                 in: self.saveDirectory(),
-                capturedAt: capture.capturedAt
+                named: file.url.lastPathComponent
             )
         }
     }
