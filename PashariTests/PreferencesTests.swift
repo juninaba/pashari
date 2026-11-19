@@ -63,6 +63,21 @@ struct PreferencesTests {
         #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
+    @Test func theAppearanceFollowsTheSystemUntilOneIsChosen() {
+        let defaults = makeDefaults()
+
+        #expect(Preferences.appearance(in: defaults) == .system)
+    }
+
+    @Test(arguments: AppAppearance.allCases)
+    func aChosenAppearanceIsRemembered(_ appearance: AppAppearance) {
+        let defaults = makeDefaults()
+
+        Preferences.setAppearance(appearance, in: defaults)
+
+        #expect(Preferences.appearance(in: defaults) == appearance)
+    }
+
     @Test func settingsShowWhatChangedWhileTheyWereClosed() {
         let system = FakeSettings()
         system.saveDirectory = URL(filePath: "/Volumes/External/Screenshots")
