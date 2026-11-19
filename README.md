@@ -86,7 +86,8 @@ Without a Developer ID, each release has a signature of its own, so macOS
 treats an update as a different app and does not carry the Screen
 Recording permission over. After updating, select Pashari under System
 Settings > Privacy & Security > Screen & System Audio Recording, remove it
-with the − button, and take a capture: macOS asks for the permission again.
+with the − button, and take a capture. macOS then asks for the permission
+as it did the first time: turn Pashari on, then quit and reopen it.
 
 ## Requirements
 
@@ -139,7 +140,8 @@ hoc, whatever `Config/Local.xcconfig` says.
 2. Tag the merged commit with the same version, and push the tag:
 
    ```sh
-   git tag v0.1.0
+   git fetch origin
+   git tag v0.1.0 origin/main
    git push origin v0.1.0
    ```
 
