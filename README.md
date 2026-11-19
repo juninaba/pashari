@@ -1,4 +1,4 @@
-<img src="Pashari/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-128.png" alt="Pashari app icon" width="64" height="64">
+<img src="Pashari/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-256.png" alt="Pashari app icon" width="72" height="72">
 
 # Pashari
 
