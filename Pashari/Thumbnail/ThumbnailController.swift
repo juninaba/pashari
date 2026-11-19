@@ -7,7 +7,7 @@ final class ThumbnailController {
 
     private final class Entry {
         let capture: PendingCapture
-        var panel: ThumbnailPanel?
+        var card: ThumbnailCardView?
         var previewTask: Task<Void, Never>?
         /// The display the thumbnail is on. Not an `NSScreen`: that describes
         /// the display as it was when the thumbnail appeared, and says
@@ -23,6 +23,8 @@ final class ThumbnailController {
 
     /// Newest first.
     private var entries: [Entry] = []
+    /// One window for each display with thumbnails on it.
+    private var panels: [CGDirectDisplayID: ThumbnailPanel] = [:]
     let storage: CaptureStorage
     private let saveDirectory: @MainActor () -> URL
     private let showError: @MainActor (Error, String) -> Void
@@ -33,8 +35,8 @@ final class ThumbnailController {
     var hasPendingCaptures: Bool { !entries.isEmpty }
     var pendingCount: Int { entries.count }
 
-    /// Only visible captures have windows. Newest first; also used by tests.
-    var panels: [NSPanel] { entries.compactMap(\.panel) }
+    /// Only visible captures have cards. Newest first; also used by tests.
+    var cards: [ThumbnailCardView] { entries.compactMap(\.card) }
 
     init(
         storage: CaptureStorage = .current,
@@ -84,7 +86,7 @@ final class ThumbnailController {
         if let failure { throw failure }
     }
 
-    private func makePanel(for entry: Entry, on screen: NSScreen) -> ThumbnailPanel {
+    private func makeCard(for entry: Entry, on screen: NSScreen) -> ThumbnailCardView {
         let capture = entry.capture
         let card = ThumbnailCardView(imageSize: capture.pointSize)
         card.onCopy = { [weak self] in self?.copy(capture) }
@@ -101,8 +103,6 @@ final class ThumbnailController {
         }
         card.setActionsEnabled(!capturesBeingDelivered.contains(ObjectIdentifier(capture)))
 
-        let panel = ThumbnailPanel(contentView: card)
-        panel.alphaValue = 0
         // Keep Retina detail when a display change moves this card to another screen.
         let maxPixelSize = Int(ThumbnailLayout.maximumPreviewSize.width * max(2, screen.backingScaleFactor))
         let part = ThumbnailLayout.previewedPart(of: capture.pointSize)
@@ -112,13 +112,13 @@ final class ThumbnailController {
                 try Task.checkCancellation()
                 let image = try await capture.thumbnail(of: part, maxPixelSize: maxPixelSize)
                 guard !Task.isCancelled else { return }
-                card?.previewView.show(image)
+                card?.show(image)
             } catch {
                 guard !Task.isCancelled, card != nil else { return }
                 showError(error, String(localized: "The screenshot could not be opened"))
             }
         }
-        return panel
+        return card
     }
 
     // MARK: - Actions
@@ -186,8 +186,7 @@ final class ThumbnailController {
 
     private func updateActions(for capture: PendingCapture) {
         let entry = entries.first { $0.capture === capture }
-        let card = entry?.panel?.contentView as? ThumbnailCardView
-        card?.setActionsEnabled(!capturesBeingDelivered.contains(ObjectIdentifier(capture)))
+        entry?.card?.setActionsEnabled(!capturesBeingDelivered.contains(ObjectIdentifier(capture)))
     }
 
     private func close(_ capture: PendingCapture) {
@@ -199,7 +198,11 @@ final class ThumbnailController {
     /// after a drag and drop the receiving app may still need the file.
     private func dismiss(_ capture: PendingCapture, keepingFile: Bool = false) {
         guard let index = entries.firstIndex(where: { $0.capture === capture }) else { return }
-        hide(entries.remove(at: index))
+        let entry = entries.remove(at: index)
+        if let card = entry.card {
+            panels[entry.displayID]?.stackView.dismiss(card)
+        }
+        release(entry)
         if !keepingFile {
             Task { await capture.removeFile() }
         }
@@ -208,20 +211,29 @@ final class ThumbnailController {
 
     // MARK: - Layout
 
-    private func hide(_ entry: Entry) {
+    /// Lets go of the card and its preview image. The PNG stays.
+    private func release(_ entry: Entry) {
         entry.previewTask?.cancel()
         entry.previewTask = nil
-        entry.panel?.contentView = nil
-        entry.panel?.close()
-        entry.panel = nil
+        entry.card = nil
     }
 
-    /// Stacks the thumbnails in the bottom-left corner of their screen,
-    /// newest at the bottom. Older captures wait off-screen until there is
-    /// room. Their panels and preview images are released; the PNG stays.
+    /// Piles the thumbnails up in the bottom-left corner of their screen,
+    /// newest in front; spread out, they stand in a column, newest at the
+    /// bottom. Older captures wait off-screen until there is room in that
+    /// column. Their cards and preview images are released; the PNG stays.
     private func layout() {
         moveOffMissingDisplays()
-        for (displayID, group) in Dictionary(grouping: entries, by: \.displayID) {
+        let groups = Dictionary(grouping: entries, by: \.displayID)
+        for (displayID, panel) in panels where groups[displayID] == nil {
+            if let screen = Self.screen(for: displayID) {
+                panel.stackView.show([], pendingCount: 0, in: screen.visibleFrame)
+            } else {
+                panel.close()
+                panels[displayID] = nil
+            }
+        }
+        for (displayID, group) in groups {
             guard let screen = Self.screen(for: displayID) else { continue }
             let fitting = ThumbnailLayout.fittingCount(
                 for: group.map { ThumbnailLayout.cardSize(for: $0.capture.pointSize) },
@@ -230,23 +242,14 @@ final class ThumbnailController {
             let visibleCount = min(fitting, ThumbnailLayout.maximumCount)
             let visible = group.prefix(visibleCount)
             for entry in group.dropFirst(visibleCount) {
-                hide(entry)
+                release(entry)
             }
-            let frames = ThumbnailLayout.stackFrames(
-                for: visible.map { ThumbnailLayout.cardSize(for: $0.capture.pointSize) },
-                in: screen.visibleFrame
-            )
-            for (entry, frame) in zip(visible, frames) {
-                if let panel = entry.panel {
-                    panel.setFrame(frame, display: true)
-                } else {
-                    let panel = makePanel(for: entry, on: screen)
-                    entry.panel = panel
-                    panel.setFrame(frame, display: true)
-                    panel.orderFrontRegardless()
-                    panel.animator().alphaValue = 1
-                }
+            for entry in visible where entry.card == nil {
+                entry.card = makeCard(for: entry, on: screen)
             }
+            let panel = panels[displayID] ?? ThumbnailPanel()
+            panels[displayID] = panel
+            panel.stackView.show(visible.compactMap(\.card), pendingCount: group.count, in: screen.visibleFrame)
         }
     }
 

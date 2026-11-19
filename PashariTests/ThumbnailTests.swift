@@ -26,7 +26,7 @@ struct ThumbnailLayoutTests {
         // shape of the largest preview, 240 × 160, at half its size.
         #expect(ThumbnailLayout.previewedPart(of: size) == CGRect(x: 0, y: 0, width: 480, height: 320))
         #expect(ThumbnailLayout.previewSize(for: size) == CGSize(width: 240, height: 160))
-        #expect(ThumbnailLayout.cardSize(for: size).width == 240)
+        #expect(ThumbnailLayout.cardSize(for: size).width == 240 + 2 * ThumbnailLayout.paperBorder)
     }
 
     @Test func aNarrowVeryTallScreenshotShowsItsTopAtItsRealSize() {
@@ -54,10 +54,15 @@ struct ThumbnailLayoutTests {
         #expect(size == ThumbnailLayout.minimumPreviewSize)
     }
 
-    @Test func cardAddsTheToolbarUnderThePreview() {
+    @Test func cardPutsPaperAroundThePreviewAndTheToolbarUnderIt() {
         let card = ThumbnailLayout.cardSize(for: CGSize(width: 1728, height: 1080))
 
-        #expect(card == CGSize(width: 240, height: 150 + ThumbnailLayout.toolbarHeight))
+        // 8 points of paper at the sides and the top, and the buttons below.
+        #expect(card == CGSize(width: 256, height: 150 + 8 + ThumbnailLayout.toolbarHeight))
+        #expect(
+            ThumbnailLayout.previewFrame(inCardOf: card)
+                == CGRect(x: 8, y: ThumbnailLayout.toolbarHeight, width: 240, height: 150)
+        )
     }
 
     @Test func cardsStackUpwardsFromTheBottomLeftCorner() {
@@ -68,15 +73,15 @@ struct ThumbnailLayoutTests {
 
         #expect(frames == [
             CGRect(x: 116, y: 66, width: 240, height: 184),
-            CGRect(x: 116, y: 66 + 184 + 10, width: 200, height: 134),
+            CGRect(x: 116, y: 66 + 184 + 12, width: 200, height: 134),
         ])
     }
 
     @Test func onlyTheCardsThatFitTheScreenHeightStay() {
         let sizes = Array(repeating: CGSize(width: 240, height: 184), count: 5)
 
-        // 16 + 3 × 184 + 2 × 10 = 588 fits below 700 - 16; a fourth card
-        // would reach 782.
+        // 16 + 3 × 184 + 2 × 12 = 592 fits below 700 - 16; a fourth card
+        // would reach 788.
         let small = CGRect(x: 0, y: 0, width: 1000, height: 700)
         #expect(ThumbnailLayout.fittingCount(for: sizes, in: small) == 3)
         let large = CGRect(x: 0, y: 0, width: 1000, height: 1000)
@@ -88,6 +93,44 @@ struct ThumbnailLayoutTests {
         let tiny = CGRect(x: 0, y: 0, width: 300, height: 100)
 
         #expect(ThumbnailLayout.fittingCount(for: sizes, in: tiny) == 1)
+    }
+
+    @Test func theNewestCardLiesUprightInTheCornerOfThePile() {
+        let area = CGRect(x: 100, y: 50, width: 1000, height: 700)
+        let sizes = [CGSize(width: 256, height: 194), CGSize(width: 256, height: 120)]
+
+        let pile = ThumbnailLayout.pilePlacements(for: sizes, in: area)
+
+        // Where the column of spread-out cards starts too, so the newest
+        // card stays put when the pile spreads out.
+        #expect(pile.first == ThumbnailLayout.Placement(
+            frame: ThumbnailLayout.stackFrames(for: sizes, in: area)[0],
+            angle: 0
+        ))
+    }
+
+    @Test func olderCardsShowTheirTopsAboveTheNewestOne() {
+        let area = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let newest = CGSize(width: 256, height: 194)
+        let shorter = CGSize(width: 200, height: 100)
+        let taller = CGSize(width: 256, height: 250)
+
+        let pile = ThumbnailLayout.pilePlacements(for: [newest, shorter, taller, newest, newest], in: area)
+
+        let newestTop = 16 + newest.height
+        #expect(pile[1].frame.maxY == newestTop + 10)
+        // A tall card stands on the newest card's baseline instead of
+        // reaching below it, and shows even more of itself.
+        #expect(pile[2].frame.minY == 16)
+        #expect(pile[2].frame.maxY > newestTop + 18)
+        #expect(pile.allSatisfy { $0.frame.minY >= 16 })
+        // Each further back shows a little more, turned the other way.
+        #expect(pile[3].frame.maxY > pile[1].frame.maxY)
+        #expect(pile[4].frame.maxY > pile[3].frame.maxY)
+        for (front, back) in zip(pile.dropFirst(), pile.dropFirst(2)) {
+            #expect(front.angle * back.angle < 0)
+        }
+        #expect(pile.dropFirst().allSatisfy { abs($0.angle) <= 6 * .pi / 180 })
     }
 
     @Test func aspectFitCentresThePicture() {
@@ -115,8 +158,7 @@ struct ThumbnailControllerTests {
         )
         let screenshot = makeScreenshot()
         controller.show(screenshot)
-        let panel = try #require(controller.panels.first)
-        let card = try #require(panel.contentView as? ThumbnailCardView)
+        let card = try #require(controller.cards.first)
         defer { card.onClose?() }
         let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? NSButton }
         try #require(buttons.count == 4)
@@ -151,8 +193,7 @@ struct ThumbnailControllerTests {
             showError: { _, _ in errors += 1 }
         )
         controller.show(makeScreenshot())
-        let panel = try #require(controller.panels.first)
-        let card = try #require(panel.contentView as? ThumbnailCardView)
+        let card = try #require(controller.cards.first)
         defer { card.onClose?() }
         card.onSave?()
         card.onClose?()
@@ -173,17 +214,16 @@ struct ThumbnailControllerTests {
     @Test func overflowCapturesKeepTheirFilesAndReturnWhenThereIsRoom() async throws {
         let controller = ThumbnailController()
         defer {
-            while let panel = controller.panels.first { close(panel) }
+            while let card = controller.cards.first { close(card) }
         }
         #expect(!controller.hasPendingCaptures)
 
         controller.show(makeScreenshot())
-        weak var oldPanel: NSPanel?
+        weak var oldCard: ThumbnailCardView?
         let file: URL
         do {
-            let panel = try #require(controller.panels.first)
-            oldPanel = panel
-            let card = try #require(panel.contentView as? ThumbnailCardView)
+            let card = try #require(controller.cards.first)
+            oldCard = card
             for _ in 0..<100 where card.previewView.fileURL?() == nil {
                 try await Task.sleep(for: .milliseconds(10))
             }
@@ -194,34 +234,32 @@ struct ThumbnailControllerTests {
             controller.show(makeScreenshot())
         }
         #expect(controller.pendingCount == ThumbnailLayout.maximumCount + 2)
-        #expect(controller.panels.count <= ThumbnailLayout.maximumCount)
+        #expect(controller.cards.count <= ThumbnailLayout.maximumCount)
         #expect(controller.hasPendingCaptures)
 
         NotificationCenter.default.post(
             name: NSApplication.didChangeScreenParametersNotification,
             object: NSApp
         )
-        // AppKit may retain the window object briefly, but its views and
-        // backing store must be discarded when it leaves the visible stack.
-        if let oldPanel {
-            #expect(oldPanel.contentView == nil)
-            #expect(!oldPanel.isVisible)
+        // AppKit may hold on to the view briefly, but it must leave the
+        // window when its capture leaves the visible stack.
+        if let oldCard {
+            #expect(oldCard.superview == nil)
         }
         #expect(controller.pendingCount == ThumbnailLayout.maximumCount + 2)
         #expect(FileManager.default.fileExists(atPath: file.path))
 
         while controller.pendingCount > 1 {
-            close(try #require(controller.panels.first))
+            close(try #require(controller.cards.first))
         }
-        let restored = try #require(controller.panels.first)
-        let restoredCard = try #require(restored.contentView as? ThumbnailCardView)
-        #expect(restored.isVisible)
-        #expect(controller.panels.count == 1)
+        let restoredCard = try #require(controller.cards.first)
+        #expect(restoredCard.window?.isVisible == true)
+        #expect(controller.cards.count == 1)
         #expect(restoredCard.previewView.fileURL?() == file)
-        for _ in 0..<100 where restoredCard.previewView.layer?.contents == nil {
+        for _ in 0..<100 where !restoredCard.hasPicture {
             try await Task.sleep(for: .milliseconds(10))
         }
-        #expect(restoredCard.previewView.layer?.contents != nil)
+        #expect(restoredCard.hasPicture)
         #expect(FileManager.default.fileExists(atPath: file.path))
 
         var annotated: Screenshot?
@@ -242,12 +280,12 @@ struct ThumbnailControllerTests {
         let controller = ThumbnailController()
         // No screen has this ID, as if its display had just been unplugged.
         controller.show(makeScreenshot(), onDisplay: 0xDEAD_BEEF)
-        let panel = try #require(controller.panels.first)
-        defer { close(panel) }
+        let card = try #require(controller.cards.first)
+        defer { close(card) }
 
         let screen = try #require(NSScreen.underMouse ?? NSScreen.main)
-        let expected = ThumbnailLayout.stackFrames(for: [panel.frame.size], in: screen.visibleFrame)
-        #expect(panel.frame == expected.first)
+        let expected = ThumbnailLayout.stackFrames(for: [card.frame.size], in: screen.visibleFrame)
+        #expect(card.window?.convertToScreen(card.frame) == expected.first)
     }
 
     @Test func aDroppedThumbnailKeepsItsFullSizePNGUntilANormalQuit() async throws {
@@ -266,7 +304,7 @@ struct ThumbnailControllerTests {
             let storage = CaptureStorage(rootDirectory: root)
             let controller = ThumbnailController(storage: storage)
             try storage.withInterruptedFiles(includeLegacy: { true }) { try controller.restore($0) }
-            let card = try #require(controller.panels.first?.contentView as? ThumbnailCardView)
+            let card = try #require(controller.cards.first)
             defer { card.onClose?() }
             dragURL = try #require(card.previewView.fileURL?())
 
@@ -286,8 +324,9 @@ struct ThumbnailControllerTests {
     @Test func thumbnailsAreLaidOutAgainWhenDisplaysChange() async throws {
         let controller = ThumbnailController()
         controller.show(makeScreenshot())
-        let panel = try #require(controller.panels.first)
-        defer { close(panel) }
+        let card = try #require(controller.cards.first)
+        defer { close(card) }
+        let panel = try #require(card.window)
         let home = panel.frame
         // Far from any screen, where a layout for a display that is gone
         // would leave it.
@@ -304,8 +343,97 @@ struct ThumbnailControllerTests {
         #expect(panel.frame == home)
     }
 
-    private func close(_ panel: NSPanel) {
-        (panel.contentView as? ThumbnailCardView)?.onClose?()
+    @Test func olderCapturesPileUpBehindTheNewestWithItsCount() throws {
+        let controller = ThumbnailController()
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        controller.show(makeScreenshot())
+        controller.show(makeScreenshot())
+        controller.show(makeScreenshot())
+        let cards = controller.cards
+        try #require(cards.count == 3)
+        let stack = try #require(cards[0].superview as? ThumbnailStackView)
+        let panel = try #require(stack.window)
+        let screen = try #require(NSScreen.underMouse ?? NSScreen.main)
+
+        let pile = ThumbnailLayout.pilePlacements(for: cards.map(\.frame.size), in: screen.visibleFrame)
+        #expect(cards.map { panel.convertToScreen($0.frame) } == pile.map(\.frame))
+        for (card, placement) in zip(cards, pile) {
+            let angle = atan2(card.paper.transform.m12, card.paper.transform.m11)
+            #expect(abs(angle - placement.angle) < 1e-9)
+        }
+        #expect(cards.map(\.badgeCount) == [3, nil, nil])
+        // The newest lies on top.
+        #expect(stack.subviews.last === cards[0])
+        // All three fit in the window, both piled up and spread out.
+        let column = ThumbnailLayout.stackFrames(for: cards.map(\.frame.size), in: screen.visibleFrame)
+        #expect((pile.map(\.frame) + column).allSatisfy { panel.frame.contains($0) })
+    }
+
+    @Test func restingThePointerOnThePileSpreadsItOutAndLeavingPilesItUpAgain() async throws {
+        let controller = ThumbnailController()
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        controller.show(makeScreenshot())
+        controller.show(makeScreenshot())
+        let cards = controller.cards
+        let stack = try #require(cards[0].superview as? ThumbnailStackView)
+        let panel = try #require(stack.window)
+        let screen = try #require(NSScreen.underMouse ?? NSScreen.main)
+        let column = ThumbnailLayout.stackFrames(for: cards.map(\.frame.size), in: screen.visibleFrame)
+        // AppKit asks the view to look at the pointer again now and then.
+        // The real one is elsewhere: tests leave it alone.
+        var pointer = CGPoint(x: column[0].midX, y: column[0].midY)
+        stack.pointerLocation = { pointer }
+
+        stack.mouseEntered(with: try enterExitEvent(.mouseEntered))
+        #expect(!stack.isSpread)
+        for _ in 0..<50 where !stack.isSpread {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(stack.isSpread)
+        #expect(cards.map { panel.convertToScreen($0.frame) } == column)
+        #expect(cards.allSatisfy { CATransform3DIsIdentity($0.paper.transform) })
+        #expect(cards[0].badgeCount == nil)
+
+        pointer = CGPoint(x: screen.frame.maxX - 1, y: screen.frame.maxY - 1)
+        stack.mouseExited(with: try enterExitEvent(.mouseExited))
+        for _ in 0..<100 where stack.isSpread {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(!stack.isSpread)
+        #expect(cards[0].badgeCount == 2)
+    }
+
+    @Test func eachCardShowsItsButtonIcons() throws {
+        let card = ThumbnailCardView(imageSize: CGSize(width: 400, height: 300))
+        let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }
+
+        #expect(buttons.count == 4)
+        for button in buttons {
+            #expect(button.look.superlayer === card.paper)
+            #expect(button.look.sublayers?.contains { $0.contents != nil } == true)
+        }
+    }
+
+    private func enterExitEvent(_ type: NSEvent.EventType) throws -> NSEvent {
+        try #require(NSEvent.enterExitEvent(
+            with: type,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            trackingNumber: 0,
+            userData: nil
+        ))
+    }
+
+    private func close(_ card: ThumbnailCardView) {
+        card.onClose?()
     }
 }
 

@@ -619,8 +619,8 @@ struct QuitTests {
             thumbnails.show(makeScreenshot())
         }
         defer {
-            while let panel = thumbnails.panels.first {
-                (panel.contentView as? ThumbnailCardView)?.onClose?()
+            while let card = thumbnails.cards.first {
+                card.onClose?()
             }
         }
         let editor = editorOpen ? AnnotationEditorWindowController(screenshot: makeScreenshot()) : nil
@@ -636,8 +636,8 @@ struct QuitTests {
         #expect(questions == 2)
 
         if !editorOpen {
-            while let panel = thumbnails.panels.first {
-                (panel.contentView as? ThumbnailCardView)?.onClose?()
+            while let card = thumbnails.cards.first {
+                card.onClose?()
             }
             #expect(delegate.applicationShouldTerminate(NSApp) == .terminateNow)
             #expect(questions == 2)

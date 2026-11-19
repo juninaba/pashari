@@ -1,29 +1,33 @@
 import AppKit
 
-/// Like the selection overlay it is a non-activating panel: clicking its
-/// buttons does not pull the user out of the app they are working in.
+/// The window for all the thumbnails on one display. Like the selection
+/// overlay it is a non-activating panel: clicking its buttons does not pull
+/// the user out of the app they are working in.
 final class ThumbnailPanel: NSPanel {
     /// Above ordinary windows. Screenshots leave out Pashari's windows at
     /// this level (see `ScreenCapturer.ownWindowsToHide`).
     static let windowLevel: NSWindow.Level = .floating
 
-    init(contentView: NSView) {
+    let stackView = ThumbnailStackView()
+
+    init() {
         super.init(
-            contentRect: contentView.frame,
+            contentRect: .zero,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        self.contentView = contentView
+        contentView = stackView
 
         level = Self.windowLevel
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
 
-        // The window itself is invisible; only the rounded card inside shows,
-        // and the shadow follows the card's shape.
+        // The window itself is invisible. Clicks on its see-through parts
+        // go to the windows underneath. The cards draw their own shadows,
+        // which move and turn with them.
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        hasShadow = false
 
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
