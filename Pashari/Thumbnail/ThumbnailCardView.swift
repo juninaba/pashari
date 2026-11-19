@@ -394,14 +394,55 @@ final class ThumbnailButton: NSButton {
         updateLook(animated: true)
     }
 
+    /// Follows the mouse until it goes up, and acts if that is over the
+    /// button as it shows on screen. NSButton's own tracking would test the
+    /// button's frame, which jumps ahead while the photo glides to a new
+    /// place, and ignore a click on the button the user sees.
     override func mouseDown(with event: NSEvent) {
-        isPressed = true
-        updateLook(animated: false)
-        // Tracks the mouse until it goes up, and acts if that is over the
-        // button.
-        super.mouseDown(with: event)
-        isPressed = false
-        updateLook(animated: true)
+        guard isEnabled, let window else { return }
+        var isOver = true
+        setPressed(true)
+        while let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
+            isOver = showsButton(at: Self.location(of: next, in: window))
+            setPressed(isOver)
+            if next.type == .leftMouseUp { break }
+        }
+        setPressed(false)
+        if isOver {
+            sendAction(action, to: target)
+        }
+    }
+
+    /// Where `event` happened, in `window`. An event can come with another
+    /// window, or none, and then gives its position in that window or on
+    /// the screen.
+    private static func location(of event: NSEvent, in window: NSWindow) -> NSPoint {
+        if event.window === window {
+            return event.locationInWindow
+        }
+        let onScreen = event.window?.convertPoint(toScreen: event.locationInWindow) ?? event.locationInWindow
+        return window.convertPoint(fromScreen: onScreen)
+    }
+
+    /// Whether the button shows at `location`, in the window.
+    private func showsButton(at location: NSPoint) -> Bool {
+        var view = superview
+        while let current = view, !(current is ThumbnailCardView) {
+            view = current.superview
+        }
+        guard let card = view as? ThumbnailCardView, let stack = card.superview else {
+            return bounds.contains(convert(location, from: nil))
+        }
+        guard let laidOut = card.laidOutPoint(forShownPoint: stack.convert(location, from: nil)) else {
+            return false
+        }
+        return bounds.contains(convert(laidOut, from: stack))
+    }
+
+    private func setPressed(_ pressed: Bool) {
+        guard pressed != isPressed else { return }
+        isPressed = pressed
+        updateLook(animated: !pressed)
     }
 
     private func updateLook(animated: Bool) {

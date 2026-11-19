@@ -441,17 +441,58 @@ struct ThumbnailControllerTests {
         let middleClose = try #require(
             middle.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }.last
         )
-        let closeFrame = middleClose.convert(middleClose.bounds, to: stack)
-        let target = stack.convert(CGPoint(x: closeFrame.midX, y: closeFrame.midY), to: stack.superview)
+        let closeFrame = middleClose.convert(middleClose.bounds, to: nil)
+        let click = CGPoint(x: closeFrame.midX, y: closeFrame.midY)
+        let target = try #require(stack.superview).convert(click, from: nil)
         #expect(stack.hitTest(target) === middleClose)
+        let settled = cards.map(\.frame)
 
         // Closing the newest card moves the other two down: their views jump
-        // there at once, their photos glide there. The oldest card's Close
-        // is now where the middle card's still shows.
+        // there at once, their photos glide there. Hold the photos where
+        // they started, whatever the motion settings: the oldest card's
+        // Close is now where the middle card's still shows.
         close(cards[0])
+        for (card, old) in zip(cards, settled).dropFirst() {
+            card.paper.removeAllAnimations()
+            CALayer.withoutAnimation {
+                card.paper.transform = CATransform3DMakeTranslation(
+                    old.minX - card.frame.minX,
+                    old.minY - card.frame.minY,
+                    0
+                )
+            }
+        }
         CATransaction.flush()
-
         #expect(stack.hitTest(target) === middleClose)
+
+        // A whole click there closes the middle card, the one shown there.
+        // The button follows the mouse until it goes up. (A posted event gets
+        // a wrong position in its window; without one it keeps its place on
+        // the screen.)
+        NSApp.postEvent(try #require(NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: panel.convertPoint(toScreen: click),
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 0
+        )), atStart: false)
+        panel.sendEvent(try #require(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: click,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: panel.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        )))
+        #expect(!controller.cards.contains { $0 === middle })
+        #expect(controller.cards.contains { $0 === cards[2] })
     }
 
     @Test func eachCardShowsItsButtonIcons() throws {
