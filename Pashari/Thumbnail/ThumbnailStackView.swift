@@ -192,10 +192,17 @@ final class ThumbnailStackView: NSView {
     }
 
     private func setPointerInside(_ inside: Bool) {
+        let changed = inside != isPointerInside
         isPointerInside = inside
+        guard cards.count > 1, inside != isSpread else {
+            hoverTimer?.invalidate()
+            hoverTimer = nil
+            return
+        }
+        // AppKit asks for the tracking areas again now and then; that must
+        // not put off a change already on its way.
+        guard changed || hoverTimer == nil else { return }
         hoverTimer?.invalidate()
-        hoverTimer = nil
-        guard cards.count > 1, inside != isSpread else { return }
         let timer = Timer(
             timeInterval: inside ? Self.spreadDelay : Self.pileDelay,
             repeats: false
