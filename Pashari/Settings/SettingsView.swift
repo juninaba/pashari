@@ -9,6 +9,9 @@ struct SettingsView: View {
     /// Deep enough to read on the paper (5.1:1). The system red reaches only
     /// 3.3:1 there.
     private static let errorRed = Color(red: 196 / 255, green: 52 / 255, blue: 40 / 255)
+    /// For the folder's name: quieter than the labels, yet as readable on the
+    /// paper (5.7:1) as on the old dark form. The system grey reaches 3.9:1.
+    private static let quietText = Color.black.opacity(0.6)
 
     @Bindable var model: SettingsModel
 
@@ -72,7 +75,7 @@ struct SettingsView: View {
                         Text(FileManager.default.displayName(atPath: model.saveDirectory.path))
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Self.quietText)
                             // A form let the name be selected and copied.
                             .textSelection(.enabled)
                             .help(model.saveDirectory.path)
