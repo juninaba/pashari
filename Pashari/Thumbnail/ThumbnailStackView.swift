@@ -34,6 +34,20 @@ final class ThumbnailStackView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    /// Sends a click to the card that shows under the pointer. While cards
+    /// glide to new places their see-through views are there already, so
+    /// the plain hit test could reach another card's button, such as Close
+    /// on a card that has not arrived yet.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let point = convert(point, from: superview)
+        for case let card as ThumbnailCardView in subviews.reversed() {
+            if let laidOut = card.laidOutPoint(forShownPoint: point) {
+                return card.hitTest(laidOut)
+            }
+        }
+        return bounds.contains(point) ? self : nil
+    }
+
     /// Shows `newCards` (newest first) in the corner of `area`, the
     /// display's visible frame. `pendingCount` is how many captures there are
     /// on this display, including those waiting for room.

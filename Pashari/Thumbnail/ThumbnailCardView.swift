@@ -72,6 +72,21 @@ final class ThumbnailCardView: NSView {
         isLeaving ? nil : super.hitTest(point)
     }
 
+    /// Where `point` (in the superview), on the card as it shows on screen
+    /// now, lies on the card as it is laid out; nil where the card does not
+    /// show. The two differ while the photo glides to a new place.
+    func laidOutPoint(forShownPoint point: CGPoint) -> CGPoint? {
+        guard !isLeaving else { return nil }
+        let shown = (paper.presentation() ?? paper).transform
+        guard CATransform3DIsAffine(shown) else { return nil }
+        // The paper turns and moves around its centre, the card's centre.
+        let fromCenter = CGPoint(x: point.x - frame.midX, y: point.y - frame.midY)
+            .applying(CATransform3DGetAffineTransform(shown).inverted())
+        let onCard = CGPoint(x: bounds.midX + fromCenter.x, y: bounds.midY + fromCenter.y)
+        guard bounds.contains(onCard) else { return nil }
+        return CGPoint(x: frame.minX + onCard.x, y: frame.minY + onCard.y)
+    }
+
     // MARK: - The look
 
     private func setUpPaper(previewFrame: CGRect) {

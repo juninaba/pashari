@@ -407,6 +407,40 @@ struct ThumbnailControllerTests {
         #expect(cards[0].badgeCount == 2)
     }
 
+    @Test func aClickGoesToTheCardShownUnderThePointerWhileCardsMove() throws {
+        let controller = ThumbnailController()
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        for _ in 0..<3 {
+            controller.show(makeScreenshot())
+        }
+        let cards = controller.cards
+        let stack = try #require(cards[0].superview as? ThumbnailStackView)
+        let panel = try #require(stack.window)
+        let newest = panel.convertToScreen(cards[0].frame)
+        stack.pointerLocation = { CGPoint(x: newest.midX, y: newest.midY) }
+        stack.setSpread(true)
+        // Settle at once.
+        cards.forEach { $0.paper.removeAllAnimations() }
+        CATransaction.flush()
+        let middle = cards[1]
+        let middleClose = try #require(
+            middle.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }.last
+        )
+        let closeFrame = middleClose.convert(middleClose.bounds, to: stack)
+        let target = stack.convert(CGPoint(x: closeFrame.midX, y: closeFrame.midY), to: stack.superview)
+        #expect(stack.hitTest(target) === middleClose)
+
+        // Closing the newest card moves the other two down: their views jump
+        // there at once, their photos glide there. The oldest card's Close
+        // is now where the middle card's still shows.
+        close(cards[0])
+        CATransaction.flush()
+
+        #expect(stack.hitTest(target) === middleClose)
+    }
+
     @Test func eachCardShowsItsButtonIcons() throws {
         let card = ThumbnailCardView(imageSize: CGSize(width: 400, height: 300))
         let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }
