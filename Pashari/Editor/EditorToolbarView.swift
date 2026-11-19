@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct EditorToolbarView: View {
-    static let height: CGFloat = 46
+    static let height: CGFloat = 50
 
     @Bindable var model: EditorModel
     let onUndo: () -> Void
@@ -10,20 +10,17 @@ struct EditorToolbarView: View {
     let onSave: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 2) {
+        HStack(spacing: 8) {
+            group {
                 ForEach(EditorTool.allCases) { tool in
                     toolButton(tool)
                 }
             }
-            separator
-            HStack(spacing: 2) {
+            group {
                 ForEach(AnnotationColor.allCases) { color in
                     colorButton(color)
                 }
-            }
-            separator
-            HStack(spacing: 2) {
+                Divider().frame(height: 18).padding(.horizontal, 4)
                 ForEach(StrokeSize.allCases) { size in
                     sizeButton(size)
                 }
@@ -31,19 +28,19 @@ struct EditorToolbarView: View {
 
             Spacer(minLength: 12)
 
-            HStack(spacing: 2) {
+            group {
                 iconButton("arrow.uturn.backward", label: String(localized: "Undo"), action: onUndo)
                     .disabled(!model.canUndo)
                 iconButton("arrow.uturn.forward", label: String(localized: "Redo"), action: onRedo)
                     .disabled(!model.canRedo)
             }
-            separator
             // `fixedSize` keeps these two at their natural width, so their
             // titles are never shortened to "Co…" in a narrow window.
             Button(String(localized: "Copy"), action: onCopy)
+                .buttonStyle(PillButtonStyle(isProminent: false))
                 .fixedSize()
             Button(String(localized: "Save"), action: onSave)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PillButtonStyle(isProminent: true))
                 .fixedSize()
         }
         .padding(.horizontal, 12)
@@ -51,8 +48,13 @@ struct EditorToolbarView: View {
         .disabled(model.isExporting)
     }
 
-    private var separator: some View {
-        Divider().frame(height: 22)
+    /// Buttons that belong together, on a rounded tray.
+    private func group<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 2) {
+            content()
+        }
+        .padding(3)
+        .background(Capsule().fill(Color.primary.opacity(0.06)))
     }
 
     // MARK: - Buttons
@@ -64,38 +66,41 @@ struct EditorToolbarView: View {
     }
 
     private func colorButton(_ color: AnnotationColor) -> some View {
-        Button {
+        let isSelected = model.color == color
+        return Button {
             model.color = color
         } label: {
             Circle()
                 .fill(Color(cgColor: color.cgColor))
-                .overlay(Circle().strokeBorder(.primary.opacity(0.25), lineWidth: 1))
+                .overlay(Circle().strokeBorder(.primary.opacity(0.2), lineWidth: 1))
                 .frame(width: 16, height: 16)
-                .frame(width: 24, height: 24)
-                .overlay(
-                    Circle().strokeBorder(Color.accentColor, lineWidth: model.color == color ? 2 : 0)
-                )
+                .padding(3)
+                .overlay(Circle().strokeBorder(Color.primary.opacity(isSelected ? 0.85 : 0), lineWidth: 2))
+                .frame(width: 28, height: 30)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(color.label)
         .accessibilityLabel(color.label)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func sizeButton(_ size: StrokeSize) -> some View {
-        Button {
+        let isSelected = model.size == size
+        return Button {
             model.size = size
         } label: {
             Circle()
                 .fill(.primary)
                 .frame(width: size.lineWidth + 3, height: size.lineWidth + 3)
-                .frame(width: 26, height: 28)
-                .background(selectionBackground(model.size == size))
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Color.primary.opacity(isSelected ? 0.14 : 0)))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(size.label)
         .accessibilityLabel(size.label)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func iconButton(
@@ -107,18 +112,47 @@ struct EditorToolbarView: View {
         Button(action: action) {
             Image(systemName: symbolName)
                 .font(.system(size: 14, weight: .medium))
-                .frame(width: 30, height: 28)
-                .background(selectionBackground(isSelected))
-                .contentShape(Rectangle())
+                .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(isSelected ? EditorStyle.accent : .clear))
+                .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ToolButtonStyle())
         .help(label)
         .accessibilityLabel(label)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
+}
 
-    private func selectionBackground(_ isSelected: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 6)
-            .fill(isSelected ? Color.accentColor.opacity(0.28) : .clear)
+/// Lights up under the pointer, and dims while pressed or unavailable.
+private struct ToolButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(Circle().fill(Color.primary.opacity(isHovered && isEnabled ? 0.08 : 0)))
+            .opacity(isEnabled ? (configuration.isPressed ? 0.6 : 1) : 0.35)
+            .onHover { isHovered = $0 }
+    }
+}
+
+/// Copy and Save: rounded, the more important one filled with the accent.
+private struct PillButtonStyle: ButtonStyle {
+    let isProminent: Bool
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(isProminent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .padding(.horizontal, 16)
+            .frame(height: 30)
+            .background(
+                Capsule().fill(isProminent ? AnyShapeStyle(EditorStyle.accent) : AnyShapeStyle(Color.primary.opacity(0.08)))
+            )
+            .contentShape(Capsule())
+            .opacity(isEnabled ? (configuration.isPressed ? 0.7 : 1) : 0.45)
     }
 }
 
