@@ -52,7 +52,7 @@ Settings appears.
 ### Scroll capture
 
 Select the part of a window that scrolls, wait until the bar next to it
-says "Scroll to capture more", then scroll it as usual.
+prompts you to scroll, then scroll it as usual.
 Pashari records the area and adds whatever scrolls into view to the bottom
 of the picture. Click Done or press Return to finish; Escape cancels. After
 a click in another app, Return and Escape go to that app until you click
