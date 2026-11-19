@@ -399,7 +399,10 @@ final class ThumbnailButton: NSButton {
     /// button's frame, which jumps ahead while the photo glides to a new
     /// place, and ignore a click on the button the user sees.
     override func mouseDown(with event: NSEvent) {
-        guard isEnabled, let window else { return }
+        // The second click of a double-click would land on the card that
+        // takes this one's place once it goes: Close would then throw away
+        // a capture nobody meant to.
+        guard isEnabled, event.clickCount < 2, let window else { return }
         var isOver = true
         setPressed(true)
         while let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {

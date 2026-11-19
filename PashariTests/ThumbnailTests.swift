@@ -551,6 +551,60 @@ struct ThumbnailControllerTests {
         #expect(controller.cards.contains { $0 === front })
     }
 
+    @Test func theSecondClickOfADoubleClickDoesNotReachTheNextCard() throws {
+        let controller = ThumbnailController()
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        controller.show(makeScreenshot())
+        controller.show(makeScreenshot())
+        let cards = controller.cards
+        let stack = try #require(cards[0].superview as? ThumbnailStackView)
+        let panel = try #require(stack.window)
+        stack.pointerLocation = { CGPoint(x: -10_000, y: -10_000) }
+        cards.forEach { $0.paper.removeAllAnimations() }
+        CATransaction.flush()
+        let frontClose = try #require(
+            cards[0].subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }.last
+        )
+        let closeFrame = frontClose.convert(frontClose.bounds, to: nil)
+        let point = CGPoint(x: closeFrame.midX, y: closeFrame.midY)
+        func mouse(_ type: NSEvent.EventType, clickCount: Int) throws -> NSEvent {
+            try #require(NSEvent.mouseEvent(
+                with: type,
+                location: type == .leftMouseUp ? panel.convertPoint(toScreen: point) : point,
+                modifierFlags: [],
+                timestamp: 0,
+                // A posted event gets a wrong position in its window; without
+                // one it keeps its place on the screen.
+                windowNumber: type == .leftMouseUp ? 0 : panel.windowNumber,
+                context: nil,
+                eventNumber: 0,
+                clickCount: clickCount,
+                pressure: type == .leftMouseUp ? 0 : 1
+            ))
+        }
+
+        NSApp.postEvent(try mouse(.leftMouseUp, clickCount: 1), atStart: false)
+        panel.sendEvent(try mouse(.leftMouseDown, clickCount: 1))
+        #expect(!controller.cards.contains { $0 === cards[0] })
+        // The next card comes to the front, its Close where the first one's
+        // was. The second click of a double-click goes to the button there
+        // once the first card has gone.
+        cards[1].paper.removeAllAnimations()
+        CALayer.withoutAnimation { cards[1].paper.transform = CATransform3DIdentity }
+        CATransaction.flush()
+        let target = try #require(stack.superview).convert(point, from: nil)
+        let nextClose = try #require(stack.hitTest(target) as? ThumbnailButton)
+        #expect(nextClose !== frontClose)
+        NSApp.postEvent(try mouse(.leftMouseUp, clickCount: 2), atStart: false)
+        nextClose.mouseDown(with: try mouse(.leftMouseDown, clickCount: 2))
+
+        #expect(controller.cards.contains { $0 === cards[1] })
+        // The ignored click's mouse-up is still waiting.
+        _ = NSApp.nextEvent(matching: .leftMouseUp, until: Date(), inMode: .default, dequeue: true)
+    }
+
     @Test func eachCardShowsItsButtonIcons() throws {
         let card = ThumbnailCardView(imageSize: CGSize(width: 400, height: 300))
         let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }
