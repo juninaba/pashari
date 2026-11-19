@@ -495,6 +495,62 @@ struct ThumbnailControllerTests {
         #expect(controller.cards.contains { $0 === cards[2] })
     }
 
+    @Test func releasingAButtonWhereAnotherCardCoversItDoesNothing() throws {
+        let controller = ThumbnailController()
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        // A wider card first, then a narrower one in front of it: the older
+        // card's Close sticks out past the newer card's edge.
+        controller.show(Screenshot(image: TestImages.make(width: 368, height: 240), scale: 2, capturedAt: Date()))
+        controller.show(makeScreenshot())
+        let cards = controller.cards
+        let front = cards[0]
+        let behind = cards[1]
+        let stack = try #require(front.superview as? ThumbnailStackView)
+        let panel = try #require(stack.window)
+        stack.pointerLocation = { CGPoint(x: -10_000, y: -10_000) }
+        // Upright, so that only which card lies on top matters.
+        cards.forEach { $0.paper.removeAllAnimations() }
+        CALayer.withoutAnimation { behind.paper.transform = CATransform3DIdentity }
+        CATransaction.flush()
+        let behindClose = try #require(
+            behind.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }.last
+        )
+        let closeFrame = behindClose.convert(behindClose.bounds, to: stack)
+        try #require(closeFrame.minX < front.frame.maxX && front.frame.maxX < closeFrame.maxX)
+        let pressed = stack.convert(CGPoint(x: (front.frame.maxX + closeFrame.maxX) / 2, y: closeFrame.midY), to: nil)
+        let released = stack.convert(CGPoint(x: (closeFrame.minX + front.frame.maxX) / 2, y: closeFrame.midY), to: nil)
+        #expect(stack.hitTest(try #require(stack.superview).convert(pressed, from: nil)) === behindClose)
+
+        // Pressed where it shows, let go over the newer card.
+        NSApp.postEvent(try #require(NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: panel.convertPoint(toScreen: released),
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 0
+        )), atStart: false)
+        panel.sendEvent(try #require(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: pressed,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: panel.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        )))
+
+        #expect(controller.cards.contains { $0 === behind })
+        #expect(controller.cards.contains { $0 === front })
+    }
+
     @Test func eachCardShowsItsButtonIcons() throws {
         let card = ThumbnailCardView(imageSize: CGSize(width: 400, height: 300))
         let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }

@@ -424,19 +424,13 @@ final class ThumbnailButton: NSButton {
         return window.convertPoint(fromScreen: onScreen)
     }
 
-    /// Whether the button shows at `location`, in the window.
+    /// Whether the button shows at `location`, in the window, and is not
+    /// covered by another card: the window's hit test knows where the cards
+    /// show and which lies on top.
     private func showsButton(at location: NSPoint) -> Bool {
-        var view = superview
-        while let current = view, !(current is ThumbnailCardView) {
-            view = current.superview
-        }
-        guard let card = view as? ThumbnailCardView, let stack = card.superview else {
-            return bounds.contains(convert(location, from: nil))
-        }
-        guard let laidOut = card.laidOutPoint(forShownPoint: stack.convert(location, from: nil)) else {
-            return false
-        }
-        return bounds.contains(convert(laidOut, from: stack))
+        guard let content = window?.contentView else { return false }
+        let point = content.superview?.convert(location, from: nil) ?? location
+        return content.hitTest(point) === self
     }
 
     private func setPressed(_ pressed: Bool) {
