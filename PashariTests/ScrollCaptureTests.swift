@@ -57,7 +57,11 @@ struct ScrollCaptureControlPanelTests {
 /// These record a real window while it scrolls, so they run only where
 /// Pashari has the Screen Recording permission.
 @MainActor
-@Suite(.serialized, .enabled(if: CGPreflightScreenCaptureAccess(), "needs the Screen Recording permission"))
+@Suite(
+    .serialized,
+    .enabled(if: CGPreflightScreenCaptureAccess(), "needs the Screen Recording permission"),
+    .takesTurnsOnTheScreen
+)
 struct ScrollRecorderTests {
     @Test func scrollingAWindowJoinsItsContentIntoOneTallPicture() async throws {
         let page = try await ScrollingPage.show()
@@ -137,8 +141,12 @@ struct ScrollRecorderTests {
         // Once recording has begun, a dialog opens. Before it shows,
         // `ModalPresentation` ends the overlays, this one too.
         try await waitForTheBar(saying: String(localized: "Scroll to capture more"))
+        // This capture's own: a recording shows the same kind of overlay,
+        // and one that has just ended may not be gone yet.
         let overlay = try #require(
-            NSApp.windows.compactMap { $0 as? OverlayPanel }.first { $0.contentView is RecordedAreaOverlayView }
+            NSApp.windows.compactMap { $0 as? OverlayPanel }.first { panel in
+                panel.isVisible && (panel.contentView as? RecordedAreaOverlayView)?.area == page.area
+            }
         )
         overlay.onCancel?()
 
