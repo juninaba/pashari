@@ -147,7 +147,8 @@ private struct ToolButtonBody: View {
 }
 
 /// Copy and Save: rounded, the more important one filled with the accent.
-private struct PillButtonStyle: ButtonStyle {
+/// Settings uses it too.
+struct PillButtonStyle: ButtonStyle {
     let isProminent: Bool
     @Environment(\.isEnabled) private var isEnabled
 
