@@ -3,14 +3,17 @@ import AppKit
 final class CaptureCoordinator {
     private let thumbnailController: ThumbnailController
     private let ensurePermission: @MainActor () -> Bool
+    private let playShutterSound: @MainActor () -> Void
     private var isCapturing = false
 
     init(
         thumbnailController: ThumbnailController,
-        ensurePermission: @escaping @MainActor () -> Bool = { ScreenRecordingPermission.ensureGranted() }
+        ensurePermission: @escaping @MainActor () -> Bool = { ScreenRecordingPermission.ensureGranted() },
+        playShutterSound: @escaping @MainActor () -> Void = { Preferences.shutterSound().play() }
     ) {
         self.thumbnailController = thumbnailController
         self.ensurePermission = ensurePermission
+        self.playShutterSound = playShutterSound
     }
 
     func captureFullscreen() {
@@ -52,15 +55,18 @@ final class CaptureCoordinator {
     }
 
     /// Shared skeleton of every capture mode. `capture` returns the
-    /// screenshot, or nil when the user cancelled.
-    private func run(_ capture: @escaping () async throws -> Screenshot?) {
+    /// screenshot, or nil when the user cancelled. Returns the task that
+    /// waits for it, or nil when no capture starts. Tests pass their own
+    /// `capture` and wait for the task.
+    @discardableResult
+    func run(_ capture: @escaping () async throws -> Screenshot?) -> Task<Void, Never>? {
         guard NSApp.modalWindow == nil else {
             Log.capture.info("Ignored: a modal dialog is open")
-            return
+            return nil
         }
         guard !isCapturing else {
             Log.capture.info("Ignored: a capture is already running")
-            return
+            return nil
         }
         // Set before the permission check, which can show an alert. Should a
         // hotkey get through while the alert waits for the user, it must not
@@ -69,11 +75,11 @@ final class CaptureCoordinator {
         guard ensurePermission() else {
             isCapturing = false
             Log.capture.info("Stopped: no Screen Recording permission")
-            return
+            return nil
         }
         Log.capture.info("Capture started")
 
-        Task {
+        return Task {
             defer { isCapturing = false }
             do {
                 guard let screenshot = try await capture() else {
@@ -81,6 +87,7 @@ final class CaptureCoordinator {
                     return
                 }
                 Log.capture.info("Captured \(screenshot.image.width)x\(screenshot.image.height) px")
+                playShutterSound()
                 thumbnailController.show(screenshot)
             } catch {
                 Log.capture.error("Capture failed: \(error.localizedDescription, privacy: .public)")
