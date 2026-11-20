@@ -6,6 +6,8 @@ enum CaptureError: LocalizedError {
     case cannotWriteFile(URL)
     case cannotReadFile(URL)
     case cannotApplyEdits
+    case cannotSaveRecording(URL)
+    case cannotReadRecording(URL)
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +21,10 @@ enum CaptureError: LocalizedError {
             String(localized: "The screenshot could not be saved to \(url.path).")
         case .cannotReadFile(let url):
             String(localized: "The screenshot could not be read from \(url.path).")
+        case .cannotSaveRecording(let url):
+            String(localized: "The recording could not be saved to \(url.path).")
+        case .cannotReadRecording(let url):
+            String(localized: "The recording could not be read from \(url.path).")
         }
     }
 }

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -5,12 +6,20 @@ import UniformTypeIdentifiers
 /// As soon as it is created it starts encoding the PNG in the background and
 /// writes it to a working file. Once that succeeds, only metadata stays in
 /// memory. Copy, Save and the editor read the file when they need it.
+///
+/// A recording comes with its MP4 already written.
 final class PendingCapture {
     struct File: Sendable {
         let data: Data
         let url: URL
     }
 
+    enum Kind: Equatable {
+        case screenshot
+        case recording(duration: TimeInterval)
+    }
+
+    let kind: Kind
     let pointSize: CGSize
     let capturedAt: Date
     private let scale: CGFloat
@@ -30,6 +39,7 @@ final class PendingCapture {
     }
 
     init(screenshot: Screenshot, storage: CaptureStorage) {
+        kind = .screenshot
         pointSize = screenshot.pointSize
         capturedAt = screenshot.capturedAt
         scale = screenshot.scale
@@ -48,6 +58,20 @@ final class PendingCapture {
         }
     }
 
+    init(recording: Recording) {
+        kind = .recording(duration: recording.duration)
+        pointSize = recording.pointSize
+        capturedAt = recording.capturedAt
+        scale = 1
+        backing = .ready(recording.url)
+    }
+
+    /// The recording, for a capture that is one, once its file is ready.
+    var recording: Recording? {
+        guard case .recording(let duration) = kind, let url = readyFileURL else { return nil }
+        return Recording(url: url, pointSize: pointSize, duration: duration, capturedAt: capturedAt)
+    }
+
     init(restoring file: URL, storage: CaptureStorage) throws {
         guard try Self.hasPNGEnd(at: file),
               let source = CGImageSourceCreateWithURL(file as CFURL, nil),
@@ -63,6 +87,7 @@ final class PendingCapture {
         scale = max(1, (dpi / 72).rounded())
         pointSize = CGSize(width: width / scale, height: height / scale)
         capturedAt = try file.resourceValues(forKeys: [.creationDateKey]).creationDate ?? Date()
+        kind = .screenshot
         backing = .ready(try storage.restore(file))
     }
 
@@ -105,6 +130,12 @@ final class PendingCapture {
     /// of `part` of the screenshot (in points, origin at the top-left
     /// corner), or of all of it.
     func thumbnail(of part: CGRect? = nil, maxPixelSize: Int) async throws -> CGImage {
+        if case .recording = kind {
+            let frame = try await Self.firstFrame(of: fileURL(), maxPixelSize: part == nil ? maxPixelSize : nil)
+            guard let part else { return frame }
+            let screenshot = Screenshot(image: frame, scale: CGFloat(frame.width) / pointSize.width, capturedAt: capturedAt)
+            return try await Self.resize(screenshot.cropped(to: part)?.image ?? frame, maxPixelSize: maxPixelSize)
+        }
         guard let part else {
             if let original {
                 return try await Self.resize(original.image, maxPixelSize: maxPixelSize)
@@ -150,6 +181,23 @@ final class PendingCapture {
         }
         guard let image else { throw CaptureError.cannotReadFile(url) }
         return image
+    }
+
+    /// The recording's first frame, as large as it is, or with its longer
+    /// side at most `maxPixelSize`.
+    @concurrent
+    private static func firstFrame(of url: URL, maxPixelSize: Int?) async throws -> CGImage {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        if let maxPixelSize {
+            generator.maximumSize = CGSize(width: maxPixelSize, height: maxPixelSize)
+        }
+        do {
+            return try await generator.image(at: .zero).image
+        } catch {
+            throw CaptureError.cannotReadRecording(url)
+        }
     }
 
     @concurrent
