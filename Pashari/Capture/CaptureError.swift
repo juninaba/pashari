@@ -8,6 +8,7 @@ enum CaptureError: LocalizedError {
     case cannotApplyEdits
     case cannotSaveRecording(URL)
     case cannotReadRecording(URL)
+    case cannotTrimRecording
 
     var errorDescription: String? {
         switch self {
@@ -25,6 +26,8 @@ enum CaptureError: LocalizedError {
             String(localized: "The recording could not be saved to \(url.path).")
         case .cannotReadRecording(let url):
             String(localized: "The recording could not be read from \(url.path).")
+        case .cannotTrimRecording:
+            String(localized: "The recording could not be trimmed.")
         }
     }
 }

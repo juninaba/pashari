@@ -124,8 +124,9 @@ struct EditorToolbarView: View {
     }
 }
 
-/// Lights up under the pointer, and dims while pressed or unavailable.
-private struct ToolButtonStyle: ButtonStyle {
+/// Lights up under the pointer, and dims while pressed or unavailable. The
+/// recording player's toolbar uses it too.
+struct ToolButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         ToolButtonBody(configuration: configuration)
     }

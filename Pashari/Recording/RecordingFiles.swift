@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 enum RecordingFiles {
@@ -15,5 +16,36 @@ enum RecordingFiles {
             throw CaptureError.cannotSaveRecording(destination)
         }
         return destination
+    }
+
+    /// Cuts the recording at `url` down to `range`, in place. The frames
+    /// are copied as they are, which takes a moment even for a long
+    /// recording; the file says where to start, and players, browsers
+    /// included, begin there.
+    @concurrent
+    static func trim(_ url: URL, to range: CMTimeRange) async throws {
+        let asset = AVURLAsset(url: url)
+        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
+            throw CaptureError.cannotTrimRecording
+        }
+        // Next to the recording, in its own folder, and not named like one,
+        // so that it is never taken for a recording to restore.
+        let trimmed = url.deletingLastPathComponent().appending(path: "trimming-\(UUID().uuidString).mp4")
+        session.timeRange = range
+        session.shouldOptimizeForNetworkUse = true
+        do {
+            if #available(macOS 15.0, *) {
+                try await session.export(to: trimmed, as: .mp4)
+            } else {
+                session.outputURL = trimmed
+                session.outputFileType = .mp4
+                await session.export()
+                if let error = session.error { throw error }
+            }
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: trimmed)
+        } catch {
+            try? FileManager.default.removeItem(at: trimmed)
+            throw CaptureError.cannotTrimRecording
+        }
     }
 }

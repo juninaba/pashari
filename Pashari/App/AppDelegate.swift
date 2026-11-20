@@ -3,6 +3,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let thumbnailController: ThumbnailController
     private let editorController: AnnotationEditorController
+    private lazy var playerController = RecordingPlayerController(storage: thumbnailController.storage)
     private let settingsWindowController = SettingsWindowController()
     private lazy var captureCoordinator = CaptureCoordinator(
         thumbnailController: thumbnailController
@@ -32,6 +33,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editorController.onFinish = { [thumbnailController] screenshot in
             thumbnailController.show(screenshot)
         }
+        thumbnailController.onPlay = { [playerController] recording in
+            playerController.open(recording)
+        }
+        playerController.onFinish = { [thumbnailController] recording in
+            thumbnailController.show(recording)
+        }
 
         statusItemController = StatusItemController(
             captureCoordinator: captureCoordinator,
@@ -54,11 +61,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard thumbnailController.hasPendingCaptures || editorController.hasOpenEditors else {
+        guard
+            thumbnailController.hasPendingCaptures
+                || editorController.hasOpenEditors
+                || playerController.hasOpenPlayers
+        else {
             return .terminateNow
         }
         guard confirmQuit() else {
             editorController.showEditors()
+            playerController.showPlayers()
             return .terminateCancel
         }
         return .terminateNow
