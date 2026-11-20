@@ -723,6 +723,32 @@ struct ThumbnailControllerTests {
         }
     }
 
+    @Test func cardsTurnDarkInDarkModeAndLightAgain() throws {
+        let panel = ThumbnailPanel()
+        panel.appearance = NSAppearance(named: .aqua)
+        let card = ThumbnailCardView(imageSize: CGSize(width: 400, height: 300))
+        panel.stackView.addSubview(card)
+        let icons = {
+            card.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }
+                .compactMap { $0.look.sublayers?.lazy.compactMap(\.contents).first }
+                .map { ObjectIdentifier($0 as AnyObject) }
+        }
+        let lightIcons = icons()
+        try #require(lightIcons.count == 4)
+        #expect(card.paper.backgroundColor == ThumbnailStyle.Colors.light.paper)
+
+        panel.appearance = NSAppearance(named: .darkAqua)
+        #expect(card.paper.backgroundColor == ThumbnailStyle.Colors.dark.paper)
+        #expect(card.paper.borderColor == ThumbnailStyle.Colors.dark.edge)
+        let darkIcons = icons()
+        #expect(darkIcons.count == 4)
+        #expect(Set(darkIcons).isDisjoint(with: lightIcons))
+
+        panel.appearance = NSAppearance(named: .aqua)
+        #expect(card.paper.backgroundColor == ThumbnailStyle.Colors.light.paper)
+        #expect(icons() == lightIcons)
+    }
+
     private func enterExitEvent(_ type: NSEvent.EventType) throws -> NSEvent {
         try #require(NSEvent.enterExitEvent(
             with: type,

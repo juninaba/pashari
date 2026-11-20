@@ -1,8 +1,8 @@
 import AppKit
 
 /// Whether Pashari's windows are light or dark: as in macOS, or as picked
-/// in Settings. The paper of the prints and the thumbnails stays light
-/// either way.
+/// in Settings. The thumbnails turn dark too; the paper of the prints in
+/// the editor stays light either way.
 enum AppAppearance: String, CaseIterable, Identifiable {
     case system
     case light
