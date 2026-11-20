@@ -68,7 +68,8 @@ final class ScrollCaptureSession {
     // MARK: - Recording
 
     private func startRecording(_ area: CGRect, on screen: NSScreen) async throws -> ScrollRecorder {
-        let content = try await shareableContentListingPashari()
+        // The overlay and the controls must be left out of the recording.
+        let content = try await ScreenCapturer.shareableContentListingPashari()
         guard
             let displayID = screen.displayID,
             let display = content.displays.first(where: { $0.displayID == displayID })
@@ -90,23 +91,6 @@ final class ScrollCaptureSession {
         self.recorder = recorder
         try await recorder.start()
         return recorder
-    }
-
-    /// The overlay and the controls must be left out of the recording.
-    /// They were only just put on screen and may not be listed yet, which
-    /// does not matter as long as Pashari itself is: the recording then
-    /// leaves out all its windows but those a screenshot shows. Pashari is
-    /// listed once any of its windows is, such as its menu bar icon.
-    private func shareableContentListingPashari() async throws -> SCShareableContent {
-        let ownProcessID = ProcessInfo.processInfo.processIdentifier
-        var content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        var attempts = 1
-        while !content.applications.contains(where: { $0.processID == ownProcessID }), attempts < 10 {
-            try await Task.sleep(for: .milliseconds(30))
-            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            attempts += 1
-        }
-        return content
     }
 
     private func update(_ progress: ScrollRecorder.Progress) {
