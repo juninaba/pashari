@@ -64,7 +64,7 @@ behind the notch, open Pashari again from Spotlight or the Finder and
 Settings appears.
 
 <p align="center">
-  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder screenshots are saved to, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area has none yet.">
+  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder screenshots are saved to, the shutter sound set to Film camera, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area has none yet.">
 </p>
 
 ### Scroll capture
