@@ -27,6 +27,10 @@ nonisolated final class AreaRecorder: NSObject, SCStreamOutput, SCStreamDelegate
     private let writer: RecordingWriter
     private var hasStarted = false
     private var hasFailed = false
+    /// When the recording ended. Stopping can come later, say once a
+    /// dialog that opened meanwhile has closed; frames after this are left
+    /// out.
+    private var endTime: CMTime?
 
     /// `area` is in points, with the origin at the display's top-left
     /// corner, and must lie on whole points: ScreenCaptureKit would scale
@@ -114,31 +118,28 @@ nonisolated final class AreaRecorder: NSObject, SCStreamOutput, SCStreamDelegate
         }
     }
 
+    /// Ends the recording now, though `stop()` may come only later.
+    func end() {
+        let now = CMClockGetTime(CMClockGetHostTimeClock())
+        queue.async {
+            if self.endTime == nil { self.endTime = now }
+        }
+    }
+
     /// Stops recording and finishes the file. Gives the recording's length,
     /// or nil when not a single frame came, in which case there is no file.
     func stop() async throws -> TimeInterval? {
-        // Now, not once the stream has stopped: the recording ends when
-        // asked to.
-        let end = CMClockGetTime(CMClockGetHostTimeClock())
+        // Unless it already ended, the recording ends now, not once the
+        // stream has stopped.
+        end()
         try? await stream?.stopCapture()
         stream = nil
         // Frames that arrived before the stop may still wait on the queue.
         // This runs after them.
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
+                let end = self.endTime ?? CMClockGetTime(CMClockGetHostTimeClock())
                 self.writer.finish(at: end) { continuation.resume(with: $0) }
-            }
-        }
-    }
-
-    /// Stops recording and deletes the file.
-    func cancel() async {
-        try? await stream?.stopCapture()
-        stream = nil
-        await withCheckedContinuation { continuation in
-            queue.async {
-                self.writer.cancel()
-                continuation.resume()
             }
         }
     }
@@ -159,6 +160,7 @@ nonisolated final class AreaRecorder: NSObject, SCStreamOutput, SCStreamDelegate
             CVPixelBufferGetHeight(pixelBuffer) == height
         else { return }
 
+        if let endTime, sampleBuffer.presentationTimeStamp > endTime { return }
         do {
             let outcome = try writer.append(pixelBuffer, at: sampleBuffer.presentationTimeStamp)
             if outcome == .appended, !hasStarted {

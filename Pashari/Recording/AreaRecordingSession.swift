@@ -47,6 +47,7 @@ final class AreaRecordingSession {
     private var spaceObserver: SpaceChangeObserver?
 
     // While recording.
+    private var recorder: AreaRecorder?
     private var frameOverlay: OverlayPanel?
     private var recordingURL: URL?
     private var startedAt: Date?
@@ -218,6 +219,7 @@ final class AreaRecordingSession {
         let recorder: AreaRecorder
         do {
             recorder = try await startRecorder(area, writingTo: url)
+            self.recorder = recorder
         } catch {
             try? FileManager.default.removeItem(at: folder)
             throw error
@@ -295,6 +297,9 @@ final class AreaRecordingSession {
 
     private func end(_ ending: Ending) {
         guard phase == .recording, self.ending == nil else { return }
+        // Now: a dialog that ends the recording keeps the main thread busy
+        // until it closes, and the recording must not go on meanwhile.
+        recorder?.end()
         self.ending = ending
         controls.disableButtons()
         endingContinuation?.resume(returning: ending)

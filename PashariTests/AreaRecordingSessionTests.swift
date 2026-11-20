@@ -140,6 +140,33 @@ struct AreaRecordingSessionTests {
         #expect(FileManager.default.fileExists(atPath: recording.url.path))
     }
 
+    @Test func aDialogEndsTheRecordingWhenItOpensNotWhenItCloses() async throws {
+        let page = try await ColorPage.show(.pageBlue)
+        defer { page.close() }
+        _ = try await page.listedContent()
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let displayID = try #require(page.window.screen?.displayID)
+        let session = AreaRecordingSession(
+            storage: storage.storage,
+            remembered: (displayID, page.area),
+            rememberArea: { _ in }
+        )
+        let run = Task { try await session.run() }
+
+        _ = try await waitForTheFrameOverlay()
+        session.advance()
+        _ = try await waitForTheBar { if case .recording = $0 { true } else { false } }
+        try await Task.sleep(for: .milliseconds(500))
+        // Before a dialog shows, `ModalPresentation` ends the overlays. The
+        // dialog then keeps the main thread in its own loop until it closes.
+        OverlayPanel.cancelSelection()
+        usleep(1_500_000)
+
+        let recording = try #require(try await run.value)
+        #expect(recording.duration < 1.2, "\(recording.duration) s recorded")
+    }
+
     @Test func theHotkeyShowsTheFrameThenRecordsThenStops() async throws {
         let page = try await ColorPage.show(.pageBlue)
         defer { page.close() }
