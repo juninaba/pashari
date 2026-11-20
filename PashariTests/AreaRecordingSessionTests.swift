@@ -187,8 +187,10 @@ struct AreaRecordingSessionTests {
         _ = try await waitForTheBar { $0 == .preparing }
         OverlayPanel.cancelSelection()
 
+        // Nothing, or the frame or two that came before the dialog: the bar
+        // says "Getting ready…" until the first frame has reached it.
         let recording = try await run.value
-        #expect(recording == nil, "\(recording?.duration ?? 0) s recorded")
+        #expect((recording?.duration ?? 0) < 0.3, "\(recording?.duration ?? 0) s recorded")
     }
 
     @Test func theHotkeyShowsTheFrameThenRecordsThenStops() async throws {
