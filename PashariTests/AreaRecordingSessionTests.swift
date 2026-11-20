@@ -138,6 +138,44 @@ struct AreaRecordingSessionTests {
         #expect(FileManager.default.fileExists(atPath: recording.url.path))
     }
 
+    @Test func theHotkeyShowsTheFrameThenRecordsThenStops() async throws {
+        let page = try await ColorPage.show(.pageBlue)
+        defer { page.close() }
+        _ = try await page.listedContent()
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let thumbnails = ThumbnailController(storage: storage.storage)
+        defer {
+            while let card = thumbnails.cards.first { card.onClose?() }
+        }
+        let displayID = try #require(page.window.screen?.displayID)
+        let coordinator = CaptureCoordinator(
+            thumbnailController: thumbnails,
+            ensurePermission: { true },
+            makeRecordingSession: { storage in
+                AreaRecordingSession(storage: storage, remembered: (displayID, page.area), rememberArea: { _ in })
+            }
+        )
+        var changes: [Bool] = []
+        coordinator.onRecordingChange = { changes.append($0) }
+
+        let run = try #require(coordinator.recordArea())
+        _ = try await waitForTheFrameOverlay()
+        #expect(changes.isEmpty)
+        coordinator.recordArea()
+        _ = try await waitForTheBar { if case .recording = $0 { true } else { false } }
+        #expect(changes == [true])
+        // Other captures wait until the recording ends.
+        #expect(coordinator.run { nil } == nil)
+        try await Task.sleep(for: .milliseconds(300))
+        coordinator.recordArea()
+        await run.value
+
+        #expect(changes == [true, false])
+        #expect(thumbnails.pendingCount == 1)
+        #expect(thumbnails.cards.first?.duration != nil)
+    }
+
     private func waitForTheFrameOverlay() async throws -> RecordingAreaView {
         for _ in 0..<100 {
             let views = NSApp.windows.compactMap { $0 as? OverlayPanel }
