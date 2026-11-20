@@ -17,6 +17,11 @@ final class RecordingPlayerController {
 
     func open(_ recording: Recording) {
         let player = RecordingPlayerWindowController(recording: recording, storage: storage)
+        keep(player)
+        player.show()
+    }
+
+    func keep(_ player: RecordingPlayerWindowController) {
         player.onClose = { [weak self, weak player] result in
             if let result {
                 self?.onFinish?(result)
@@ -28,7 +33,6 @@ final class RecordingPlayerController {
             }
         }
         players.append(player)
-        player.show()
     }
 
     /// After cancelling Quit, bring the recordings forward to be copied or

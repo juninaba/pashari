@@ -107,7 +107,7 @@ final class CaptureStorage {
                 for capture in captures {
                     let marker = dropMarker(in: capture)
                     do {
-                        guard let file = droppedFile(in: try pngFiles(in: capture), markedBy: marker) else { continue }
+                        guard let file = droppedFile(in: try captureFiles(in: capture), markedBy: marker) else { continue }
                         try manager.removeItem(at: file)
                         try manager.removeItem(at: marker)
                         removeEmptyCaptureDirectory(capture)
@@ -171,7 +171,14 @@ final class CaptureStorage {
         var pending: [URL] = []
         var hasDrop = false
         for capture in try captureDirectories(in: run) {
-            guard let files = try? pngFiles(in: capture) else { continue }
+            guard let files = try? captureFiles(in: capture) else { continue }
+            // A recording that was cut short cannot be played. Its folder
+            // also holds what AVFoundation was still writing.
+            if files.contains(where: { $0.pathExtension == "mp4" && RecordingFileInfo(contentsOf: $0) == nil }) {
+                try? FileManager.default.removeItem(at: capture)
+                Log.thumbnail.info("Removed a recording that was cut short")
+                continue
+            }
             let dropped = droppedFile(in: files, markedBy: dropMarker(in: capture))
             hasDrop = hasDrop || dropped != nil
             pending.append(contentsOf: files.filter { $0 != dropped })
@@ -179,12 +186,13 @@ final class CaptureStorage {
         return (pending, hasDrop)
     }
 
-    private func pngFiles(in capture: URL) throws -> [URL] {
+    /// The screenshot's PNG, or the recording's MP4.
+    private func captureFiles(in capture: URL) throws -> [URL] {
         let files = try FileManager.default.contentsOfDirectory(
             at: capture, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
         )
         return files.filter { file in
-            file.lastPathComponent.wholeMatch(of: /pashari-[0-9]{8}-[a-z]{4}\.png/) != nil
+            file.lastPathComponent.wholeMatch(of: /pashari-[0-9]{8}-[a-z]{4}\.(png|mp4)/) != nil
                 && (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
         }
     }

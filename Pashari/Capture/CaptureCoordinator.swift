@@ -11,6 +11,10 @@ final class CaptureCoordinator {
     private let makeRecordingSession: @MainActor (CaptureStorage) -> AreaRecordingSession
     private var isCapturing = false
     private var recordingSession: AreaRecordingSession?
+    private var recordingTask: Task<Void, Never>?
+
+    /// True while an area is being recorded, not while its frame is chosen.
+    var isRecording: Bool { recordingSession?.isRecording == true }
 
     init(
         thumbnailController: ThumbnailController,
@@ -73,7 +77,7 @@ final class CaptureCoordinator {
             recordingSession.advance()
             return nil
         }
-        return start(errorTitle: String(localized: "The recording could not be made")) { [self] in
+        recordingTask = start(errorTitle: String(localized: "The recording could not be made")) { [self] in
             let session = makeRecordingSession(thumbnailController.storage)
             session.onRecordingChange = { [weak self] isRecording in
                 self?.onRecordingChange?(isRecording)
@@ -86,11 +90,20 @@ final class CaptureCoordinator {
             }
             thumbnailController.show(recording)
         }
+        return recordingTask
     }
 
     /// The menu bar icon's stop button.
     func stopRecording() {
         recordingSession?.stop()
+    }
+
+    /// Stops the recording, if one is running, and waits until it has
+    /// joined the thumbnails.
+    func finishRecording() async {
+        guard isRecording else { return }
+        stopRecording()
+        await recordingTask?.value
     }
 
     /// Shared skeleton of every capture mode that ends in a screenshot.

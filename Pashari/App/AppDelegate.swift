@@ -3,21 +3,26 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let thumbnailController: ThumbnailController
     private let editorController: AnnotationEditorController
-    private lazy var playerController = RecordingPlayerController(storage: thumbnailController.storage)
+    private(set) lazy var playerController = RecordingPlayerController(storage: thumbnailController.storage)
     private let settingsWindowController = SettingsWindowController()
-    private lazy var captureCoordinator = CaptureCoordinator(
-        thumbnailController: thumbnailController
-    )
+    private let makeCaptureCoordinator: @MainActor (ThumbnailController) -> CaptureCoordinator
+    private(set) lazy var captureCoordinator = makeCaptureCoordinator(thumbnailController)
     private var statusItemController: StatusItemController?
 
     lazy var confirmQuit: () -> Bool = { [unowned self] in self.askToQuit() }
+    /// The answer to a quit that had to wait for a recording to end.
+    lazy var replyToQuit: (Bool) -> Void = { NSApp.reply(toApplicationShouldTerminate: $0) }
 
     init(
         thumbnailController: ThumbnailController = ThumbnailController(),
-        editorController: AnnotationEditorController = AnnotationEditorController()
+        editorController: AnnotationEditorController = AnnotationEditorController(),
+        makeCaptureCoordinator: @escaping @MainActor (ThumbnailController) -> CaptureCoordinator = {
+            CaptureCoordinator(thumbnailController: $0)
+        }
     ) {
         self.thumbnailController = thumbnailController
         self.editorController = editorController
+        self.makeCaptureCoordinator = makeCaptureCoordinator
         super.init()
     }
 
@@ -61,19 +66,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Say at logout: a recording that is running ends first, and joins
+        // the thumbnails like any other before the question.
+        if captureCoordinator.isRecording {
+            Task {
+                await captureCoordinator.finishRecording()
+                replyToQuit(shouldQuit())
+            }
+            return .terminateLater
+        }
+        return shouldQuit() ? .terminateNow : .terminateCancel
+    }
+
+    private func shouldQuit() -> Bool {
         guard
             thumbnailController.hasPendingCaptures
                 || editorController.hasOpenEditors
                 || playerController.hasOpenPlayers
         else {
-            return .terminateNow
+            return true
         }
         guard confirmQuit() else {
             editorController.showEditors()
             playerController.showPlayers()
-            return .terminateCancel
+            return false
         }
-        return .terminateNow
+        return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {

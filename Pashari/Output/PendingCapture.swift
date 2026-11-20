@@ -1,4 +1,5 @@
 import AVFoundation
+import AppKit
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -72,7 +73,24 @@ final class PendingCapture {
         return Recording(url: url, pointSize: pointSize, duration: duration, capturedAt: capturedAt)
     }
 
-    init(restoring file: URL, storage: CaptureStorage) throws {
+    /// `screenScale` stands in for the pixels per point of a recording,
+    /// which its file does not say.
+    init(
+        restoring file: URL,
+        storage: CaptureStorage,
+        screenScale: CGFloat = NSScreen.main?.backingScaleFactor ?? 2
+    ) throws {
+        if file.pathExtension == "mp4" {
+            guard let info = RecordingFileInfo(contentsOf: file) else {
+                throw CaptureError.cannotReadRecording(file)
+            }
+            kind = .recording(duration: info.duration)
+            scale = screenScale
+            pointSize = CGSize(width: info.pixelSize.width / screenScale, height: info.pixelSize.height / screenScale)
+            capturedAt = try file.resourceValues(forKeys: [.creationDateKey]).creationDate ?? Date()
+            backing = .ready(try storage.restore(file))
+            return
+        }
         guard try Self.hasPNGEnd(at: file),
               let source = CGImageSourceCreateWithURL(file as CFURL, nil),
               CGImageSourceGetType(source) == UTType.png.identifier as CFString,

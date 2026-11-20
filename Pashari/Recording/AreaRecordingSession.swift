@@ -32,6 +32,9 @@ final class AreaRecordingSession {
     /// Called with true when recording begins, and with false when it ends.
     var onRecordingChange: ((Bool) -> Void)?
 
+    /// True while recording, after the frame was chosen.
+    var isRecording: Bool { phase == .recording }
+
     private let storage: CaptureStorage
     private let rememberArea: @MainActor (RecordingArea) -> Void
     private var phase = Phase.choosing
