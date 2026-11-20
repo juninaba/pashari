@@ -12,7 +12,7 @@ struct ScrollCaptureControlPanelTests {
     @Test func theControlsGoUnderTheArea() {
         let area = CGRect(x: 300, y: 300, width: 200, height: 300)
 
-        let frame = ScrollCaptureControlPanel.frame(ofSize: size, nextTo: area, in: screen)
+        let frame = ControlBarPlacement.frame(ofSize: size, nextTo: area, in: screen)
 
         #expect(frame == CGRect(x: 200, y: 300 - 12 - 44, width: 400, height: 44))
     }
@@ -20,13 +20,13 @@ struct ScrollCaptureControlPanelTests {
     @Test func theControlsGoOverTheAreaWhenThereIsNoRoomUnderIt() {
         let area = CGRect(x: 300, y: 20, width: 200, height: 300)
 
-        let frame = ScrollCaptureControlPanel.frame(ofSize: size, nextTo: area, in: screen)
+        let frame = ControlBarPlacement.frame(ofSize: size, nextTo: area, in: screen)
 
         #expect(frame.minY == area.maxY + 12)
     }
 
     @Test func theControlsGoInsideAnAreaThatFillsTheScreen() {
-        let frame = ScrollCaptureControlPanel.frame(ofSize: size, nextTo: screen, in: screen)
+        let frame = ControlBarPlacement.frame(ofSize: size, nextTo: screen, in: screen)
 
         #expect(frame.minY == 12)
         #expect(screen.contains(frame))
@@ -35,7 +35,7 @@ struct ScrollCaptureControlPanelTests {
     @Test func theControlsStayOnScreenBesideAnAreaAtTheEdge() {
         let area = CGRect(x: 0, y: 300, width: 100, height: 300)
 
-        let frame = ScrollCaptureControlPanel.frame(ofSize: size, nextTo: area, in: screen)
+        let frame = ControlBarPlacement.frame(ofSize: size, nextTo: area, in: screen)
 
         #expect(frame.minX == 12)
     }
@@ -138,7 +138,7 @@ struct ScrollRecorderTests {
         // `ModalPresentation` ends the overlays, this one too.
         try await waitForTheBar(saying: String(localized: "Scroll to capture more"))
         let overlay = try #require(
-            NSApp.windows.compactMap { $0 as? OverlayPanel }.first { $0.contentView is ScrollCaptureOverlayView }
+            NSApp.windows.compactMap { $0 as? OverlayPanel }.first { $0.contentView is RecordedAreaOverlayView }
         )
         overlay.onCancel?()
 

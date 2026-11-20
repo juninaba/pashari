@@ -26,7 +26,6 @@ final class ScrollCaptureControlPanel: NSPanel {
     private static let preparingHint = String(localized: "Getting ready…")
     private static let scrollHint = String(localized: "Scroll to capture more")
     private static let lostHint = String(localized: "Scroll back a little, then more slowly")
-    private static let gap: CGFloat = 12
 
     init() {
         super.init(
@@ -79,21 +78,6 @@ final class ScrollCaptureControlPanel: NSPanel {
         doneButton.isEnabled = false
     }
 
-    /// Centred under the area, or over it when there is no room below, or
-    /// else inside its bottom edge. Everything is in AppKit screen
-    /// coordinates, where y grows upwards.
-    static func frame(ofSize size: CGSize, nextTo area: CGRect, in visibleFrame: CGRect) -> CGRect {
-        var origin = CGPoint(x: area.midX - size.width / 2, y: area.minY - gap - size.height)
-        if origin.y < visibleFrame.minY {
-            origin.y = area.maxY + gap
-            if origin.y + size.height > visibleFrame.maxY {
-                origin.y = max(area.minY, visibleFrame.minY) + gap
-            }
-        }
-        origin.x = min(max(origin.x, visibleFrame.minX + gap), visibleFrame.maxX - gap - size.width)
-        return CGRect(origin: CGPoint(x: origin.x.rounded(), y: origin.y.rounded()), size: size)
-    }
-
     private func makeContent() -> NSView {
         let background = NSVisualEffectView()
         // The frosted look of the system's floating panels. `.active` keeps it from
@@ -143,30 +127,5 @@ final class ScrollCaptureControlPanel: NSPanel {
     private static func width(of texts: [String], in label: NSTextField) -> CGFloat {
         let attributes: [NSAttributedString.Key: Any] = [.font: label.font as Any]
         return ceil(texts.map { ($0 as NSString).size(withAttributes: attributes).width }.max() ?? 0) + 4
-    }
-}
-
-/// A push button that works on the first click, even while another app is
-/// active.
-private final class PanelButton: NSButton {
-    var handler: (() -> Void)?
-
-    init(title: String) {
-        super.init(frame: .zero)
-        self.title = title
-        bezelStyle = .push
-        target = self
-        action = #selector(performAction)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("PanelButton is created in code only")
-    }
-
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    @objc private func performAction() {
-        handler?()
     }
 }

@@ -131,7 +131,7 @@ final class ScrollCaptureSession {
         let overlay = OverlayPanel(screen: screen)
         // Every click and scroll goes through to the app underneath.
         overlay.ignoresMouseEvents = true
-        overlay.contentView = ScrollCaptureOverlayView(
+        overlay.contentView = RecordedAreaOverlayView(
             frame: CGRect(origin: .zero, size: screen.frame.size),
             area: area
         )
@@ -151,7 +151,7 @@ final class ScrollCaptureSession {
             width: area.width,
             height: area.height
         )
-        let controlsFrame = ScrollCaptureControlPanel.frame(
+        let controlsFrame = ControlBarPlacement.frame(
             ofSize: controls.frame.size,
             nextTo: areaOnScreen,
             in: screen.visibleFrame
