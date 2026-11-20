@@ -23,8 +23,11 @@ final class RecordingControlPanel: NSPanel {
 
     private(set) var status: Status = .preparing
     private let dot = NSView()
-    private let primaryLabel = NSTextField(labelWithString: "")
-    private let secondaryLabel = NSTextField(labelWithString: "")
+    /// The frame's size, while it is adjusted.
+    private let sizeLabel = NSTextField(labelWithString: "")
+    /// "Getting ready…", then how long the recording is so far.
+    private let timeLabel = NSTextField(labelWithString: "")
+    private let bytesLabel = NSTextField(labelWithString: "")
     private let cancelButton = PanelButton(title: String(localized: "Cancel"))
     private let recordButton = PanelButton(title: String(localized: "Record"))
     private let stopButton = PanelButton(title: String(localized: "Stop"))
@@ -58,23 +61,28 @@ final class RecordingControlPanel: NSPanel {
 
     func show(_ status: Status) {
         self.status = status
+        var isRecording = false
         switch status {
         case .adjusting(let size):
-            primaryLabel.stringValue = "\(Int(size.width)) × \(Int(size.height))"
+            sizeLabel.stringValue = "\(Int(size.width)) × \(Int(size.height))"
         case .preparing:
-            primaryLabel.stringValue = Self.preparingText
+            timeLabel.stringValue = Self.preparingText
+            bytesLabel.stringValue = ""
         case .recording(let elapsed, let bytes):
-            primaryLabel.stringValue = "\(Self.time(elapsed)) / \(Self.time(RecordingWriter.maximumDuration.seconds))"
-            secondaryLabel.stringValue = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+            timeLabel.stringValue = "\(Self.time(elapsed)) / \(Self.time(RecordingWriter.maximumDuration.seconds))"
+            bytesLabel.stringValue = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+            isRecording = true
         }
         let isAdjusting = if case .adjusting = status { true } else { false }
-        let isRecording = if case .recording = status { true } else { false }
-        dot.isHidden = isAdjusting
-        dot.layer?.backgroundColor = (isRecording ? NSColor.systemRed : NSColor.secondaryLabelColor).cgColor
-        secondaryLabel.isHidden = !isRecording
+        sizeLabel.isHidden = !isAdjusting
         cancelButton.isHidden = !isAdjusting
         recordButton.isHidden = !isAdjusting
-        stopButton.isHidden = isAdjusting
+        // The same width from "Getting ready…" on, so that Stop keeps its
+        // place.
+        for view in [dot, timeLabel, bytesLabel, stopButton] {
+            view.isHidden = isAdjusting
+        }
+        dot.layer?.backgroundColor = (isRecording ? NSColor.systemRed : NSColor.secondaryLabelColor).cgColor
         setContentSize(contentView?.fittingSize ?? frame.size)
     }
 
@@ -102,25 +110,30 @@ final class RecordingControlPanel: NSPanel {
 
         dot.wantsLayer = true
         dot.layer?.cornerRadius = 4
-        primaryLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
-        primaryLabel.textColor = .labelColor
-        secondaryLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        secondaryLabel.textColor = .secondaryLabelColor
-        secondaryLabel.alignment = .right
+        for label in [sizeLabel, timeLabel] {
+            label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+            label.textColor = .labelColor
+        }
+        bytesLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        bytesLabel.textColor = .secondaryLabelColor
+        bytesLabel.alignment = .right
 
         cancelButton.handler = { [weak self] in self?.onCancel?() }
-        // Shown as the default button. Return reaches the overlay, which
-        // has the keyboard, and does the same.
-        recordButton.keyEquivalent = "\r"
+        // The bar is never key, so no button of it shows as the default
+        // one: Record gets the red dot of recording instead. Return reaches
+        // the overlay, which has the keyboard, and does the same.
+        Self.give(recordButton, symbol: "circle.fill", tint: .systemRed)
         recordButton.handler = { [weak self] in self?.onRecord?() }
+        Self.give(stopButton, symbol: "stop.fill", tint: nil)
         stopButton.handler = { [weak self] in self?.onStop?() }
 
-        let stack = NSStackView(views: [dot, primaryLabel, secondaryLabel, cancelButton, recordButton, stopButton])
+        let stack = NSStackView(views: [sizeLabel, dot, timeLabel, bytesLabel, cancelButton, recordButton, stopButton])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 8
-        stack.setCustomSpacing(16, after: primaryLabel)
-        stack.setCustomSpacing(20, after: secondaryLabel)
+        stack.setCustomSpacing(20, after: sizeLabel)
+        stack.setCustomSpacing(12, after: timeLabel)
+        stack.setCustomSpacing(16, after: bytesLabel)
         stack.edgeInsets = NSEdgeInsets(top: 8, left: 16, bottom: 8, right: 10)
         stack.translatesAutoresizingMaskIntoConstraints = false
         background.addSubview(stack)
@@ -135,14 +148,30 @@ final class RecordingControlPanel: NSPanel {
             stack.bottomAnchor.constraint(equalTo: background.bottomAnchor),
             dot.widthAnchor.constraint(equalToConstant: 8),
             dot.heightAnchor.constraint(equalToConstant: 8),
-            primaryLabel.widthAnchor.constraint(
-                equalToConstant: Self.width(of: ["00000 × 00000", Self.preparingText, longestTime], in: primaryLabel)
+            sizeLabel.widthAnchor.constraint(equalToConstant: Self.width(of: ["00000 × 00000"], in: sizeLabel)),
+            timeLabel.widthAnchor.constraint(
+                equalToConstant: Self.width(of: [Self.preparingText, longestTime], in: timeLabel)
             ),
-            secondaryLabel.widthAnchor.constraint(
-                equalToConstant: Self.width(of: ["000.0 MB", "1,000 KB"], in: secondaryLabel)
+            bytesLabel.widthAnchor.constraint(
+                equalToConstant: Self.width(of: ["000.0 MB", "1,000 KB"], in: bytesLabel)
             ),
         ])
         return background
+    }
+
+    /// `tint` is drawn into the symbol: a button of a window that is not
+    /// key would draw a tinted symbol white.
+    private static func give(_ button: NSButton, symbol: String, tint: NSColor?) {
+        var configuration = NSImage.SymbolConfiguration(pointSize: 9, weight: .bold)
+        if let tint {
+            configuration = configuration.applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
+        }
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(configuration)
+        image?.isTemplate = tint == nil
+        button.image = image
+        button.imagePosition = .imageLeading
+        button.imageHugsTitle = true
     }
 
     private static func width(of texts: [String], in label: NSTextField) -> CGFloat {

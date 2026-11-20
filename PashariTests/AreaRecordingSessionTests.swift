@@ -19,7 +19,7 @@ struct RecordingControlPanelTests {
         let bar = RecordingControlPanel()
 
         bar.show(.preparing)
-        #expect(visibleTexts(in: bar.contentView) == [String(localized: "Getting ready…")])
+        #expect(visibleTexts(in: bar.contentView).filter { !$0.isEmpty } == [String(localized: "Getting ready…")])
 
         bar.show(.recording(elapsed: 12.6, bytes: 3_400_000))
         let texts = visibleTexts(in: bar.contentView)
@@ -28,11 +28,13 @@ struct RecordingControlPanelTests {
         #expect(visibleButtons(in: bar.contentView) == [String(localized: "Stop")])
     }
 
-    @Test func theBarKeepsItsSizeWhileRecording() {
+    @Test func theBarKeepsItsSizeFromGettingReadyToTheEnd() {
         let bar = RecordingControlPanel()
 
-        bar.show(.recording(elapsed: 0, bytes: 0))
+        bar.show(.preparing)
         let size = bar.frame.size
+        bar.show(.recording(elapsed: 0, bytes: 0))
+        #expect(bar.frame.size == size)
         bar.show(.recording(elapsed: 299, bytes: 987_654_321))
 
         #expect(bar.frame.size == size)
