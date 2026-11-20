@@ -4,6 +4,16 @@ import Foundation
 /// itself.
 enum Preferences {
     private static let saveDirectoryKey = "saveDirectory"
+    private static let appearanceKey = "appearance"
+
+    /// As in macOS until the user picks Light or Dark.
+    static func appearance(in defaults: UserDefaults = .standard) -> AppAppearance {
+        defaults.string(forKey: appearanceKey).flatMap(AppAppearance.init(rawValue:)) ?? .system
+    }
+
+    static func setAppearance(_ appearance: AppAppearance, in defaults: UserDefaults = .standard) {
+        defaults.set(appearance.rawValue, forKey: appearanceKey)
+    }
 
     /// This is the Desktop until the user picks another folder. It is also
     /// the Desktop when the chosen folder is gone, for example on a drive

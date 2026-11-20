@@ -5,11 +5,13 @@ import Observation
 /// while it is closed: an external drive chosen as the save folder can be
 /// unplugged, which sends saves to the Desktop, and the login item can be
 /// turned off in System Settings. So they are read again each time Settings
-/// opens (see `SettingsWindowController.show`).
+/// opens (see `SettingsWindowController.show`). Only Settings changes the
+/// appearance, so it is read once.
 @Observable
 final class SettingsModel {
     var launchAtLogin: Bool
     var saveDirectory: URL
+    var appearance = Preferences.appearance()
     var launchAtLoginError: String?
 
     private let readLaunchAtLogin: @MainActor () -> Bool

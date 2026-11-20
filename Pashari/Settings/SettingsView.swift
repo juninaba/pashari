@@ -86,6 +86,23 @@ struct SettingsView: View {
                         .fixedSize()
                     }
                 }
+
+                Divider()
+
+                LabeledContent("Appearance") {
+                    Picker("Appearance", selection: $model.appearance) {
+                        ForEach(AppAppearance.allCases) { appearance in
+                            Text(appearance.label).tag(appearance)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .onChange(of: model.appearance) { _, newValue in
+                        Preferences.setAppearance(newValue)
+                        newValue.apply()
+                    }
+                }
             }
 
             section("Shortcuts") {

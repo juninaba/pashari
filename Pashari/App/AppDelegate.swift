@@ -21,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before any window opens, such as the alert below that offers to
+        // recover screenshots.
+        Preferences.appearance().apply()
         NSApp.mainMenu = MainMenu.make()
 
         thumbnailController.onAnnotate = { [editorController] screenshot in
