@@ -231,6 +231,54 @@ struct RecordingAreaOverlayTests {
     }
 }
 
+extension RecordingAreaOverlayTests {
+    /// A click reaches the overlay through its window, which AppKit brings
+    /// to the front: over the bar, at the same level, unless the bar comes
+    /// back up.
+    @Test func theBarStaysInFrontOfTheOverlayAfterTheFrameIsDragged() async throws {
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let screen = try #require(NSScreen.main)
+        let displayID = try #require(screen.displayID)
+        let session = AreaRecordingSession(
+            storage: storage.storage,
+            remembered: (displayID, CGRect(x: 200, y: 200, width: 400, height: 300)),
+            rememberArea: { _ in }
+        )
+        let run = Task { try await session.run() }
+        let view = try await waitForTheFrameOverlay()
+        let overlay = try #require(view.window)
+        let bar = try await waitForTheBar { if case .adjusting = $0 { true } else { false } }
+
+        let inside = view.convert(CGPoint(x: 300, y: 300), to: nil)
+        // The mouse-up waits in the queue until the mouse-down is handled.
+        NSApp.postEvent(try mouseEvent(.leftMouseUp, at: inside, in: overlay), atStart: false)
+        overlay.sendEvent(try mouseEvent(.leftMouseDown, at: inside, in: overlay))
+        for _ in 0..<20 {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+
+        let middle = CGPoint(x: bar.frame.midX, y: bar.frame.midY)
+        #expect(NSWindow.windowNumber(at: middle, belowWindowWithWindowNumber: 0) == bar.windowNumber)
+        view.keyDown(with: try #require(escape(in: overlay)))
+        #expect(try await run.value == nil)
+    }
+
+    private func mouseEvent(_ type: NSEvent.EventType, at location: CGPoint, in window: NSWindow) throws -> NSEvent {
+        try #require(NSEvent.mouseEvent(
+            with: type,
+            location: location,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        ))
+    }
+}
+
 /// Capture storage in a folder of its own, removed afterwards.
 @MainActor
 struct TestStorage {

@@ -347,8 +347,9 @@ final class AreaRecordingSession {
         )
         let frame = ControlBarPlacement.frame(ofSize: controls.frame.size, nextTo: onScreen, in: screen.visibleFrame)
         controls.setFrame(frame, display: false)
-        if !controls.isVisible {
-            controls.orderFrontRegardless()
-        }
+        // Each time: a click on an overlay brings it to the front, and over
+        // the bar, which lies at the same level. Its buttons would no
+        // longer be reached.
+        controls.orderFrontRegardless()
     }
 }
