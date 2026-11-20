@@ -107,7 +107,7 @@ struct AreaRecordingSessionTests {
 
         let view = try await waitForTheFrameOverlay()
         #expect(view.frameRect == nil)
-        view.keyDown(with: try #require(Self.escape(in: view.window)))
+        view.keyDown(with: try #require(escape(in: view.window)))
 
         #expect(try await run.value == nil)
         #expect(!NSApp.windows.contains { ($0 is RecordingControlPanel || $0 is OverlayPanel) && $0.isVisible })
@@ -175,47 +175,57 @@ struct AreaRecordingSessionTests {
         #expect(thumbnails.pendingCount == 1)
         #expect(thumbnails.cards.first?.duration != nil)
     }
+}
 
-    private func waitForTheFrameOverlay() async throws -> RecordingAreaView {
-        for _ in 0..<100 {
-            let views = NSApp.windows.compactMap { $0 as? OverlayPanel }
-                .filter(\.isVisible)
-                .compactMap { $0.contentView as? RecordingAreaView }
-            if let view = views.first(where: { $0.frameRect != nil }) ?? views.first {
-                return view
+/// The frame on the overlay, before anything is recorded, which needs no
+/// permission.
+@MainActor
+@Suite(.takesTurnsOnTheScreen)
+struct RecordingAreaOverlayTests {
+    @Test func dragsOnTheOverlayDrawMoveAndResizeTheFrameAndTheBarFollows() async throws {
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let session = AreaRecordingSession(storage: storage.storage, remembered: nil, rememberArea: { _ in })
+        let run = Task { try await session.run() }
+        let view = try await waitForTheFrameOverlay()
+        let window = try #require(view.window)
+        func drag(from start: CGPoint, to end: CGPoint) throws {
+            for (type, point) in [(NSEvent.EventType.leftMouseDown, start), (.leftMouseDragged, end), (.leftMouseUp, end)] {
+                let event = try #require(NSEvent.mouseEvent(
+                    with: type,
+                    location: view.convert(point, to: nil),
+                    modifierFlags: [],
+                    timestamp: 0,
+                    windowNumber: window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                ))
+                switch type {
+                case .leftMouseDown: view.mouseDown(with: event)
+                case .leftMouseDragged: view.mouseDragged(with: event)
+                default: view.mouseUp(with: event)
+                }
             }
-            try await Task.sleep(for: .milliseconds(20))
         }
-        throw CocoaError(.featureUnsupported)
-    }
 
-    private func waitForTheBar(
-        in state: (RecordingControlPanel.Status) -> Bool
-    ) async throws -> RecordingControlPanel {
-        for _ in 0..<150 {
-            let bars = NSApp.windows.compactMap { $0 as? RecordingControlPanel }.filter(\.isVisible)
-            if let bar = bars.first(where: { state($0.status) }) {
-                return bar
-            }
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        Issue.record("The bar never got there")
-        throw CocoaError(.featureUnsupported)
-    }
+        try drag(from: CGPoint(x: 100, y: 100), to: CGPoint(x: 400, y: 300))
+        #expect(view.frameRect == CGRect(x: 100, y: 100, width: 300, height: 200))
+        let bar = try await waitForTheBar { $0 == .adjusting(CGSize(width: 300, height: 200)) }
+        // On screen, AppKit's y grows upwards: the bar sits under the frame.
+        let frameOnScreen = window.convertToScreen(view.convert(CGRect(x: 100, y: 100, width: 300, height: 200), to: nil))
+        #expect(bar.frame.maxY <= frameOnScreen.minY)
 
-    private static func escape(in window: NSWindow?) -> NSEvent? {
-        NSEvent.keyEvent(
-            with: .keyDown,
-            location: .zero,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: window?.windowNumber ?? 0,
-            context: nil,
-            characters: "\u{1b}",
-            charactersIgnoringModifiers: "\u{1b}",
-            isARepeat: false,
-            keyCode: UInt16(kVK_Escape)
-        )
+        try drag(from: CGPoint(x: 200, y: 200), to: CGPoint(x: 250, y: 230))
+        #expect(view.frameRect == CGRect(x: 150, y: 130, width: 300, height: 200))
+
+        try drag(from: CGPoint(x: 450, y: 330), to: CGPoint(x: 500, y: 400))
+        #expect(view.frameRect == CGRect(x: 150, y: 130, width: 350, height: 270))
+        _ = try await waitForTheBar { $0 == .adjusting(CGSize(width: 350, height: 270)) }
+
+        view.keyDown(with: try #require(escape(in: window)))
+        #expect(try await run.value == nil)
     }
 }
 
@@ -249,4 +259,49 @@ private func visibleButtons(in view: NSView?) -> [String] {
     guard let view, !view.isHidden else { return [] }
     let own = (view as? NSButton).map { [$0.title] } ?? []
     return own + view.subviews.flatMap { visibleButtons(in: $0) }
+}
+
+@MainActor
+func waitForTheFrameOverlay() async throws -> RecordingAreaView {
+    for _ in 0..<100 {
+        let views = NSApp.windows.compactMap { $0 as? OverlayPanel }
+            .filter(\.isVisible)
+            .compactMap { $0.contentView as? RecordingAreaView }
+        if let view = views.first(where: { $0.frameRect != nil }) ?? views.first {
+            return view
+        }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    throw CocoaError(.featureUnsupported)
+}
+
+@MainActor
+func waitForTheBar(
+    in state: (RecordingControlPanel.Status) -> Bool
+) async throws -> RecordingControlPanel {
+    for _ in 0..<150 {
+        let bars = NSApp.windows.compactMap { $0 as? RecordingControlPanel }.filter(\.isVisible)
+        if let bar = bars.first(where: { state($0.status) }) {
+            return bar
+        }
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    Issue.record("The bar never got there")
+    throw CocoaError(.featureUnsupported)
+}
+
+@MainActor
+func escape(in window: NSWindow?) -> NSEvent? {
+    NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: window?.windowNumber ?? 0,
+        context: nil,
+        characters: "\u{1b}",
+        charactersIgnoringModifiers: "\u{1b}",
+        isARepeat: false,
+        keyCode: UInt16(kVK_Escape)
+    )
 }
