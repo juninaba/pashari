@@ -24,6 +24,7 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
     private let storage: CaptureStorage
     private let saveDirectory: @MainActor () -> URL
     private let pasteboard: NSPasteboard
+    private let showError: @MainActor (Error, String) -> Void
     private var statusObservation: NSKeyValueObservation?
 
     private static let minimumContentWidth: CGFloat = 560
@@ -33,12 +34,14 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
         recording: Recording,
         storage: CaptureStorage,
         saveDirectory: @escaping @MainActor () -> URL = { Preferences.saveDirectory() },
-        pasteboard: NSPasteboard = .general
+        pasteboard: NSPasteboard = .general,
+        showError: @escaping @MainActor (Error, String) -> Void = { ErrorAlert.show($0, title: $1) }
     ) {
         self.recording = recording
         self.storage = storage
         self.saveDirectory = saveDirectory
         self.pasteboard = pasteboard
+        self.showError = showError
         history = TrimHistory(full: Self.wholeRange(of: recording))
         let screen = NSScreen.underMouse ?? NSScreen.main
         window = Window(
@@ -160,7 +163,8 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
     // `@objc(copy:)` is the name the menu asks for. The Swift name is
     // different because every NSObject already has a `copy()` method.
     @objc(copy:) func copyRecording(_ sender: Any?) {
-        deliver(errorTitle: String(localized: "The recording could not be copied")) { [storage, pasteboard] recording in
+        deliver(errorTitle: String(localized: "The recording could not be copied")) { [self] in
+            let recording = try await trimmedRecording()
             Clipboard.copy(fileURL: recording.url, to: pasteboard)
             // On the clipboard, the file must stay until it is pasted:
             // until Pashari quits, as after a drop.
@@ -169,23 +173,30 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
     }
 
     @objc func saveDocument(_ sender: Any?) {
-        deliver(errorTitle: String(localized: "The recording could not be saved")) { recording in
-            _ = try await RecordingFiles.move(recording.url, into: self.saveDirectory())
-            // Its working folder is empty now.
-            try? FileManager.default.removeItem(at: recording.url.deletingLastPathComponent())
+        deliver(errorTitle: String(localized: "The recording could not be saved")) { [self] in
+            let folder = recording.url.deletingLastPathComponent()
+            if history.isTrimmed {
+                // Cut straight into the folder: should that fail, the
+                // recording and its trims stay as they are.
+                try await RecordingFiles.trim(recording.url, to: history.current, into: saveDirectory())
+            } else {
+                _ = try await RecordingFiles.move(recording.url, into: saveDirectory())
+            }
+            // Its working folder is not needed any more.
+            try? FileManager.default.removeItem(at: folder)
         }
     }
 
-    private func deliver(errorTitle: String, to output: @escaping (Recording) async throws -> Void) {
+    private func deliver(errorTitle: String, to output: @escaping () async throws -> Void) {
         guard !model.isBusy else { return }
         model.isBusy = true
         Task {
             do {
-                try await output(try await trimmedRecording())
+                try await output()
                 window.closeNow()
             } catch {
                 model.isBusy = false
-                ErrorAlert.show(error, title: errorTitle)
+                showError(error, errorTitle)
             }
         }
     }
@@ -233,7 +244,7 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
             } catch {
                 // Nothing is lost: the recording goes back as it was.
                 result = recording
-                ErrorAlert.show(error, title: String(localized: "The recording could not be trimmed"))
+                showError(error, String(localized: "The recording could not be trimmed"))
             }
             window.closeNow()
         }

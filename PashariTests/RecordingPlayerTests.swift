@@ -172,6 +172,59 @@ struct RecordingPlayerTests {
         #expect(!FileManager.default.fileExists(atPath: sample.recording.url.deletingLastPathComponent().path))
     }
 
+    @Test func savingATrimmedRecordingCutsItStraightIntoTheFolder() async throws {
+        let sample = try await SampleRecording()
+        defer { sample.remove() }
+        let destination = sample.root.appending(path: "saved")
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        let player = RecordingPlayerWindowController(
+            recording: sample.recording,
+            storage: sample.storage,
+            saveDirectory: { destination },
+            showError: { error, _ in Issue.record(error) }
+        )
+        let results = Results()
+        player.onClose = { results.values.append($0) }
+
+        player.trim(to: CMTimeRange(start: CMTime(value: 300, timescale: 600), end: CMTime(value: 600, timescale: 600)))
+        player.saveDocument(nil)
+        try await results.waitForOne()
+
+        let saved = destination.appending(path: sample.recording.url.lastPathComponent)
+        #expect(abs(try await AVURLAsset(url: saved).load(.duration).seconds - 0.5) < 0.01)
+        #expect(!FileManager.default.fileExists(atPath: sample.recording.url.deletingLastPathComponent().path))
+    }
+
+    @Test func aFailedSaveOfATrimmedRecordingKeepsItAndItsTrims() async throws {
+        let sample = try await SampleRecording()
+        defer { sample.remove() }
+        // A file where the folder should be.
+        let notAFolder = sample.root.appending(path: "not-a-folder")
+        try Data().write(to: notAFolder)
+        var errors = 0
+        let player = RecordingPlayerWindowController(
+            recording: sample.recording,
+            storage: sample.storage,
+            saveDirectory: { notAFolder },
+            showError: { _, _ in errors += 1 }
+        )
+        player.onClose = { _ in Issue.record("The player closed") }
+
+        player.trim(to: CMTimeRange(start: CMTime(value: 300, timescale: 600), end: CMTime(value: 600, timescale: 600)))
+        player.saveDocument(nil)
+        for _ in 0..<200 where errors == 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(errors == 1)
+        #expect(!player.model.isBusy)
+        #expect(player.model.canUndo)
+        #expect(player.playerView.player != nil)
+        #expect(abs(try await AVURLAsset(url: sample.recording.url).load(.duration).seconds - sample.recording.duration) < 0.01)
+        player.onClose = nil
+        player.window.close()
+    }
+
     @Test func theWindowOpensLargeEnoughForTheVideoAndItsToolbar() {
         let size = RecordingPlayerWindowController.initialContentSize(
             for: CGSize(width: 640, height: 400),
