@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import AVKit
 import Testing
 
 @testable import Pashari
@@ -223,6 +224,17 @@ struct RecordingPlayerTests {
         #expect(abs(try await AVURLAsset(url: sample.recording.url).load(.duration).seconds - sample.recording.duration) < 0.01)
         player.onClose = nil
         player.window.close()
+    }
+
+    @Test func aSmallRecordingStillLeavesRoomForThePlayersControls() {
+        let playerView = AVPlayerView()
+        let desk = RecordingDeskView(playerView: playerView, videoSize: CGSize(width: 16, height: 16))
+        desk.frame = CGRect(x: 0, y: 0, width: 800, height: 600)
+
+        desk.layout()
+
+        #expect(playerView.frame.width >= RecordingDeskView.minimumPlayerSize.width)
+        #expect(playerView.frame.height >= RecordingDeskView.minimumPlayerSize.height)
     }
 
     @Test func theWindowOpensLargeEnoughForTheVideoAndItsToolbar() {

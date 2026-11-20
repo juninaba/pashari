@@ -323,9 +323,10 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
     static func initialContentSize(for videoSize: CGSize, screenSize: CGSize) -> CGSize {
         let maximum = CGSize(width: screenSize.width * 0.85, height: screenSize.height * 0.85)
         let margin = (RecordingDeskView.padding + EditorPrintView.border) * 2
+        let player = RecordingDeskView.minimumPlayerSize
         let wanted = CGSize(
-            width: videoSize.width + margin,
-            height: videoSize.height + margin + EditorToolbarView.height
+            width: max(videoSize.width, player.width) + margin,
+            height: max(videoSize.height, player.height) + margin + EditorToolbarView.height
         )
         return CGSize(
             width: max(min(wanted.width, maximum.width), minimumContentWidth),
@@ -338,6 +339,9 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
 /// fits, but never larger than it was recorded, and in its own proportions.
 final class RecordingDeskView: NSView {
     static let padding: CGFloat = 24
+    /// Room for the player's controls, and for its trim handles. A smaller
+    /// recording is shown larger, or with bars beside it.
+    static let minimumPlayerSize = CGSize(width: 420, height: 236)
 
     private let desk = EditorDeskView()
     private let printView = NSView()
@@ -386,8 +390,8 @@ final class RecordingDeskView: NSView {
             available.height / max(videoSize.height, 1)
         )
         let video = CGSize(
-            width: max((videoSize.width * factor).rounded(), 1),
-            height: max((videoSize.height * factor).rounded(), 1)
+            width: max((videoSize.width * factor).rounded(), min(Self.minimumPlayerSize.width, available.width), 1),
+            height: max((videoSize.height * factor).rounded(), min(Self.minimumPlayerSize.height, available.height), 1)
         )
         let printSize = CGSize(width: video.width + border * 2, height: video.height + border * 2)
         printView.frame = CGRect(
