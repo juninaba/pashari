@@ -167,6 +167,30 @@ struct AreaRecordingSessionTests {
         #expect(recording.duration < 1.2, "\(recording.duration) s recorded")
     }
 
+    @Test func aDialogThatOpensWhileRecordingStartsLeavesNothingRecorded() async throws {
+        let page = try await ColorPage.show(.pageBlue)
+        defer { page.close() }
+        _ = try await page.listedContent()
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let displayID = try #require(page.window.screen?.displayID)
+        let session = AreaRecordingSession(
+            storage: storage.storage,
+            remembered: (displayID, page.area),
+            rememberArea: { _ in }
+        )
+        let run = Task { try await session.run() }
+
+        _ = try await waitForTheFrameOverlay()
+        session.advance()
+        // Before the first frame, while the bar says "Getting ready…".
+        _ = try await waitForTheBar { $0 == .preparing }
+        OverlayPanel.cancelSelection()
+
+        let recording = try await run.value
+        #expect(recording == nil, "\(recording?.duration ?? 0) s recorded")
+    }
+
     @Test func theHotkeyShowsTheFrameThenRecordsThenStops() async throws {
         let page = try await ColorPage.show(.pageBlue)
         defer { page.close() }

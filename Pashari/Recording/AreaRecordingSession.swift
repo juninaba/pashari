@@ -218,8 +218,11 @@ final class AreaRecordingSession {
         recordingURL = url
         let recorder: AreaRecorder
         do {
-            recorder = try await startRecorder(area, writingTo: url)
-            self.recorder = recorder
+            guard let started = try await startRecorder(area, writingTo: url) else {
+                try? FileManager.default.removeItem(at: folder)
+                return nil
+            }
+            recorder = started
         } catch {
             try? FileManager.default.removeItem(at: folder)
             throw error
@@ -248,9 +251,11 @@ final class AreaRecordingSession {
     }
 
     /// The bar and the frame must be left out of the recording. See
-    /// `ScreenCapturer.shareableContentListingPashari`.
-    private func startRecorder(_ area: RecordingArea, writingTo url: URL) async throws -> AreaRecorder {
+    /// `ScreenCapturer.shareableContentListingPashari`. Nil when the
+    /// recording ended before it could start, say for a dialog.
+    private func startRecorder(_ area: RecordingArea, writingTo url: URL) async throws -> AreaRecorder? {
         let content = try await ScreenCapturer.shareableContentListingPashari()
+        guard ending == nil else { return nil }
         guard
             let displayID = area.screen.displayID,
             let display = content.displays.first(where: { $0.displayID == displayID })
@@ -268,6 +273,8 @@ final class AreaRecordingSession {
                 Task { @MainActor in self?.end(.failed(error)) }
             }
         )
+        // Before it starts, so that an ending from now on reaches it.
+        self.recorder = recorder
         try await recorder.start()
         return recorder
     }
