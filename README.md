@@ -16,6 +16,8 @@ A menu bar screenshot app for macOS, written in Swift.
   global hotkeys
 - Scroll capture: pick an area, scroll its content, and get one tall
   picture of everything that scrolled past
+- A film camera's shutter sound for each capture, if you want it.
+  Captures are silent until you pick it under Settings
 - A floating thumbnail after each capture, like an instant photo: copy,
   save, annotate, drag it into another app, or close it. Captures pile up
   in the corner; rest the pointer on the pile to spread them out
@@ -146,6 +148,14 @@ cp Config/Local.xcconfig.example Config/Local.xcconfig
 ```
 
 and put your team ID in `Config/Local.xcconfig`. That file is git-ignored.
+
+## Sounds
+
+The shutter sound is cut from
+[Holga shuttersound](https://commons.wikimedia.org/wiki/File:Holga_shuttersound.ogg),
+a Holga 120S that Doitashimashite recorded and gave to the public domain.
+It was cut to one shot and turned down to the loudness of macOS's own
+screenshot sound.
 
 ## License
 

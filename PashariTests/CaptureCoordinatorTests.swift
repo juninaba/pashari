@@ -83,6 +83,30 @@ struct CaptureCoordinatorTests {
         #expect(state.checks == 2)
     }
 
+    @Test func onlyACaptureThatEndsInAScreenshotPlaysTheShutterSound() async throws {
+        let thumbnails = ThumbnailController()
+        defer {
+            while let card = thumbnails.cards.first { card.onClose?() }
+        }
+        var plays = 0
+        let coordinator = CaptureCoordinator(
+            thumbnailController: thumbnails,
+            ensurePermission: { true },
+            playShutterSound: { plays += 1 }
+        )
+
+        let cancelled = try #require(coordinator.run { nil })
+        await cancelled.value
+        #expect(plays == 0)
+
+        let taken = try #require(coordinator.run {
+            Screenshot(image: TestImages.make(width: 20, height: 10), scale: 1, capturedAt: Date())
+        })
+        await taken.value
+        #expect(thumbnails.pendingCount == 1)
+        #expect(plays == 1)
+    }
+
     private final class AlertState {
         var checks = 0
         weak var coordinator: CaptureCoordinator?

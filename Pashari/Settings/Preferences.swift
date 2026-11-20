@@ -5,6 +5,16 @@ import Foundation
 enum Preferences {
     private static let saveDirectoryKey = "saveDirectory"
     private static let appearanceKey = "appearance"
+    private static let shutterSoundKey = "shutterSound"
+
+    /// Silent until the user picks a sound.
+    static func shutterSound(in defaults: UserDefaults = .standard) -> ShutterSound {
+        defaults.string(forKey: shutterSoundKey).flatMap(ShutterSound.init(rawValue:)) ?? .off
+    }
+
+    static func setShutterSound(_ sound: ShutterSound, in defaults: UserDefaults = .standard) {
+        defaults.set(sound.rawValue, forKey: shutterSoundKey)
+    }
 
     /// As in macOS until the user picks Light or Dark.
     static func appearance(in defaults: UserDefaults = .standard) -> AppAppearance {

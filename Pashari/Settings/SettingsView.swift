@@ -89,6 +89,24 @@ struct SettingsView: View {
 
                 Divider()
 
+                LabeledContent("Shutter sound") {
+                    Picker("Shutter sound", selection: $model.shutterSound) {
+                        ForEach(ShutterSound.allCases) { sound in
+                            Text(sound.label).tag(sound)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .fixedSize()
+                    .onChange(of: model.shutterSound) { _, newValue in
+                        Preferences.setShutterSound(newValue)
+                        // So that the user hears what they picked.
+                        newValue.play()
+                    }
+                }
+
+                Divider()
+
                 LabeledContent("Appearance") {
                     Picker("Appearance", selection: $model.appearance) {
                         ForEach(AppAppearance.allCases) { appearance in

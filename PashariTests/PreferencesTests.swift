@@ -63,6 +63,21 @@ struct PreferencesTests {
         #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
+    @Test func capturesAreSilentUntilAShutterSoundIsChosen() {
+        let defaults = makeDefaults()
+
+        #expect(Preferences.shutterSound(in: defaults) == .off)
+    }
+
+    @Test(arguments: ShutterSound.allCases)
+    func aChosenShutterSoundIsRemembered(_ sound: ShutterSound) {
+        let defaults = makeDefaults()
+
+        Preferences.setShutterSound(sound, in: defaults)
+
+        #expect(Preferences.shutterSound(in: defaults) == sound)
+    }
+
     @Test func theAppearanceFollowsTheSystemUntilOneIsChosen() {
         let defaults = makeDefaults()
 

@@ -6,11 +6,12 @@ import Observation
 /// unplugged, which sends saves to the Desktop, and the login item can be
 /// turned off in System Settings. So they are read again each time Settings
 /// opens (see `SettingsWindowController.show`). Only Settings changes the
-/// appearance, so it is read once.
+/// appearance and the shutter sound, so they are read once.
 @Observable
 final class SettingsModel {
     var launchAtLogin: Bool
     var saveDirectory: URL
+    var shutterSound = Preferences.shutterSound()
     var appearance = Preferences.appearance()
     var launchAtLoginError: String?
 
