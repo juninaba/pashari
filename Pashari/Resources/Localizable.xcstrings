@@ -131,12 +131,12 @@
         }
       }
     },
-    "Choose the folder Pashari saves screenshots to." : {
+    "Choose the folder Pashari saves screenshots and recordings to." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pashariがスクリーンショットを保存するフォルダを選んでください。"
+            "value" : "Pashariがスクリーンショットと録画を保存するフォルダを選んでください。"
           }
         }
       }
@@ -381,12 +381,12 @@
         }
       }
     },
-    "Pashari found working screenshots from earlier runs. Restore them to the thumbnail stack, or discard them to delete the working files." : {
+    "Pashari found working screenshots or recordings from earlier runs. Restore them to the thumbnail stack, or discard them to delete the working files." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "以前の実行で残ったスクリーンショットがあります。復元するとサムネイルに戻ります。破棄すると作業ファイルが削除されます。"
+            "value" : "以前の実行で残ったスクリーンショットや録画があります。復元するとサムネイルに戻ります。破棄すると作業ファイルが削除されます。"
           }
         }
       }
@@ -407,6 +407,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ペン"
+          }
+        }
+      }
+    },
+    "Play" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再生"
+          }
+        }
+      }
+    },
+    "Play Recording" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画を再生"
           }
         }
       }
@@ -441,12 +461,32 @@
         }
       }
     },
-    "Recover unsaved screenshots?" : {
+    "Record" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未保存のスクリーンショットを復元しますか？"
+            "value" : "録画"
+          }
+        }
+      }
+    },
+    "Record Area" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "範囲を録画"
+          }
+        }
+      }
+    },
+    "Recover unsaved screenshots and recordings?" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未保存のスクリーンショットや録画を復元しますか？"
           }
         }
       }
@@ -481,12 +521,12 @@
         }
       }
     },
-    "Remove Unsaved Screenshots" : {
+    "Remove Unsaved Files" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未保存の画像を破棄"
+            "value" : "未保存のファイルを破棄"
           }
         }
       }
@@ -511,22 +551,22 @@
         }
       }
     },
-    "Save screenshots to" : {
+    "Save screenshots and recordings to" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "スクリーンショットの保存先"
+            "value" : "スクリーンショットと録画の保存先"
           }
         }
       }
     },
-    "Screenshots in thumbnails or the editor have not been copied or saved, and will be lost." : {
+    "Screenshots and recordings in thumbnails, the editor or the player have not been copied or saved, and will be lost." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "サムネイルやエディタに残っているスクリーンショットは、まだコピーも保存もしていないため失われます。"
+            "value" : "サムネイルやエディタ、プレーヤーに残っているスクリーンショットや録画は、まだコピーも保存もしていないため失われます。"
           }
         }
       }
@@ -601,6 +641,26 @@
         }
       }
     },
+    "Stop" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "停止"
+          }
+        }
+      }
+    },
+    "Stop Recording" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画を停止"
+          }
+        }
+      }
+    },
     "System" : {
       "localizations" : {
         "ja" : {
@@ -637,6 +697,76 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キャプチャするディスプレイが見つかりませんでした。"
+          }
+        }
+      }
+    },
+    "The recording could not be copied" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画をコピーできませんでした"
+          }
+        }
+      }
+    },
+    "The recording could not be made" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画できませんでした"
+          }
+        }
+      }
+    },
+    "The recording could not be read from %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画を %@ から読み込めませんでした。"
+          }
+        }
+      }
+    },
+    "The recording could not be saved" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画を保存できませんでした"
+          }
+        }
+      }
+    },
+    "The recording could not be saved to %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画を %@ に保存できませんでした。"
+          }
+        }
+      }
+    },
+    "The recording could not be trimmed" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画をトリミングできませんでした"
+          }
+        }
+      }
+    },
+    "The recording could not be trimmed." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画をトリミングできませんでした。"
           }
         }
       }
@@ -721,6 +851,16 @@
         }
       }
     },
+    "Trim" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "トリミング"
+          }
+        }
+      }
+    },
     "Turn on Pashari under Privacy & Security > Screen & System Audio Recording in System Settings, then quit and reopen Pashari." : {
       "localizations" : {
         "ja" : {
@@ -741,12 +881,12 @@
         }
       }
     },
-    "Unsaved screenshots could not be processed" : {
+    "Unsaved screenshots or recordings could not be processed" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未保存のスクリーンショットを処理できませんでした"
+            "value" : "未保存のスクリーンショットや録画を処理できませんでした"
           }
         }
       }

@@ -113,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         } catch {
-            ErrorAlert.show(error, title: String(localized: "Unsaved screenshots could not be processed"))
+            ErrorAlert.show(error, title: String(localized: "Unsaved screenshots or recordings could not be processed"))
         }
     }
 
@@ -132,13 +132,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func askToRecoverCaptures() -> NSApplication.ModalResponse {
         let alert = NSAlert()
-        alert.messageText = String(localized: "Recover unsaved screenshots?")
+        alert.messageText = String(localized: "Recover unsaved screenshots and recordings?")
         alert.informativeText = String(
-            localized: "Pashari found working screenshots from earlier runs. Restore them to the thumbnail stack, or discard them to delete the working files."
+            localized: "Pashari found working screenshots or recordings from earlier runs. Restore them to the thumbnail stack, or discard them to delete the working files."
         )
         alert.addButton(withTitle: String(localized: "Restore"))
         alert.addButton(withTitle: String(localized: "Later")).keyEquivalent = "\u{1b}"
-        alert.addButton(withTitle: String(localized: "Remove Unsaved Screenshots")).hasDestructiveAction = true
+        alert.addButton(withTitle: String(localized: "Remove Unsaved Files")).hasDestructiveAction = true
 
         return ModalPresentation.run { alert.runModal() }
     }
@@ -148,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .warning
         alert.messageText = String(localized: "Quit Pashari?")
         alert.informativeText = String(
-            localized: "Screenshots in thumbnails or the editor have not been copied or saved, and will be lost."
+            localized: "Screenshots and recordings in thumbnails, the editor or the player have not been copied or saved, and will be lost."
         )
         // Return keeps the work; quitting requires an explicit choice.
         alert.addButton(withTitle: String(localized: "Cancel"))

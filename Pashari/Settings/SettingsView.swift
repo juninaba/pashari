@@ -70,7 +70,7 @@ struct SettingsView: View {
 
                 Divider()
 
-                LabeledContent("Save screenshots to") {
+                LabeledContent("Save screenshots and recordings to") {
                     HStack(spacing: 8) {
                         Text(FileManager.default.displayName(atPath: model.saveDirectory.path))
                             .lineLimit(1)
@@ -167,7 +167,7 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = model.saveDirectory
         panel.prompt = String(localized: "Choose")
-        panel.message = String(localized: "Choose the folder Pashari saves screenshots to.")
+        panel.message = String(localized: "Choose the folder Pashari saves screenshots and recordings to.")
 
         if ModalPresentation.run({ panel.runModal() }) == .OK, let url = panel.url {
             Preferences.setSaveDirectory(url)
