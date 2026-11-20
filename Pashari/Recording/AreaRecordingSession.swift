@@ -339,8 +339,6 @@ final class AreaRecordingSession {
         controls.onStop = { [weak self] in self?.stop() }
         controls.show(.preparing)
         place(controls, nextTo: area.rect, on: screen)
-        // Over the dimming of the overlay, which came on screen after it.
-        controls.orderFrontRegardless()
     }
 
     private func hideRecordingPanels() {
@@ -359,9 +357,10 @@ final class AreaRecordingSession {
         )
         let frame = ControlBarPlacement.frame(ofSize: controls.frame.size, nextTo: onScreen, in: screen.visibleFrame)
         controls.setFrame(frame, display: false)
-        // Each time: a click on an overlay brings it to the front, and over
-        // the bar, which lies at the same level. Its buttons would no
-        // longer be reached.
+        // Each time: a click on an overlay brings it to the front, over the
+        // bar, which lies at the same level, and so does the recording's
+        // overlay when it comes on screen. The buttons would no longer be
+        // reached, or the bar would be dimmed.
         controls.orderFrontRegardless()
     }
 }
