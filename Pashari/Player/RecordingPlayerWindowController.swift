@@ -140,6 +140,8 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
 
     private func attachPlayer() {
         let player = AVPlayer(url: recording.url)
+        // Without the AirPlay button: the window plays, trims, and that is all.
+        player.allowsExternalPlayback = false
         playerView.player = player
         // Trimming can begin once the video is ready to play.
         statusObservation = player.currentItem?.observe(\.status, options: [.initial, .new]) { [weak self] _, _ in
