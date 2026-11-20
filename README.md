@@ -6,6 +6,10 @@ A menu bar screenshot app for macOS, written in Swift.
 
 > **Status:** early development.
 
+<p align="center">
+  <img src="docs/images/thumbnails.png" width="640" alt="Four captures piled up like instant photos in the bottom-left corner of the screen. The newest lies on top, with buttons to copy, save, annotate or close it, and a badge that counts four.">
+</p>
+
 ## Features
 
 - Capture an area, a window or the full screen, from the menu bar or with
@@ -23,6 +27,10 @@ A menu bar screenshot app for macOS, written in Swift.
   your choice
 - Names files like `pashari-20260728-bnan.png`: the date, then the time of
   day as four letters, so sorting by name keeps them in the order taken
+
+<p align="center">
+  <img src="docs/images/editor.png" width="800" alt="The annotation editor. A screenshot of a web page lies like a print on a dotted desk, with numbered badges, a blurred email address, a box, an arrow and a label drawn on it. The tools, colours and sizes run along the top, next to Undo, Redo, Copy and Save.">
+</p>
 
 Up to five thumbnails lie on the pile, as many as fit on screen when
 spread out. Older captures wait until space is available: copy, save, or
@@ -52,6 +60,10 @@ Pashari gets them.
 Settings opens from the menu bar icon. If the icon is hidden, for example
 behind the notch, open Pashari again from Spotlight or the Finder and
 Settings appears.
+
+<p align="center">
+  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder screenshots are saved to, the appearance, and a hotkey for each kind of capture.">
+</p>
 
 ### Scroll capture
 
