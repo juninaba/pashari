@@ -74,12 +74,10 @@ final class ThumbnailController {
         show(PendingCapture(screenshot: screenshot, storage: storage), onDisplay: displayID)
     }
 
+    /// With no screen at hand, say just after its display was unplugged,
+    /// the recording waits for one, as restored captures do.
     func show(_ recording: Recording) {
-        guard let displayID = (NSScreen.underMouse ?? NSScreen.main)?.displayID else {
-            Log.thumbnail.error("No screen to show the thumbnail on")
-            return
-        }
-        show(recording, onDisplay: displayID)
+        show(recording, onDisplay: (NSScreen.underMouse ?? NSScreen.main)?.displayID ?? CGMainDisplayID())
     }
 
     func show(_ recording: Recording, onDisplay displayID: CGDirectDisplayID) {
