@@ -114,6 +114,14 @@ struct RecordingFrameEditorTests {
         #expect(editor.region(at: CGPoint(x: 250, y: 200), on: 1) == .outside)
     }
 
+    @Test func theMiddleOfASmallFrameStillMovesIt() {
+        let editor = editor(CGRect(x: 100, y: 100, width: 16, height: 16))
+
+        #expect(editor.region(at: CGPoint(x: 108, y: 108), on: 0) == .inside)
+        #expect(editor.region(at: CGPoint(x: 108, y: 100), on: 0) == .handle(.top))
+        #expect(editor.region(at: CGPoint(x: 101, y: 101), on: 0) == .handle(.topLeft))
+    }
+
     @Test func withoutAFrameEveryDragDrawsOne() {
         var editor = RecordingFrameEditor()
         #expect(editor.region(at: CGPoint(x: 10, y: 10), on: 0) == .outside)

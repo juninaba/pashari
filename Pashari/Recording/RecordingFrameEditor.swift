@@ -57,6 +57,9 @@ struct RecordingFrameEditor {
     func region(at point: CGPoint, on screen: Int) -> Region {
         guard let frame, frame.screen == screen else { return .outside }
         let rect = frame.rect
+        // On a small frame, the handles leave its middle free to move it.
+        let cornerReach = min(Self.cornerReach, rect.width / 4, rect.height / 4)
+        let edgeReach = min(Self.edgeReach, rect.width / 4, rect.height / 4)
         let corners: [(Handle, CGPoint)] = [
             (.topLeft, CGPoint(x: rect.minX, y: rect.minY)),
             (.topRight, CGPoint(x: rect.maxX, y: rect.minY)),
@@ -64,15 +67,15 @@ struct RecordingFrameEditor {
             (.bottomLeft, CGPoint(x: rect.minX, y: rect.maxY)),
         ]
         for (handle, corner) in corners
-        where abs(point.x - corner.x) <= Self.cornerReach && abs(point.y - corner.y) <= Self.cornerReach {
+        where abs(point.x - corner.x) <= cornerReach && abs(point.y - corner.y) <= cornerReach {
             return .handle(handle)
         }
         let alongX = point.x >= rect.minX && point.x <= rect.maxX
         let alongY = point.y >= rect.minY && point.y <= rect.maxY
-        if alongX, abs(point.y - rect.minY) <= Self.edgeReach { return .handle(.top) }
-        if alongX, abs(point.y - rect.maxY) <= Self.edgeReach { return .handle(.bottom) }
-        if alongY, abs(point.x - rect.minX) <= Self.edgeReach { return .handle(.left) }
-        if alongY, abs(point.x - rect.maxX) <= Self.edgeReach { return .handle(.right) }
+        if alongX, abs(point.y - rect.minY) <= edgeReach { return .handle(.top) }
+        if alongX, abs(point.y - rect.maxY) <= edgeReach { return .handle(.bottom) }
+        if alongY, abs(point.x - rect.minX) <= edgeReach { return .handle(.left) }
+        if alongY, abs(point.x - rect.maxX) <= edgeReach { return .handle(.right) }
         return rect.contains(point) ? .inside : .outside
     }
 
