@@ -70,7 +70,9 @@ struct SettingsView: View {
 
                 Divider()
 
-                LabeledContent("Save screenshots and recordings to") {
+                // "Save to", as macOS's own screenshot tool has it: a longer label
+                // left the folder's name no room.
+                LabeledContent("Save to") {
                     HStack(spacing: 8) {
                         Text(FileManager.default.displayName(atPath: model.saveDirectory.path))
                             .lineLimit(1)
