@@ -16,6 +16,9 @@ A menu bar screenshot app for macOS, written in Swift.
   global hotkeys
 - Scroll capture: pick an area, scroll its content, and get one tall
   picture of everything that scrolled past
+- Record an area as a video: adjust the frame on the live screen, record
+  up to five minutes, then trim the recording, and copy, save or drag it
+  like a screenshot
 - A film camera's shutter sound for each capture, if you want it.
   Captures are silent until you pick it under Settings
 - A floating thumbnail after each capture, like an instant photo: copy,
@@ -25,10 +28,11 @@ A menu bar screenshot app for macOS, written in Swift.
   text, numbered badges, blur, crop, with undo and redo
   - Select a mark to move or delete it
   - Hold Shift for straight lines, squares and circles
-- Saves PNG files at full Retina resolution, to the Desktop or a folder of
-  your choice
-- Names files like `pashari-20260728-bnan.png`: the date, then the time of
-  day as four letters, so sorting by name keeps them in the order taken
+- Saves PNG files, and MP4 files for recordings, at full Retina
+  resolution, to the Desktop or a folder of your choice
+- Names files like `pashari-20260728-bnan.png` (or `.mp4`): the date, then
+  the time of day as four letters, so sorting by name keeps them in the
+  order taken
 
 <p align="center">
   <img src="docs/images/editor.png" width="800" alt="The annotation editor. A screenshot of a web page lies like a print on a dotted desk, with numbered badges, a blurred email address, a box, an arrow and a label drawn on it. The tools, colours and sizes run along the top, next to Undo, Redo, Copy and Save.">
@@ -37,13 +41,13 @@ A menu bar screenshot app for macOS, written in Swift.
 Up to five thumbnails lie on the pile, as many as fit on screen when
 spread out. Older captures wait until space is available: copy, save, or
 close thumbnails to reveal them. Quitting asks for confirmation while
-screenshots remain in thumbnails or editors.
+screenshots or recordings remain in thumbnails, editors or players.
 
-Working PNGs live in a directory for each run under
+Working files live in a directory for each run under
 `~/Library/Application Support/Pashari/PendingCaptures`, which is excluded
 from Time Machine. Quitting removes that run's files. If a run is interrupted,
-Pashari offers to restore its working PNGs to the thumbnail stack, discard them,
-or leave them for a later launch.
+Pashari offers to restore its working files to the thumbnail stack, discard
+them, or leave them for a later launch.
 
 Default hotkeys (change them under Settings):
 
@@ -53,7 +57,8 @@ Default hotkeys (change them under Settings):
 | Capture window     | ⇧⌘3    |
 | Capture fullscreen | ⇧⌘4    |
 
-Capture Scrolling Area has no hotkey until you set one under Settings.
+Capture Scrolling Area and Record Area have no hotkey until you set one
+under Settings.
 
 macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
 System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that
@@ -64,7 +69,7 @@ behind the notch, open Pashari again from Spotlight or the Finder and
 Settings appears.
 
 <p align="center">
-  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder screenshots are saved to, the shutter sound set to Film camera, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area has none yet.">
+  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area and Record Area have none yet.">
 </p>
 
 ### Scroll capture
@@ -83,6 +88,30 @@ Pashari's bar again.
 - If you scroll faster than Pashari can follow, it says so. Scroll back a
   little, and carry on more slowly.
 - The picture stops growing at 30,000 pixels (less for very wide areas).
+
+### Recording an area
+
+Choose Record Area from the menu bar icon, or press its hotkey, and drag
+a frame over the screen, which goes on as it is. Next time, the frame
+starts where your last recording was; drag elsewhere to draw a new one.
+Drag inside the frame to move it, or drag its edges and corners. Click
+Record or press Return to start; Escape cancels.
+
+While recording, your clicks, scrolls and keys go to your apps as usual.
+To stop, click Stop on the bar next to the frame, click the menu bar icon,
+which has turned into a stop button, or press the hotkey again. A
+recording stops by itself at five minutes.
+
+- The pointer is in the video, with a ring around each click (macOS 15
+  and later). There is no sound. Pashari's bar and frame stay out.
+- Recordings are MP4 (H.264) at the screen's full resolution, up to 4,096
+  pixels on the longer side; a larger area is scaled down to fit.
+- The bar shows how long the recording is, and how large its file is so
+  far.
+- In the thumbnail, Play opens the recording in a window where you can
+  trim it with the yellow handles (⌘T), undo a trim, and copy or save it.
+- Copy puts the file itself on the clipboard: paste it into Slack,
+  Messages, Finder or a browser. Pashari keeps the file until it quits.
 
 ## Installing
 
