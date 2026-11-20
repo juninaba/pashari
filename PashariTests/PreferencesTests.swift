@@ -93,6 +93,17 @@ struct PreferencesTests {
         #expect(Preferences.appearance(in: defaults) == appearance)
     }
 
+    @Test func theAreaRecordedLastIsRemembered() throws {
+        let defaults = makeDefaults()
+        #expect(Preferences.recordingArea(in: defaults) == nil)
+
+        Preferences.setRecordingArea(CGRect(x: 10, y: 20, width: 300, height: 200), onDisplay: 42, in: defaults)
+
+        let area = try #require(Preferences.recordingArea(in: defaults))
+        #expect(area.displayID == 42)
+        #expect(area.rect == CGRect(x: 10, y: 20, width: 300, height: 200))
+    }
+
     @Test func settingsShowWhatChangedWhileTheyWereClosed() {
         let system = FakeSettings()
         system.saveDirectory = URL(filePath: "/Volumes/External/Screenshots")

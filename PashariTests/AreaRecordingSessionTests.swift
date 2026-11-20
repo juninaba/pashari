@@ -1,0 +1,214 @@
+import AppKit
+import Carbon.HIToolbox
+import Testing
+
+@testable import Pashari
+
+@MainActor
+struct RecordingControlPanelTests {
+    @Test func whileTheFrameIsAdjustedTheBarShowsItsSizeCancelAndRecord() {
+        let bar = RecordingControlPanel()
+
+        bar.show(.adjusting(CGSize(width: 1280, height: 720)))
+
+        #expect(visibleTexts(in: bar.contentView) == ["1280 × 720"])
+        #expect(visibleButtons(in: bar.contentView) == [String(localized: "Cancel"), String(localized: "Record")])
+    }
+
+    @Test func whileRecordingTheBarShowsTheTimeAndSizeAndOnlyStop() {
+        let bar = RecordingControlPanel()
+
+        bar.show(.preparing)
+        #expect(visibleTexts(in: bar.contentView) == [String(localized: "Getting ready…")])
+
+        bar.show(.recording(elapsed: 12.6, bytes: 3_400_000))
+        let texts = visibleTexts(in: bar.contentView)
+        #expect(texts.first == "0:12 / 5:00")
+        #expect(texts.count == 2)
+        #expect(visibleButtons(in: bar.contentView) == [String(localized: "Stop")])
+    }
+
+    @Test func theBarKeepsItsSizeWhileRecording() {
+        let bar = RecordingControlPanel()
+
+        bar.show(.recording(elapsed: 0, bytes: 0))
+        let size = bar.frame.size
+        bar.show(.recording(elapsed: 299, bytes: 987_654_321))
+
+        #expect(bar.frame.size == size)
+    }
+
+    @Test func theBarNeverTakesTheKeyboard() {
+        #expect(!RecordingControlPanel().canBecomeKey)
+    }
+
+    @Test func timesAreInMinutesAndSeconds() {
+        #expect(RecordingControlPanel.time(0) == "0:00")
+        #expect(RecordingControlPanel.time(12.9) == "0:12")
+        #expect(RecordingControlPanel.time(299.99) == "4:59")
+        #expect(RecordingControlPanel.time(300) == "5:00")
+    }
+}
+
+/// These record a test window through the whole session, so they run only
+/// where Pashari has the Screen Recording permission.
+@MainActor
+@Suite(
+    .serialized,
+    .enabled(if: CGPreflightScreenCaptureAccess(), "needs the Screen Recording permission"),
+    .takesTurnsOnTheScreen
+)
+struct AreaRecordingSessionTests {
+    @Test func theAreaRecordedLastIsRecordedAgainWithTwoPressesOfTheHotkey() async throws {
+        let page = try await ColorPage.show(.pageBlue)
+        defer { page.close() }
+        _ = try await page.listedContent()
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let displayID = try #require(page.window.screen?.displayID)
+        var remembered: CGRect?
+        let session = AreaRecordingSession(
+            storage: storage.storage,
+            remembered: (displayID, page.area),
+            rememberArea: { remembered = $0.rect }
+        )
+        var changes: [Bool] = []
+        session.onRecordingChange = { changes.append($0) }
+        let run = Task { try await session.run() }
+
+        let view = try await waitForTheFrameOverlay()
+        #expect(view.frameRect == page.area)
+        session.advance()
+        let bar = try await waitForTheBar { if case .recording = $0 { true } else { false } }
+        #expect(!bar.isKeyWindow)
+        #expect(NSApp.windows.compactMap { $0 as? OverlayPanel }.allSatisfy { !$0.isKeyWindow })
+        page.fill(.pageRed)
+        try await Task.sleep(for: .milliseconds(500))
+        session.advance()
+        let recording = try #require(try await run.value)
+
+        #expect(remembered == page.area)
+        #expect(changes == [true, false])
+        #expect(recording.pointSize == page.area.size)
+        #expect(recording.duration > 0.4)
+        #expect(recording.url.pathExtension == "mp4")
+        #expect(recording.url.path.hasPrefix(storage.storage.directory.path))
+        #expect(page.isShowing(.pageRed, in: try await TestVideos.image(in: recording.url, at: recording.duration - 0.05)))
+        #expect(!NSApp.windows.contains { ($0 is RecordingControlPanel || $0 is OverlayPanel) && $0.isVisible })
+    }
+
+    @Test func escapeWhileTheFrameIsAdjustedCancels() async throws {
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let session = AreaRecordingSession(storage: storage.storage, remembered: nil, rememberArea: { _ in
+            Issue.record("A cancelled recording was remembered")
+        })
+        let run = Task { try await session.run() }
+
+        let view = try await waitForTheFrameOverlay()
+        #expect(view.frameRect == nil)
+        view.keyDown(with: try #require(Self.escape(in: view.window)))
+
+        #expect(try await run.value == nil)
+        #expect(!NSApp.windows.contains { ($0 is RecordingControlPanel || $0 is OverlayPanel) && $0.isVisible })
+    }
+
+    @Test func aDialogThatOpensWhileRecordingKeepsWhatWasRecorded() async throws {
+        let page = try await ColorPage.show(.pageBlue)
+        defer { page.close() }
+        _ = try await page.listedContent()
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let displayID = try #require(page.window.screen?.displayID)
+        let session = AreaRecordingSession(
+            storage: storage.storage,
+            remembered: (displayID, page.area),
+            rememberArea: { _ in }
+        )
+        let run = Task { try await session.run() }
+
+        _ = try await waitForTheFrameOverlay()
+        session.advance()
+        _ = try await waitForTheBar { if case .recording = $0 { true } else { false } }
+        try await Task.sleep(for: .milliseconds(200))
+        // Before a dialog shows, `ModalPresentation` ends the overlays.
+        OverlayPanel.cancelSelection()
+
+        let recording = try #require(try await run.value)
+        #expect(FileManager.default.fileExists(atPath: recording.url.path))
+    }
+
+    private func waitForTheFrameOverlay() async throws -> RecordingAreaView {
+        for _ in 0..<100 {
+            let views = NSApp.windows.compactMap { $0 as? OverlayPanel }
+                .filter(\.isVisible)
+                .compactMap { $0.contentView as? RecordingAreaView }
+            if let view = views.first(where: { $0.frameRect != nil }) ?? views.first {
+                return view
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        throw CocoaError(.featureUnsupported)
+    }
+
+    private func waitForTheBar(
+        in state: (RecordingControlPanel.Status) -> Bool
+    ) async throws -> RecordingControlPanel {
+        for _ in 0..<150 {
+            let bars = NSApp.windows.compactMap { $0 as? RecordingControlPanel }.filter(\.isVisible)
+            if let bar = bars.first(where: { state($0.status) }) {
+                return bar
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        Issue.record("The bar never got there")
+        throw CocoaError(.featureUnsupported)
+    }
+
+    private static func escape(in window: NSWindow?) -> NSEvent? {
+        NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window?.windowNumber ?? 0,
+            context: nil,
+            characters: "\u{1b}",
+            charactersIgnoringModifiers: "\u{1b}",
+            isARepeat: false,
+            keyCode: UInt16(kVK_Escape)
+        )
+    }
+}
+
+/// Capture storage in a folder of its own, removed afterwards.
+@MainActor
+struct TestStorage {
+    let root: URL
+    let storage: CaptureStorage
+
+    init() throws {
+        root = FileManager.default.temporaryDirectory.appending(path: "PashariTests-\(UUID().uuidString)")
+        storage = CaptureStorage(rootDirectory: root)
+    }
+
+    func remove() {
+        storage.removeFiles()
+        try? FileManager.default.removeItem(at: root)
+    }
+}
+
+/// The texts of `view` and the views inside it that show.
+@MainActor
+private func visibleTexts(in view: NSView?) -> [String] {
+    guard let view, !view.isHidden else { return [] }
+    let own = (view as? NSTextField).map { [$0.stringValue] } ?? []
+    return own + view.subviews.flatMap { visibleTexts(in: $0) }
+}
+
+@MainActor
+private func visibleButtons(in view: NSView?) -> [String] {
+    guard let view, !view.isHidden else { return [] }
+    let own = (view as? NSButton).map { [$0.title] } ?? []
+    return own + view.subviews.flatMap { visibleButtons(in: $0) }
+}
