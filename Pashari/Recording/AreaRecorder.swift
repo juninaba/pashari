@@ -55,7 +55,12 @@ nonisolated final class AreaRecorder: NSObject, SCStreamOutput, SCStreamDelegate
         super.init()
 
         let configuration = SCStreamConfiguration()
-        configuration.sourceRect = area
+        configuration.sourceRect = Self.sourceRect(
+            of: area,
+            width: size.width,
+            height: size.height,
+            scale: CGFloat(filter.pointPixelScale)
+        )
         configuration.width = size.width
         configuration.height = size.height
         configuration.captureResolution = .best
@@ -88,6 +93,19 @@ nonisolated final class AreaRecorder: NSObject, SCStreamOutput, SCStreamDelegate
             max(2, Int((length * factor + 0.001) / 2) * 2)
         }
         return (even(width), even(height))
+    }
+
+    /// The part of `area` the video shows. On a standard display an area
+    /// can be an odd number of pixels across: it loses its last column or
+    /// row, rather than having the rest scaled to fit, which would blur it.
+    /// A larger area than the encoder takes is scaled down all the same.
+    static func sourceRect(of area: CGRect, width: Int, height: Int, scale: CGFloat) -> CGRect {
+        let shown = CGSize(width: CGFloat(width) / scale, height: CGFloat(height) / scale)
+        let pixel = 1 / scale + 0.001
+        guard shown.width <= area.width, shown.height <= area.height,
+              area.width - shown.width <= pixel, area.height - shown.height <= pixel
+        else { return area }
+        return CGRect(origin: area.origin, size: shown)
     }
 
     /// How much of the recording is on disk so far, in bytes. While

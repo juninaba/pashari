@@ -24,6 +24,21 @@ struct AreaRecorderSizeTests {
         #expect(size == (width: 4096, height: 2304))
     }
 
+    @Test func anOddAreaOnAStandardDisplayLosesAColumnRatherThanBeingScaled() {
+        let area = CGRect(x: 10, y: 20, width: 17, height: 11)
+        let size = AreaRecorder.pixelSize(of: area.size, scale: 1)
+
+        #expect(AreaRecorder.sourceRect(of: area, width: size.width, height: size.height, scale: 1)
+            == CGRect(x: 10, y: 20, width: 16, height: 10))
+        // On a Retina display every point is two pixels, an even number.
+        let retina = AreaRecorder.pixelSize(of: area.size, scale: 2)
+        #expect(AreaRecorder.sourceRect(of: area, width: retina.width, height: retina.height, scale: 2) == area)
+        // A whole 5K display is scaled down anyway.
+        let wide = CGRect(x: 0, y: 0, width: 2560, height: 1440)
+        let scaled = AreaRecorder.pixelSize(of: wide.size, scale: 2)
+        #expect(AreaRecorder.sourceRect(of: wide, width: scaled.width, height: scaled.height, scale: 2) == wide)
+    }
+
     @Test func aTinyAreaStillMakesAVideo() {
         let size = AreaRecorder.pixelSize(of: CGSize(width: 1, height: 1), scale: 1)
 
