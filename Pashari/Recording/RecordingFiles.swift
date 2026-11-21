@@ -7,8 +7,8 @@ enum RecordingFiles {
     /// MB: moving it is instant on the same disk, and `@concurrent` keeps
     /// the copy to another disk off the main thread.
     @concurrent
-    static func move(_ url: URL, into directory: URL) async throws -> URL {
-        let destination = ScreenshotWriter.availableURL(in: directory, named: url.lastPathComponent)
+    static func move(_ url: URL, into directory: URL, named name: String? = nil) async throws -> URL {
+        let destination = ScreenshotWriter.availableURL(in: directory, named: name ?? url.lastPathComponent)
         do {
             // Fails rather than replace a file that took the name meanwhile.
             try FileManager.default.moveItem(at: url, to: destination)
@@ -36,13 +36,19 @@ enum RecordingFiles {
     /// Cuts the recording at `url` down to `range` into `directory`, under
     /// the same name, or with "-2", "-3"... when the name is taken. The
     /// recording itself stays as it is.
+    ///
+    /// The cut is made next to the recording, and moved in only once it is
+    /// whole: should it fail, nothing in `directory` is touched, and a file
+    /// that took the name meanwhile is not written over.
     @concurrent
     static func trim(_ url: URL, to range: CMTimeRange, into directory: URL) async throws {
-        let destination = ScreenshotWriter.availableURL(in: directory, named: url.lastPathComponent)
+        let cut = url.deletingLastPathComponent().appending(path: "trimming-\(UUID().uuidString).mp4")
         do {
-            try await export(url, range, to: destination)
+            try await export(url, range, to: cut)
+            _ = try await move(cut, into: directory, named: url.lastPathComponent)
         } catch {
-            throw CaptureError.cannotSaveRecording(destination)
+            try? FileManager.default.removeItem(at: cut)
+            throw error
         }
     }
 
@@ -95,6 +101,7 @@ enum RecordingFiles {
             }
             guard reader.status == .completed else { throw reader.error ?? CaptureError.cannotTrimRecording }
         } catch {
+            reader.cancelReading()
             writer.cancel()
             throw error
         }

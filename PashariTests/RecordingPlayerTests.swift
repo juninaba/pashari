@@ -106,6 +106,36 @@ struct RecordingPlayerTests {
         #expect(first.isClose(to: frames[10].color, within: 8), "\(first)")
     }
 
+    @Test func aTrimmedSaveNeverTouchesAFileInTheFolder() async throws {
+        let sample = try await SampleRecording()
+        defer { sample.remove() }
+        let folder = sample.root.appending(path: "saved")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // A file of the same name is already there.
+        let existing = folder.appending(path: sample.recording.url.lastPathComponent)
+        try Data("someone else's".utf8).write(to: existing)
+
+        // A cut that comes out empty, past the end, fails.
+        await #expect(throws: CaptureError.self) {
+            try await RecordingFiles.trim(sample.recording.url, to: CMTimeRange(
+                start: CMTime(value: 5, timescale: 1),
+                end: CMTime(value: 6, timescale: 1)
+            ), into: folder)
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == [existing.lastPathComponent])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: sample.recording.url.deletingLastPathComponent().path)
+            == [sample.recording.url.lastPathComponent])
+
+        try await RecordingFiles.trim(sample.recording.url, to: CMTimeRange(
+            start: CMTime(value: 300, timescale: 600),
+            end: CMTime(value: 600, timescale: 600)
+        ), into: folder)
+
+        #expect(try Data(contentsOf: existing) == Data("someone else's".utf8))
+        let saved = folder.appending(path: existing.deletingPathExtension().lastPathComponent + "-2.mp4")
+        #expect(abs(try await AVURLAsset(url: saved).load(.duration).seconds - 0.5) < 0.01)
+    }
+
     @Test func undoAndRedoInTheEditMenuReachTheTrims() async throws {
         let sample = try await SampleRecording()
         defer { sample.remove() }
