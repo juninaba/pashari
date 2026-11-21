@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// The hotkeys are not here: the KeyboardShortcuts package stores those
@@ -6,6 +7,38 @@ enum Preferences {
     private static let saveDirectoryKey = "saveDirectory"
     private static let appearanceKey = "appearance"
     private static let shutterSoundKey = "shutterSound"
+    private static let recordingAreaKey = "recordingArea"
+
+    /// The area recorded last, to start the next recording with: in points
+    /// from the top-left corner of the display with `displayID`.
+    static func recordingArea(in defaults: UserDefaults = .standard) -> (displayID: CGDirectDisplayID, rect: CGRect)? {
+        guard
+            let values = defaults.dictionary(forKey: recordingAreaKey),
+            let displayID = values["display"] as? Int,
+            let x = values["x"] as? Double,
+            let y = values["y"] as? Double,
+            let width = values["width"] as? Double,
+            let height = values["height"] as? Double
+        else { return nil }
+        return (CGDirectDisplayID(truncatingIfNeeded: displayID), CGRect(x: x, y: y, width: width, height: height))
+    }
+
+    static func setRecordingArea(
+        _ rect: CGRect,
+        onDisplay displayID: CGDirectDisplayID,
+        in defaults: UserDefaults = .standard
+    ) {
+        defaults.set(
+            [
+                "display": Int(displayID),
+                "x": Double(rect.minX),
+                "y": Double(rect.minY),
+                "width": Double(rect.width),
+                "height": Double(rect.height),
+            ],
+            forKey: recordingAreaKey
+        )
+    }
 
     /// Silent until the user picks a sound.
     static func shutterSound(in defaults: UserDefaults = .standard) -> ShutterSound {

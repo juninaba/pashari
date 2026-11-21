@@ -5,6 +5,7 @@ final class StatusItemController: NSObject {
     private let statusItem: NSStatusItem
     private let captureCoordinator: CaptureCoordinator
     private let settingsWindowController: SettingsWindowController
+    private var menu: NSMenu?
 
     init(captureCoordinator: CaptureCoordinator, settingsWindowController: SettingsWindowController) {
         self.captureCoordinator = captureCoordinator
@@ -12,11 +13,35 @@ final class StatusItemController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
-        statusItem.button?.image = NSImage(
-            systemSymbolName: "camera.viewfinder",
-            accessibilityDescription: "Pashari"
-        )
-        statusItem.menu = makeMenu()
+        menu = makeMenu()
+        showRecording(false)
+        captureCoordinator.onRecordingChange = { [weak self] isRecording in
+            self?.showRecording(isRecording)
+        }
+    }
+
+    /// While recording, the icon is a stop button: a click stops at once,
+    /// without the menu.
+    private func showRecording(_ isRecording: Bool) {
+        guard let button = statusItem.button else { return }
+        if isRecording {
+            statusItem.menu = nil
+            button.image = NSImage(
+                systemSymbolName: "stop.circle",
+                accessibilityDescription: String(localized: "Stop Recording")
+            )
+            button.toolTip = String(localized: "Stop Recording")
+            button.target = self
+            button.action = #selector(stopRecording)
+        } else {
+            button.image = NSImage(
+                systemSymbolName: "camera.viewfinder",
+                accessibilityDescription: "Pashari"
+            )
+            button.toolTip = nil
+            button.action = nil
+            statusItem.menu = menu
+        }
     }
 
     private func makeMenu() -> NSMenu {
@@ -42,6 +67,10 @@ final class StatusItemController: NSObject {
                 shortcut: .captureScrollingArea
             )
         )
+
+        menu.addItem(.separator())
+
+        menu.addItem(makeItem(String(localized: "Record Area"), #selector(recordArea), shortcut: .recordArea))
 
         menu.addItem(.separator())
 
@@ -85,6 +114,14 @@ final class StatusItemController: NSObject {
 
     @objc private func captureScrollingArea() {
         captureCoordinator.captureScrollingArea()
+    }
+
+    @objc private func recordArea() {
+        captureCoordinator.recordArea()
+    }
+
+    @objc private func stopRecording() {
+        captureCoordinator.stopRecording()
     }
 
     @objc private func showSettings() {

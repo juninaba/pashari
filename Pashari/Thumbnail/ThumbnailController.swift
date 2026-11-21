@@ -5,6 +5,10 @@ final class ThumbnailController {
     /// already gone by then; the editor takes over.
     var onAnnotate: ((Screenshot) -> Void)?
 
+    /// Called when the user asks to play a recording. The thumbnail is
+    /// already gone by then, but not its file: the player takes it over.
+    var onPlay: ((Recording) -> Void)?
+
     private final class Entry {
         let capture: PendingCapture
         var card: ThumbnailCardView?
@@ -28,6 +32,7 @@ final class ThumbnailController {
     let storage: CaptureStorage
     private let saveDirectory: @MainActor () -> URL
     private let showError: @MainActor (Error, String) -> Void
+    private let pasteboard: NSPasteboard
 
     private var capturesBeingDelivered: Set<ObjectIdentifier> = []
 
@@ -41,11 +46,13 @@ final class ThumbnailController {
     init(
         storage: CaptureStorage = .current,
         saveDirectory: @escaping @MainActor () -> URL = { Preferences.saveDirectory() },
-        showError: @escaping @MainActor (Error, String) -> Void = { ErrorAlert.show($0, title: $1) }
+        showError: @escaping @MainActor (Error, String) -> Void = { ErrorAlert.show($0, title: $1) },
+        pasteboard: NSPasteboard = .general
     ) {
         self.storage = storage
         self.saveDirectory = saveDirectory
         self.showError = showError
+        self.pasteboard = pasteboard
         _ = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -64,7 +71,20 @@ final class ThumbnailController {
     }
 
     func show(_ screenshot: Screenshot, onDisplay displayID: CGDirectDisplayID) {
-        let capture = PendingCapture(screenshot: screenshot, storage: storage)
+        show(PendingCapture(screenshot: screenshot, storage: storage), onDisplay: displayID)
+    }
+
+    /// With no screen at hand, say just after its display was unplugged,
+    /// the recording waits for one, as restored captures do.
+    func show(_ recording: Recording) {
+        show(recording, onDisplay: (NSScreen.underMouse ?? NSScreen.main)?.displayID ?? CGMainDisplayID())
+    }
+
+    func show(_ recording: Recording, onDisplay displayID: CGDirectDisplayID) {
+        show(PendingCapture(recording: recording), onDisplay: displayID)
+    }
+
+    private func show(_ capture: PendingCapture, onDisplay displayID: CGDirectDisplayID) {
         entries.insert(Entry(capture: capture, displayID: displayID), at: 0)
         layout()
     }
@@ -88,10 +108,11 @@ final class ThumbnailController {
 
     private func makeCard(for entry: Entry, on screen: NSScreen) -> ThumbnailCardView {
         let capture = entry.capture
-        let card = ThumbnailCardView(imageSize: capture.pointSize)
+        let card = ThumbnailCardView(imageSize: capture.pointSize, duration: capture.recording?.duration)
         card.onCopy = { [weak self] in self?.copy(capture) }
         card.onSave = { [weak self] in self?.save(capture) }
         card.onAnnotate = { [weak self] in self?.annotate(capture) }
+        card.onPlay = { [weak self] in self?.play(capture) }
         card.onClose = { [weak self] in self?.close(capture) }
         card.previewView.fileURL = { [weak self] in
             guard self?.capturesBeingDelivered.contains(ObjectIdentifier(capture)) == false else { return nil }
@@ -124,18 +145,41 @@ final class ThumbnailController {
     // MARK: - Actions
 
     private func copy(_ capture: PendingCapture) {
-        deliver(capture, errorTitle: String(localized: "The screenshot could not be copied")) { file in
-            Clipboard.copy(pngData: file.data)
+        switch capture.kind {
+        case .screenshot:
+            deliver(capture, errorTitle: String(localized: "The screenshot could not be copied")) { capture in
+                Clipboard.copy(pngData: try await capture.file().data, to: self.pasteboard)
+            }
+        case .recording:
+            // The file itself goes on the clipboard, so it must stay until
+            // it has been pasted: until Pashari quits, as after a drop.
+            deliver(
+                capture,
+                keepingFile: true,
+                errorTitle: String(localized: "The recording could not be copied")
+            ) { capture in
+                let url = try await capture.fileURL()
+                Clipboard.copy(fileURL: url, to: self.pasteboard)
+                self.storage.recordDrop(of: url)
+            }
         }
     }
 
     private func save(_ capture: PendingCapture) {
-        deliver(capture, errorTitle: String(localized: "The screenshot could not be saved")) { file in
-            _ = try await ScreenshotWriter.write(
-                file.data,
-                in: self.saveDirectory(),
-                named: file.url.lastPathComponent
-            )
+        switch capture.kind {
+        case .screenshot:
+            deliver(capture, errorTitle: String(localized: "The screenshot could not be saved")) { capture in
+                let file = try await capture.file()
+                _ = try await ScreenshotWriter.write(
+                    file.data,
+                    in: self.saveDirectory(),
+                    named: file.url.lastPathComponent
+                )
+            }
+        case .recording:
+            deliver(capture, errorTitle: String(localized: "The recording could not be saved")) { capture in
+                _ = try await RecordingFiles.move(try await capture.fileURL(), into: self.saveDirectory())
+            }
         }
     }
 
@@ -144,8 +188,9 @@ final class ThumbnailController {
     /// a double-click does not save the same screenshot twice.
     private func deliver(
         _ capture: PendingCapture,
+        keepingFile: Bool = false,
         errorTitle: String,
-        to output: @escaping (PendingCapture.File) async throws -> Void
+        to output: @escaping (PendingCapture) async throws -> Void
     ) {
         guard capturesBeingDelivered.insert(ObjectIdentifier(capture)).inserted else { return }
         updateActions(for: capture)
@@ -155,12 +200,21 @@ final class ThumbnailController {
                 updateActions(for: capture)
             }
             do {
-                try await output(try await capture.file())
-                dismiss(capture)
+                try await output(capture)
+                dismiss(capture, keepingFile: keepingFile)
             } catch {
                 showError(error, errorTitle)
             }
         }
+    }
+
+    private func play(_ capture: PendingCapture) {
+        guard
+            !capturesBeingDelivered.contains(ObjectIdentifier(capture)),
+            let recording = capture.recording
+        else { return }
+        dismiss(capture, keepingFile: true)
+        onPlay?(recording)
     }
 
     private func annotate(_ capture: PendingCapture) {

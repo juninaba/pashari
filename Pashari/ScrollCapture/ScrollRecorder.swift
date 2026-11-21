@@ -123,7 +123,7 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
     ) {
         guard
             type == .screen,
-            Self.hasNewFrame(sampleBuffer),
+            sampleBuffer.hasNewScreenFrame,
             let pixelBuffer = sampleBuffer.imageBuffer,
             CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA,
             CVPixelBufferGetWidth(pixelBuffer) == stitcher.width,
@@ -179,19 +179,6 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
         }
         progress = newProgress
         onProgress(newProgress)
-    }
-
-    /// ScreenCaptureKit also delivers buffers with no new picture, for
-    /// instance when nothing on screen changed.
-    private static func hasNewFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
-        guard
-            let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
-                as? [[SCStreamFrameInfo: Any]],
-            let rawStatus = attachments.first?[.status] as? Int,
-            let status = SCFrameStatus(rawValue: rawStatus)
-        else { return false }
-        // `.started` marks the very first frame.
-        return status == .complete || status == .started
     }
 
     /// The frames come in the display's colour space unless told otherwise,

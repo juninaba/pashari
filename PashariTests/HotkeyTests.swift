@@ -19,6 +19,10 @@ struct HotkeyTests {
         #expect(KeyboardShortcuts.Name.captureScrollingArea.defaultShortcut == nil)
     }
 
+    @Test func recordingHasNoDefault() {
+        #expect(KeyboardShortcuts.Name.recordArea.defaultShortcut == nil)
+    }
+
     @Test func theDefaultsAreDifferentFromEachOther() {
         #expect(Set(defaults).count == defaults.count)
     }

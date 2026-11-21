@@ -4,6 +4,7 @@ import Testing
 @testable import Pashari
 
 @MainActor
+@Suite(.takesTurnsOnTheScreen)
 struct ModalPresentationTests {
     @Test func presentationEndsTheSelectionOnAllDisplaysBeforeShowingTheDialog() throws {
         let screen = try #require(NSScreen.main)

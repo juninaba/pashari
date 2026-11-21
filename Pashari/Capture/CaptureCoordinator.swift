@@ -1,19 +1,33 @@
 import AppKit
 
 final class CaptureCoordinator {
+    /// Called with true when a recording begins, and with false when it
+    /// ends. The menu bar icon turns into a stop button meanwhile.
+    var onRecordingChange: ((Bool) -> Void)?
+
     private let thumbnailController: ThumbnailController
     private let ensurePermission: @MainActor () -> Bool
     private let playShutterSound: @MainActor () -> Void
+    private let makeRecordingSession: @MainActor (CaptureStorage) -> AreaRecordingSession
     private var isCapturing = false
+    private var recordingSession: AreaRecordingSession?
+    private var recordingTask: Task<Void, Never>?
+
+    /// True while an area is being recorded, not while its frame is chosen.
+    var isRecording: Bool { recordingSession?.isRecording == true }
 
     init(
         thumbnailController: ThumbnailController,
         ensurePermission: @escaping @MainActor () -> Bool = { ScreenRecordingPermission.ensureGranted() },
-        playShutterSound: @escaping @MainActor () -> Void = { Preferences.shutterSound().play() }
+        playShutterSound: @escaping @MainActor () -> Void = { Preferences.shutterSound().play() },
+        makeRecordingSession: @escaping @MainActor (CaptureStorage) -> AreaRecordingSession = {
+            AreaRecordingSession(storage: $0)
+        }
     ) {
         self.thumbnailController = thumbnailController
         self.ensurePermission = ensurePermission
         self.playShutterSound = playShutterSound
+        self.makeRecordingSession = makeRecordingSession
     }
 
     func captureFullscreen() {
@@ -54,12 +68,68 @@ final class CaptureCoordinator {
         }
     }
 
-    /// Shared skeleton of every capture mode. `capture` returns the
-    /// screenshot, or nil when the user cancelled. Returns the task that
-    /// waits for it, or nil when no capture starts. Tests pass their own
-    /// `capture` and wait for the task.
+    /// The frame first, which starts where the last recording was; pressed
+    /// again, recording begins, and once more, it stops. The recording
+    /// then joins the screenshots' thumbnails.
+    @discardableResult
+    func recordArea() -> Task<Void, Never>? {
+        if let recordingSession {
+            recordingSession.advance()
+            return nil
+        }
+        recordingTask = start(errorTitle: String(localized: "The recording could not be made")) { [self] in
+            let session = makeRecordingSession(thumbnailController.storage)
+            session.onRecordingChange = { [weak self] isRecording in
+                self?.onRecordingChange?(isRecording)
+            }
+            recordingSession = session
+            defer { recordingSession = nil }
+            guard let recording = try await session.run() else {
+                Log.capture.info("Recording cancelled")
+                return
+            }
+            thumbnailController.show(recording)
+        }
+        return recordingTask
+    }
+
+    /// The menu bar icon's stop button.
+    func stopRecording() {
+        recordingSession?.stop()
+    }
+
+    /// Stops the recording, if one is running, and waits until it has
+    /// joined the thumbnails.
+    func finishRecording() async {
+        guard isRecording else { return }
+        stopRecording()
+        await recordingTask?.value
+    }
+
+    /// Shared skeleton of every capture mode that ends in a screenshot.
+    /// `capture` returns the screenshot, or nil when the user cancelled.
+    /// Returns the task that waits for it, or nil when no capture starts.
+    /// Tests pass their own `capture` and wait for the task.
     @discardableResult
     func run(_ capture: @escaping () async throws -> Screenshot?) -> Task<Void, Never>? {
+        start(errorTitle: String(localized: "The screenshot could not be taken")) { [self] in
+            guard let screenshot = try await capture() else {
+                Log.capture.info("Capture cancelled")
+                return
+            }
+            Log.capture.info("Captured \(screenshot.image.width)x\(screenshot.image.height) px")
+            playShutterSound()
+            thumbnailController.show(screenshot)
+        }
+    }
+
+    /// Shared skeleton of every capture mode: one at a time, never under a
+    /// dialog, and only with the Screen Recording permission. `capture`
+    /// does the work and shows its result.
+    private func start(
+        errorTitle: String,
+        _ capture: @escaping () async throws -> Void
+    ) -> Task<Void, Never>? {
         guard NSApp.modalWindow == nil else {
             Log.capture.info("Ignored: a modal dialog is open")
             return nil
@@ -82,16 +152,10 @@ final class CaptureCoordinator {
         return Task {
             defer { isCapturing = false }
             do {
-                guard let screenshot = try await capture() else {
-                    Log.capture.info("Capture cancelled")
-                    return
-                }
-                Log.capture.info("Captured \(screenshot.image.width)x\(screenshot.image.height) px")
-                playShutterSound()
-                thumbnailController.show(screenshot)
+                try await capture()
             } catch {
                 Log.capture.error("Capture failed: \(error.localizedDescription, privacy: .public)")
-                ErrorAlert.show(error, title: String(localized: "The screenshot could not be taken"))
+                ErrorAlert.show(error, title: errorTitle)
             }
         }
     }

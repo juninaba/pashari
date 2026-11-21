@@ -142,6 +142,24 @@ enum ScreenCapturer {
         }
     }
 
+    /// What is on screen, for a recording that must leave out Pashari's
+    /// overlays and bars. They were only just put on screen and may not be
+    /// listed yet, which does not matter as long as Pashari itself is: the
+    /// recording then leaves out all its windows but those a screenshot
+    /// shows (see `recordingFilter`). Pashari is listed once any of its
+    /// windows is, such as its menu bar icon.
+    static func shareableContentListingPashari() async throws -> SCShareableContent {
+        let ownProcessID = ProcessInfo.processInfo.processIdentifier
+        var content = try await shareableContent()
+        var attempts = 1
+        while !content.applications.contains(where: { $0.processID == ownProcessID }), attempts < 10 {
+            try await Task.sleep(for: .milliseconds(30))
+            content = try await shareableContent()
+            attempts += 1
+        }
+        return content
+    }
+
     /// What to record of `display` so that the recording, like a
     /// screenshot, leaves out the windows of Pashari's that
     /// `ownWindowsToHide` picks, and also any that Pashari puts on screen

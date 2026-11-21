@@ -1,9 +1,10 @@
 import AppKit
 
-/// Shows which area is being recorded: the rest of the screen is dimmed,
-/// and the area gets a border just outside it. The view takes no input; the
-/// panel it sits in lets every click and scroll through.
-final class ScrollCaptureOverlayView: NSView {
+/// Shows which area is being recorded, by a scroll capture or a video
+/// recording: the rest of the screen is dimmed, and the area gets a border
+/// just outside it. The view takes no input; the panel it sits in lets every
+/// click and scroll through.
+final class RecordedAreaOverlayView: NSView {
     /// In this view's coordinates, origin at the top-left corner.
     let area: CGRect
 
@@ -14,7 +15,7 @@ final class ScrollCaptureOverlayView: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
-        fatalError("ScrollCaptureOverlayView is created in code only")
+        fatalError("RecordedAreaOverlayView is created in code only")
     }
 
     override var isFlipped: Bool { true }
