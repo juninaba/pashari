@@ -178,6 +178,8 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
             if history.isTrimmed {
                 // Cut straight into the folder: should that fail, the
                 // recording and its trims stay as they are.
+                model.isExporting = true
+                defer { model.isExporting = false }
                 try await RecordingFiles.trim(recording.url, to: history.current, into: saveDirectory())
             } else {
                 _ = try await RecordingFiles.move(recording.url, into: saveDirectory())
@@ -202,18 +204,16 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
     }
 
     /// The recording cut to what was trimmed. The file is cut here, once.
+    /// This takes about as long as the frames kept took to record, so the
+    /// toolbar shows that it is working. The player shows the recording
+    /// meanwhile: the file it has open stays as it is, even once the cut
+    /// takes its place.
     private func trimmedRecording() async throws -> Recording {
         guard history.isTrimmed else { return recording }
         let range = history.current
-        // Let go of the file before it is replaced.
-        detachPlayer()
-        do {
-            try await RecordingFiles.trim(recording.url, to: range)
-        } catch {
-            attachPlayer()
-            showTrim()
-            throw error
-        }
+        model.isExporting = true
+        defer { model.isExporting = false }
+        try await RecordingFiles.trim(recording.url, to: range)
         recording = Recording(
             url: recording.url,
             pointSize: recording.pointSize,

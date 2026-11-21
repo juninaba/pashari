@@ -10,6 +10,8 @@ final class RecordingPlayerModel {
     /// While the trim handles are out, or the recording is being cut,
     /// copied or saved.
     var isBusy = false
+    /// While the recording is being cut, which can take a while.
+    var isExporting = false
 }
 
 /// The player's toolbar, like the editor's: Trim, Undo and Redo, then Copy
@@ -38,6 +40,12 @@ struct RecordingToolbarView: View {
 
             Spacer(minLength: 12)
 
+            if model.isExporting {
+                ProgressView()
+                    .controlSize(.small)
+                    .help(String(localized: "Trimming…"))
+                    .accessibilityLabel(String(localized: "Trimming…"))
+            }
             Button(String(localized: "Copy"), action: onCopy)
                 .buttonStyle(PillButtonStyle(isProminent: false))
                 .fixedSize()

@@ -861,6 +861,16 @@
         }
       }
     },
+    "Trimming…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "トリミング中…"
+          }
+        }
+      }
+    },
     "Turn on Pashari under Privacy & Security > Screen & System Audio Recording in System Settings, then quit and reopen Pashari." : {
       "localizations" : {
         "ja" : {
