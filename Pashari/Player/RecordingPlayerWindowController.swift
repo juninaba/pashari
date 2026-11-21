@@ -273,6 +273,27 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
         fileprivate func closeNow() {
             super.close()
         }
+
+        // A window answers Undo and Redo itself, from an undo manager the
+        // player does not use, before its delegate is asked. Passed on,
+        // ⌘Z and ⇧⌘Z reach the player's trims.
+        @objc func undo(_ sender: Any?) {
+            (delegate as? RecordingPlayerWindowController)?.undo(sender)
+        }
+
+        @objc func redo(_ sender: Any?) {
+            (delegate as? RecordingPlayerWindowController)?.redo(sender)
+        }
+
+        override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+            if
+                let player = delegate as? RecordingPlayerWindowController,
+                menuItem.action == Selector(("undo:")) || menuItem.action == Selector(("redo:"))
+            {
+                return player.validateMenuItem(menuItem)
+            }
+            return super.validateMenuItem(menuItem)
+        }
     }
 
     // MARK: - Building the window

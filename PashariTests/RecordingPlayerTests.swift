@@ -106,6 +106,33 @@ struct RecordingPlayerTests {
         #expect(first.isClose(to: frames[10].color, within: 8), "\(first)")
     }
 
+    @Test func undoAndRedoInTheEditMenuReachTheTrims() async throws {
+        let sample = try await SampleRecording()
+        defer { sample.remove() }
+        let player = RecordingPlayerWindowController(
+            recording: sample.recording,
+            storage: sample.storage,
+            showError: { error, _ in Issue.record(error) }
+        )
+        let undo = NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        #expect(!player.window.validateMenuItem(undo))
+
+        player.trim(to: CMTimeRange(start: CMTime(value: 300, timescale: 600), end: CMTime(value: 600, timescale: 600)))
+        // The menu's action goes to the window, which tries itself first.
+        #expect(player.window.validateMenuItem(undo))
+        #expect(player.window.tryToPerform(Selector(("undo:")), with: undo))
+        #expect(player.model.canRedo)
+        #expect(player.window.validateMenuItem(redo))
+        #expect(player.window.tryToPerform(Selector(("redo:")), with: redo))
+        #expect(player.model.canUndo)
+
+        // Untrimmed again, closing cuts nothing.
+        player.undo(nil)
+        player.onClose = nil
+        player.window.close()
+    }
+
     @Test func closingAnUntrimmedPlayerHandsTheRecordingBackAsItWas() async throws {
         let sample = try await SampleRecording()
         defer { sample.remove() }
