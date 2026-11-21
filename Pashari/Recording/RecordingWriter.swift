@@ -24,15 +24,20 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
     static let maximumDuration = CMTime(value: 300, timescale: 1)
 
     let url: URL
+    private let isRealTime: Bool
     private let writer: AVAssetWriter
     private let input: AVAssetWriterInput
     private let adaptor: AVAssetWriterInputPixelBufferAdaptor
     private var startTime: CMTime?
     private var lastFrame: (buffer: CVPixelBuffer, time: CMTime)?
 
-    /// `width` and `height` are the frames' size in pixels.
-    init(url: URL, width: Int, height: Int) throws {
+    /// `width` and `height` are the frames' size in pixels. While
+    /// recording (`isRealTime`), a frame the encoder has no room for is
+    /// dropped: the screen does not wait. Encoding a recording that
+    /// exists, as trimming does, each frame waits for room instead.
+    init(url: URL, width: Int, height: Int, isRealTime: Bool = true) throws {
         self.url = url
+        self.isRealTime = isRealTime
         writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         // The index goes at the front of the file, so that a browser can
         // start playing it before all of it has arrived.
@@ -41,7 +46,7 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
             mediaType: .video,
             outputSettings: Self.outputSettings(width: width, height: height)
         )
-        input.expectsMediaDataInRealTime = true
+        input.expectsMediaDataInRealTime = isRealTime
         adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
         guard writer.canAdd(input) else { throw CocoaError(.fileWriteUnknown) }
         writer.add(input)
@@ -61,7 +66,7 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
         }
         guard time - start < Self.maximumDuration else { return .full }
         if let lastFrame, time <= lastFrame.time { return .dropped }
-        guard input.isReadyForMoreMediaData else { return .dropped }
+        guard input.isReadyForMoreMediaData || (!isRealTime && waitUntilReady(seconds: 10)) else { return .dropped }
         guard adaptor.append(buffer, withPresentationTime: time) else { throw failure }
         lastFrame = (buffer, time)
         return .appended
@@ -82,7 +87,7 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
         // starts. Without one more at the end, the last frame would get the
         // length of a single frame, and some players would show nothing for
         // the rest of the recording. This one only ends the last.
-        if end > lastFrame.time, waitUntilReady() {
+        if end > lastFrame.time, waitUntilReady(seconds: 1) {
             adaptor.append(lastFrame.buffer, withPresentationTime: end)
         }
         self.lastFrame = nil
@@ -112,10 +117,12 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
         writer.error ?? CocoaError(.fileWriteUnknown)
     }
 
-    /// The encoder takes a moment for the frames before the last one.
-    private func waitUntilReady() -> Bool {
-        for _ in 0..<200 {
+    /// The encoder takes a moment for the frames before. A writer that
+    /// failed is never ready again.
+    private func waitUntilReady(seconds: Int) -> Bool {
+        for _ in 0..<(seconds * 200) {
             if input.isReadyForMoreMediaData { return true }
+            guard writer.status == .writing else { return false }
             usleep(5_000)
         }
         return false
@@ -126,8 +133,9 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
     /// a fixed 8 or 16 Mbit/s keeps it, in about two thirds of the size,
     /// and a screen that stands still costs next to nothing.
     ///
-    /// A key frame at least every two seconds lets players seek, and
-    /// without frames out of order, a recording can be cut at any frame.
+    /// A key frame at least every two seconds lets players seek. Frames
+    /// stay in order: the encoder would otherwise hold a frame back until
+    /// the next one comes, which on a screen that stands still can be long.
     private static func outputSettings(width: Int, height: Int) -> [String: Any] {
         [
             AVVideoCodecKey: AVVideoCodecType.h264,

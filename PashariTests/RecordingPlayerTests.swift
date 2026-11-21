@@ -78,10 +78,42 @@ struct RecordingPlayerTests {
         #expect(left == [url.lastPathComponent])
     }
 
+    @Test func nothingCutAwayStaysInTheFile() async throws {
+        let url = try TestVideos.temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        // Twenty frames a tenth of a second apart. Only the first is a key
+        // frame: they come at least every two seconds.
+        let frames = (0..<20).map { index in
+            (color: TestImages.RGBA(red: UInt8(index * 12), green: 80, blue: 160, alpha: 255), time: Double(index) / 10)
+        }
+        try await TestVideos.makeMP4(at: url, frames: frames, end: 2)
+
+        try await RecordingFiles.trim(url, to: CMTimeRange(
+            start: CMTime(value: 600, timescale: 600),
+            end: CMTime(value: 900, timescale: 600)
+        ))
+
+        // Every frame stored in the file, whether players show it or not.
+        let track = try #require(try await AVURLAsset(url: url).loadTracks(withMediaType: .video).first)
+        let cursor = try #require(track.makeSampleCursorAtFirstSampleInDecodeOrder())
+        var stored = 1
+        while cursor.stepInDecodeOrder(byCount: 1) == 1 {
+            stored += 1
+        }
+        // The five from 1.0 to 1.4 s, and the last one again where it ends.
+        #expect(stored <= 6, "\(stored) frames stored")
+        let first = TestImages.pixel(of: try await TestVideos.image(in: url, at: 0), x: 32, y: 24)
+        #expect(first.isClose(to: frames[10].color, within: 8), "\(first)")
+    }
+
     @Test func closingAnUntrimmedPlayerHandsTheRecordingBackAsItWas() async throws {
         let sample = try await SampleRecording()
         defer { sample.remove() }
-        let player = RecordingPlayerWindowController(recording: sample.recording, storage: sample.storage)
+        let player = RecordingPlayerWindowController(
+            recording: sample.recording,
+            storage: sample.storage,
+            showError: { error, _ in Issue.record(error) }
+        )
         let results = Results()
         player.onClose = { results.values.append($0) }
 
@@ -97,7 +129,11 @@ struct RecordingPlayerTests {
     @Test func closingATrimmedPlayerHandsBackTheRecordingCutToTheTrim() async throws {
         let sample = try await SampleRecording()
         defer { sample.remove() }
-        let player = RecordingPlayerWindowController(recording: sample.recording, storage: sample.storage)
+        let player = RecordingPlayerWindowController(
+            recording: sample.recording,
+            storage: sample.storage,
+            showError: { error, _ in Issue.record(error) }
+        )
         let results = Results()
         player.onClose = { results.values.append($0) }
 
@@ -115,7 +151,11 @@ struct RecordingPlayerTests {
     @Test func undoWidensATrimAgainBeforeTheWindowCloses() async throws {
         let sample = try await SampleRecording()
         defer { sample.remove() }
-        let player = RecordingPlayerWindowController(recording: sample.recording, storage: sample.storage)
+        let player = RecordingPlayerWindowController(
+            recording: sample.recording,
+            storage: sample.storage,
+            showError: { error, _ in Issue.record(error) }
+        )
         let results = Results()
         player.onClose = { results.values.append($0) }
 
