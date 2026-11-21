@@ -106,6 +106,24 @@ struct RecordingPlayerTests {
         #expect(first.isClose(to: frames[10].color, within: 8), "\(first)")
     }
 
+    @Test func aCutInTheMiddleOfAStillFrameStartsAndEndsWithIt() async throws {
+        let url = try TestVideos.temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        // The screen stood still for five seconds.
+        try await TestVideos.makeMP4(at: url, frames: [(.blue, 0), (.red, 5)], end: 6)
+
+        try await RecordingFiles.trim(url, to: CMTimeRange(
+            start: CMTime(value: 2, timescale: 1),
+            end: CMTime(value: 3, timescale: 1)
+        ))
+
+        #expect(abs(try await AVURLAsset(url: url).load(.duration).seconds - 1) < 0.01)
+        for time in [0, 0.95] {
+            let pixel = TestImages.pixel(of: try await TestVideos.image(in: url, at: time), x: 32, y: 24)
+            #expect(pixel.isClose(to: .blue, within: 8), "\(time) s: \(pixel)")
+        }
+    }
+
     @Test func aTrimmedSaveNeverTouchesAFileInTheFolder() async throws {
         let sample = try await SampleRecording()
         defer { sample.remove() }
