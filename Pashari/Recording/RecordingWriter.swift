@@ -87,8 +87,18 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
         // starts. Without one more at the end, the last frame would get the
         // length of a single frame, and some players would show nothing for
         // the rest of the recording. This one only ends the last.
-        if end > lastFrame.time, waitUntilReady(seconds: 1) {
-            adaptor.append(lastFrame.buffer, withPresentationTime: end)
+        if end > lastFrame.time {
+            let ended = waitUntilReady(seconds: isRealTime ? 1 : 10)
+                && adaptor.append(lastFrame.buffer, withPresentationTime: end)
+            // A recording is kept without it, its last frame then showing
+            // only briefly. A recording encoded anew must be whole, or the
+            // one it comes from stays as it is.
+            if !ended, !isRealTime {
+                let error = failure
+                cancel()
+                completion(.failure(error))
+                return
+            }
         }
         self.lastFrame = nil
         input.markAsFinished()
