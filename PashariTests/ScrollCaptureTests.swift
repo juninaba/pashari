@@ -12,7 +12,7 @@ struct ScrollCaptureControlPanelTests {
     @Test func theControlsGoUnderTheArea() {
         let area = CGRect(x: 300, y: 300, width: 200, height: 300)
 
-        let frame = ScrollCaptureControlPanel.frame(ofSize: size, nextTo: area, in: screen)
+        let frame = ControlBarPlacement.frame(ofSize: size, nextTo: area, in: screen)
 
         #expect(frame == CGRect(x: 200, y: 300 - 12 - 44, width: 400, height: 44))
     }
@@ -20,13 +20,13 @@ struct ScrollCaptureControlPanelTests {
     @Test func theControlsGoOverTheAreaWhenThereIsNoRoomUnderIt() {
         let area = CGRect(x: 300, y: 20, width: 200, height: 300)
 
-        let frame = ScrollCaptureControlPanel.frame(ofSize: size, nextTo: area, in: screen)
+        let frame = ControlBarPlacement.frame(ofSize: size, nextTo: area, in: screen)
 
         #expect(frame.minY == area.maxY + 12)
     }
 
     @Test func theControlsGoInsideAnAreaThatFillsTheScreen() {
-        let frame = ScrollCaptureControlPanel.frame(ofSize: size, nextTo: screen, in: screen)
+        let frame = ControlBarPlacement.frame(ofSize: size, nextTo: screen, in: screen)
 
         #expect(frame.minY == 12)
         #expect(screen.contains(frame))
@@ -35,7 +35,7 @@ struct ScrollCaptureControlPanelTests {
     @Test func theControlsStayOnScreenBesideAnAreaAtTheEdge() {
         let area = CGRect(x: 0, y: 300, width: 100, height: 300)
 
-        let frame = ScrollCaptureControlPanel.frame(ofSize: size, nextTo: area, in: screen)
+        let frame = ControlBarPlacement.frame(ofSize: size, nextTo: area, in: screen)
 
         #expect(frame.minX == 12)
     }
@@ -57,7 +57,11 @@ struct ScrollCaptureControlPanelTests {
 /// These record a real window while it scrolls, so they run only where
 /// Pashari has the Screen Recording permission.
 @MainActor
-@Suite(.serialized, .enabled(if: CGPreflightScreenCaptureAccess(), "needs the Screen Recording permission"))
+@Suite(
+    .serialized,
+    .enabled(if: CGPreflightScreenCaptureAccess(), "needs the Screen Recording permission"),
+    .takesTurnsOnTheScreen
+)
 struct ScrollRecorderTests {
     @Test func scrollingAWindowJoinsItsContentIntoOneTallPicture() async throws {
         let page = try await ScrollingPage.show()
@@ -137,8 +141,12 @@ struct ScrollRecorderTests {
         // Once recording has begun, a dialog opens. Before it shows,
         // `ModalPresentation` ends the overlays, this one too.
         try await waitForTheBar(saying: String(localized: "Scroll to capture more"))
+        // This capture's own: a recording shows the same kind of overlay,
+        // and one that has just ended may not be gone yet.
         let overlay = try #require(
-            NSApp.windows.compactMap { $0 as? OverlayPanel }.first { $0.contentView is ScrollCaptureOverlayView }
+            NSApp.windows.compactMap { $0 as? OverlayPanel }.first { panel in
+                panel.isVisible && (panel.contentView as? RecordedAreaOverlayView)?.area == page.area
+            }
         )
         overlay.onCancel?()
 
@@ -165,43 +173,6 @@ private func texts(in view: NSView?) -> [String] {
     guard let view else { return [] }
     let own = (view as? NSTextField).map { [$0.stringValue] } ?? []
     return own + view.subviews.flatMap { texts(in: $0) }
-}
-
-/// An opaque panel of Pashari's at the level of its overlays.
-@MainActor
-private enum Cover {
-    static func show(over frame: CGRect) async throws -> NSPanel {
-        let panel = NSPanel(
-            contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.level = OverlayPanel.windowLevel
-        panel.backgroundColor = .systemRed
-        panel.isOpaque = true
-        panel.animationBehavior = .none
-        panel.isReleasedWhenClosed = false
-        panel.orderFrontRegardless()
-        try await waitUntilOnScreen(panel)
-        return panel
-    }
-}
-
-/// A window comes on screen a moment after it is ordered front, once the
-/// main thread is free to finish showing it.
-@MainActor
-private func waitUntilOnScreen(_ window: NSWindow) async throws {
-    let id = CGWindowID(window.windowNumber)
-    for _ in 0..<100 {
-        let onScreen = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID)
-            as? [[CFString: Any]] ?? []
-        if onScreen.contains(where: { $0[kCGWindowNumber] as? CGWindowID == id }) {
-            return
-        }
-        try await Task.sleep(for: .milliseconds(20))
-    }
-    Issue.record("The test window did not come on screen")
 }
 
 /// A window with a fixed header and footer around a part that scrolls,

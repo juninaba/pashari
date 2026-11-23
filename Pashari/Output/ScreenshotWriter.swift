@@ -24,18 +24,19 @@ enum ScreenshotWriter {
         return url
     }
 
-    /// "pashari-20261110-ktwu.png"
-    nonisolated static func fileName(capturedAt date: Date) -> String {
-        "\(baseName(capturedAt: date)).png"
+    /// "pashari-20261110-ktwu.png", or ".mp4" for a recording.
+    nonisolated static func fileName(capturedAt date: Date, pathExtension: String = "png") -> String {
+        "\(baseName(capturedAt: date)).\(pathExtension)"
     }
 
-    /// Appends "-2", "-3"... to the PNG name when it is already in use.
+    /// Appends "-2", "-3"... to the name when it is already in use.
     nonisolated static func availableURL(in directory: URL, named fileName: String) -> URL {
         var url = directory.appending(path: fileName)
+        let pathExtension = url.pathExtension
         let baseName = url.deletingPathExtension().lastPathComponent
         var counter = 2
         while FileManager.default.fileExists(atPath: url.path) {
-            url = directory.appending(path: "\(baseName)-\(counter).png")
+            url = directory.appending(path: "\(baseName)-\(counter).\(pathExtension)")
             counter += 1
         }
         return url

@@ -33,6 +33,19 @@ struct ScreenshotWriterTests {
         #expect(third.lastPathComponent == "pashari-20261110-ktwu-3.png")
     }
 
+    @Test func aRecordingIsNamedTheSameWayAndKeepsItsExtensionWhenTaken() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let name = ScreenshotWriter.fileName(capturedAt: sampleDate, pathExtension: "mp4")
+        let first = ScreenshotWriter.availableURL(in: directory, named: name)
+        try Data().write(to: first)
+        let second = ScreenshotWriter.availableURL(in: directory, named: name)
+
+        #expect(first.lastPathComponent == "pashari-20261110-ktwu.mp4")
+        #expect(second.lastPathComponent == "pashari-20261110-ktwu-2.mp4")
+    }
+
     @Test func timeCodeCountsQuarterSecondsSinceMidnight() {
         let calendar = utcCalendar
         let midnight = calendar.date(from: DateComponents(year: 2026, month: 11, day: 10))!

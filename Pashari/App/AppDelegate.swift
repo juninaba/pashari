@@ -3,20 +3,26 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let thumbnailController: ThumbnailController
     private let editorController: AnnotationEditorController
+    private(set) lazy var playerController = RecordingPlayerController(storage: thumbnailController.storage)
     private let settingsWindowController = SettingsWindowController()
-    private lazy var captureCoordinator = CaptureCoordinator(
-        thumbnailController: thumbnailController
-    )
+    private let makeCaptureCoordinator: @MainActor (ThumbnailController) -> CaptureCoordinator
+    private(set) lazy var captureCoordinator = makeCaptureCoordinator(thumbnailController)
     private var statusItemController: StatusItemController?
 
     lazy var confirmQuit: () -> Bool = { [unowned self] in self.askToQuit() }
+    /// The answer to a quit that had to wait for a recording to end.
+    lazy var replyToQuit: (Bool) -> Void = { NSApp.reply(toApplicationShouldTerminate: $0) }
 
     init(
         thumbnailController: ThumbnailController = ThumbnailController(),
-        editorController: AnnotationEditorController = AnnotationEditorController()
+        editorController: AnnotationEditorController = AnnotationEditorController(),
+        makeCaptureCoordinator: @escaping @MainActor (ThumbnailController) -> CaptureCoordinator = {
+            CaptureCoordinator(thumbnailController: $0)
+        }
     ) {
         self.thumbnailController = thumbnailController
         self.editorController = editorController
+        self.makeCaptureCoordinator = makeCaptureCoordinator
         super.init()
     }
 
@@ -31,6 +37,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         editorController.onFinish = { [thumbnailController] screenshot in
             thumbnailController.show(screenshot)
+        }
+        thumbnailController.onPlay = { [playerController] recording in
+            playerController.open(recording)
+        }
+        playerController.onFinish = { [thumbnailController] recording in
+            thumbnailController.show(recording)
         }
 
         statusItemController = StatusItemController(
@@ -54,14 +66,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard thumbnailController.hasPendingCaptures || editorController.hasOpenEditors else {
-            return .terminateNow
+        // Say at logout: a recording that is running ends first, and joins
+        // the thumbnails like any other before the question.
+        if captureCoordinator.isRecording {
+            Task {
+                await captureCoordinator.finishRecording()
+                replyToQuit(shouldQuit())
+            }
+            return .terminateLater
+        }
+        return shouldQuit() ? .terminateNow : .terminateCancel
+    }
+
+    private func shouldQuit() -> Bool {
+        guard
+            thumbnailController.hasPendingCaptures
+                || editorController.hasOpenEditors
+                || playerController.hasOpenPlayers
+        else {
+            return true
         }
         guard confirmQuit() else {
             editorController.showEditors()
-            return .terminateCancel
+            playerController.showPlayers()
+            return false
         }
-        return .terminateNow
+        return true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -83,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         } catch {
-            ErrorAlert.show(error, title: String(localized: "Unsaved screenshots could not be processed"))
+            ErrorAlert.show(error, title: String(localized: "Unsaved screenshots or recordings could not be processed"))
         }
     }
 
@@ -102,13 +132,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func askToRecoverCaptures() -> NSApplication.ModalResponse {
         let alert = NSAlert()
-        alert.messageText = String(localized: "Recover unsaved screenshots?")
+        alert.messageText = String(localized: "Recover unsaved screenshots and recordings?")
         alert.informativeText = String(
-            localized: "Pashari found working screenshots from earlier runs. Restore them to the thumbnail stack, or discard them to delete the working files."
+            localized: "Pashari found working screenshots or recordings from earlier runs. Restore them to the thumbnail stack, or discard them to delete the working files."
         )
         alert.addButton(withTitle: String(localized: "Restore"))
         alert.addButton(withTitle: String(localized: "Later")).keyEquivalent = "\u{1b}"
-        alert.addButton(withTitle: String(localized: "Remove Unsaved Screenshots")).hasDestructiveAction = true
+        alert.addButton(withTitle: String(localized: "Remove Unsaved Files")).hasDestructiveAction = true
 
         return ModalPresentation.run { alert.runModal() }
     }
@@ -118,7 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .warning
         alert.messageText = String(localized: "Quit Pashari?")
         alert.informativeText = String(
-            localized: "Screenshots in thumbnails or the editor have not been copied or saved, and will be lost."
+            localized: "Screenshots and recordings in thumbnails, the editor or the player have not been copied or saved, and will be lost."
         )
         // Return keeps the work; quitting requires an explicit choice.
         alert.addButton(withTitle: String(localized: "Cancel"))

@@ -13,7 +13,12 @@ final class ThumbnailCardView: NSView {
     var onCopy: (() -> Void)?
     var onSave: (() -> Void)?
     var onAnnotate: (() -> Void)?
+    /// A recording's card has Play where a screenshot's has Annotate.
+    var onPlay: (() -> Void)?
     var onClose: (() -> Void)?
+
+    /// How long the recording is, for a recording's card.
+    let duration: TimeInterval?
 
     let previewView: ThumbnailPreviewView
     private let toolbar: NSView
@@ -29,17 +34,22 @@ final class ThumbnailCardView: NSView {
     /// Set while the card fades away; it takes no more clicks by then.
     private(set) var isLeaving = false
 
-    init(imageSize: CGSize) {
+    /// `duration` is given for a recording, and nil for a screenshot.
+    init(imageSize: CGSize, duration: TimeInterval? = nil) {
         let size = ThumbnailLayout.cardSize(for: imageSize)
         let previewFrame = ThumbnailLayout.previewFrame(inCardOf: size)
         previewView = ThumbnailPreviewView(frame: previewFrame)
         toolbar = NSView(frame: CGRect(x: 0, y: 0, width: size.width, height: ThumbnailLayout.toolbarHeight))
+        self.duration = duration
         super.init(frame: CGRect(origin: .zero, size: size))
 
         wantsLayer = true
         layer?.addSublayer(paper)
         CALayer.withoutAnimation {
             setUpPaper(previewFrame: previewFrame)
+            if let duration {
+                setUpDurationTag(duration, in: previewFrame)
+            }
             setUpBadge()
         }
         updateColors()
@@ -139,6 +149,52 @@ final class ThumbnailCardView: NSView {
             // A ring of paper sets the badge off from the photo under it.
             badge.borderColor = colors.paper
         }
+    }
+
+    /// A play mark and the recording's length, in the bottom-right corner
+    /// of the picture, as videos have in Photos.
+    private func setUpDurationTag(_ duration: TimeInterval, in pictureFrame: CGRect) {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        let text = Self.durationText(duration)
+        let textWidth = ceil((text as NSString).size(withAttributes: [.font: font]).width)
+        let height: CGFloat = 18
+        let mark = CGSize(width: 7, height: 8)
+        let width = 6 + mark.width + 4 + textWidth + 6
+        let tag = CALayer()
+        tag.frame = CGRect(x: pictureFrame.maxX - 5 - width, y: pictureFrame.minY + 5, width: width, height: height)
+        tag.backgroundColor = CGColor(gray: 0, alpha: 0.6)
+        tag.cornerRadius = 5
+        tag.cornerCurve = .continuous
+
+        let triangle = CGMutablePath()
+        triangle.move(to: CGPoint(x: 0, y: 0))
+        triangle.addLine(to: CGPoint(x: mark.width, y: mark.height / 2))
+        triangle.addLine(to: CGPoint(x: 0, y: mark.height))
+        triangle.closeSubpath()
+        let playMark = CAShapeLayer()
+        playMark.path = triangle
+        playMark.fillColor = CGColor(gray: 1, alpha: 1)
+        playMark.frame = CGRect(x: 6, y: (height - mark.height) / 2, width: mark.width, height: mark.height)
+        tag.addSublayer(playMark)
+
+        let label = CATextLayer()
+        label.string = text
+        label.font = font
+        label.fontSize = font.pointSize
+        label.foregroundColor = CGColor(gray: 1, alpha: 1)
+        // Text is drawn as pixels; two per point keeps it sharp on Retina
+        // displays and is merely sampled down on others.
+        label.contentsScale = 2
+        let lineHeight = ceil(font.ascender - font.descender)
+        label.frame = CGRect(x: 6 + mark.width + 4, y: (height - lineHeight) / 2, width: textWidth, height: lineHeight)
+        tag.addSublayer(label)
+        paper.addSublayer(tag)
+    }
+
+    /// "0:12": whole seconds, and at least one for a recording that lasted
+    /// less.
+    static func durationText(_ duration: TimeInterval) -> String {
+        RecordingControlPanel.time(max(1, duration.rounded()))
     }
 
     private func setUpBadge() {
@@ -311,11 +367,17 @@ final class ThumbnailCardView: NSView {
                 label: String(localized: "Save"),
                 action: { [weak self] in self?.onSave?() }
             ),
-            ThumbnailButton(
-                symbolName: "pencil.and.outline",
-                label: String(localized: "Annotate"),
-                action: { [weak self] in self?.onAnnotate?() }
-            ),
+            duration == nil
+                ? ThumbnailButton(
+                    symbolName: "pencil.and.outline",
+                    label: String(localized: "Annotate"),
+                    action: { [weak self] in self?.onAnnotate?() }
+                )
+                : ThumbnailButton(
+                    symbolName: "play.fill",
+                    label: String(localized: "Play"),
+                    action: { [weak self] in self?.onPlay?() }
+                ),
             ThumbnailButton(
                 symbolName: "xmark",
                 label: String(localized: "Close"),

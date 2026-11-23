@@ -21,6 +21,8 @@ extension KeyboardShortcuts.Name {
     )
     // No shortcut until the user records one under Settings.
     static let captureScrollingArea = Self("captureScrollingArea")
+    // None either. Pressed again, it starts the recording, and then stops it.
+    static let recordArea = Self("recordArea")
 }
 
 enum Hotkeys {
@@ -36,6 +38,9 @@ enum Hotkeys {
         }
         KeyboardShortcuts.onKeyDown(for: .captureScrollingArea) {
             captureCoordinator.captureScrollingArea()
+        }
+        KeyboardShortcuts.onKeyDown(for: .recordArea) {
+            captureCoordinator.recordArea()
         }
     }
 }
