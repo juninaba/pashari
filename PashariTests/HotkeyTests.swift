@@ -21,6 +21,7 @@ struct HotkeyTests {
 
     @Test func recordingHasNoDefault() {
         #expect(KeyboardShortcuts.Name.recordArea.defaultShortcut == nil)
+        #expect(KeyboardShortcuts.Name.recordWindow.defaultShortcut == nil)
     }
 
     @Test func theDefaultsAreDifferentFromEachOther() {

@@ -15,45 +15,26 @@ struct RecordingArea {
 /// While recording, every click, scroll and key goes to the apps
 /// underneath: the frame's overlay lets them through, and the bar never
 /// takes the keyboard.
-final class AreaRecordingSession {
-    private enum Phase {
-        case choosing
-        case recording
-        case ended
-    }
-
-    private enum Ending {
-        case done
-        /// A dialog opened, such as an error, and needs the user now.
-        case interrupted
-        case failed(Error)
-    }
-
+final class AreaRecordingSession: RecordingSession {
     /// Called with true when recording begins, and with false when it ends.
-    var onRecordingChange: ((Bool) -> Void)?
+    var onRecordingChange: ((Bool) -> Void)? {
+        get { runner.onRecordingChange }
+        set { runner.onRecordingChange = newValue }
+    }
 
     /// True while recording, after the frame was chosen.
-    var isRecording: Bool { phase == .recording }
+    var isRecording: Bool { runner.isRecording }
 
     private let storage: CaptureStorage
     private let rememberArea: @MainActor (RecordingArea) -> Void
-    private var phase = Phase.choosing
     private let controls = RecordingControlPanel()
+    private lazy var runner = RecordingRunner(controls: controls)
 
     // While choosing.
     private var editor: RecordingFrameEditor
     private var overlays: [(panel: OverlayPanel, view: RecordingAreaView, screen: NSScreen)] = []
     private var choice: CheckedContinuation<RecordingArea?, Never>?
     private var spaceObserver: SpaceChangeObserver?
-
-    // While recording.
-    private var recorder: AreaRecorder?
-    private var frameOverlay: OverlayPanel?
-    private var recordingURL: URL?
-    private var startedAt: Date?
-    private var timer: Timer?
-    private var ending: Ending?
-    private var endingContinuation: CheckedContinuation<Ending, Never>?
 
     /// `remembered` is the area recorded last; the frame starts there if
     /// that display is still connected and the area still fits on it.
@@ -93,15 +74,15 @@ final class AreaRecordingSession {
     /// The hotkey again: begins recording while the frame is adjusted, and
     /// stops while recording.
     func advance() {
-        switch phase {
-        case .choosing: confirm()
-        case .recording: stop()
-        case .ended: break
+        if choice != nil {
+            confirm()
+        } else if isRecording {
+            stop()
         }
     }
 
     func stop() {
-        end(.done)
+        runner.stop()
     }
 
     // MARK: - Choosing the frame
@@ -167,8 +148,9 @@ final class AreaRecordingSession {
             controls.orderOut(nil)
             return
         }
+        let screen = overlays[frame.screen].screen
         controls.show(.adjusting(frame.rect.size))
-        place(controls, nextTo: frame.rect, on: overlays[frame.screen].screen)
+        controls.place(nextTo: Self.onScreenRect(frame.rect, on: screen), on: screen)
     }
 
     private func confirm() {
@@ -203,125 +185,6 @@ final class AreaRecordingSession {
     // MARK: - Recording
 
     private func record(_ area: RecordingArea) async throws -> Recording? {
-        phase = .recording
-        onRecordingChange?(true)
-        defer {
-            phase = .ended
-            hideRecordingPanels()
-            onRecordingChange?(false)
-        }
-        showRecordingPanels(area)
-
-        let capturedAt = Date()
-        let folder = try storage.makeCaptureDirectory()
-        let url = folder.appending(path: ScreenshotWriter.fileName(capturedAt: capturedAt, pathExtension: "mp4"))
-        recordingURL = url
-        let recorder: AreaRecorder
-        do {
-            guard let started = try await startRecorder(area, writingTo: url) else {
-                try? FileManager.default.removeItem(at: folder)
-                return nil
-            }
-            recorder = started
-        } catch {
-            try? FileManager.default.removeItem(at: folder)
-            throw error
-        }
-        Log.capture.info("Area recording started")
-
-        let ending = await waitForEnding()
-        timer?.invalidate()
-        timer = nil
-        let duration: TimeInterval?
-        do {
-            duration = try await recorder.stop()
-        } catch {
-            try? FileManager.default.removeItem(at: folder)
-            throw error
-        }
-        guard let duration else {
-            // Not a single frame came, as when Stop was clicked at once.
-            try? FileManager.default.removeItem(at: folder)
-            if case .failed(let error) = ending { throw error }
-            return nil
-        }
-        // After a failure too, what was recorded until then is kept.
-        Log.capture.info("Area recording ended after \(duration, format: .fixed(precision: 1)) s")
-        return Recording(url: url, pointSize: area.rect.size, duration: duration, capturedAt: capturedAt)
-    }
-
-    /// The bar and the frame must be left out of the recording. See
-    /// `ScreenCapturer.shareableContentListingPashari`. Nil when the
-    /// recording ended before it could start, say for a dialog.
-    private func startRecorder(_ area: RecordingArea, writingTo url: URL) async throws -> AreaRecorder? {
-        let content = try await ScreenCapturer.shareableContentListingPashari()
-        guard ending == nil else { return nil }
-        guard
-            let displayID = area.screen.displayID,
-            let display = content.displays.first(where: { $0.displayID == displayID })
-        else {
-            throw CaptureError.displayNotFound
-        }
-        let recorder = try AreaRecorder(
-            area: area.rect,
-            filter: ScreenCapturer.recordingFilter(of: display, in: content),
-            url: url,
-            onStart: { [weak self] in
-                Task { @MainActor in self?.didStartRecording() }
-            },
-            onFailure: { [weak self] error in
-                Task { @MainActor in self?.end(.failed(error)) }
-            }
-        )
-        // Before it starts, so that an ending from now on reaches it.
-        self.recorder = recorder
-        try await recorder.start()
-        return recorder
-    }
-
-    private func didStartRecording() {
-        guard ending == nil, startedAt == nil else { return }
-        startedAt = Date()
-        showProgress()
-        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.showProgress() }
-        }
-        // Also while a menu is open.
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
-    }
-
-    private func showProgress() {
-        guard ending == nil, let startedAt, let recordingURL else { return }
-        let elapsed = Date().timeIntervalSince(startedAt)
-        if elapsed >= RecordingWriter.maximumDuration.seconds {
-            Log.capture.info("Area recording reached its longest")
-            end(.done)
-            return
-        }
-        controls.show(.recording(elapsed: elapsed, bytes: AreaRecorder.bytesWritten(to: recordingURL)))
-    }
-
-    private func end(_ ending: Ending) {
-        guard phase == .recording, self.ending == nil else { return }
-        // Now: a dialog that ends the recording keeps the main thread busy
-        // until it closes, and the recording must not go on meanwhile.
-        recorder?.end()
-        self.ending = ending
-        controls.disableButtons()
-        endingContinuation?.resume(returning: ending)
-        endingContinuation = nil
-    }
-
-    /// The user may already have stopped while the recording was starting.
-    private func waitForEnding() async -> Ending {
-        if let ending { return ending }
-        return await withCheckedContinuation { continuation in
-            endingContinuation = continuation
-        }
-    }
-
-    private func showRecordingPanels(_ area: RecordingArea) {
         let screen = area.screen
         let overlay = OverlayPanel(screen: screen)
         // Every click and scroll goes through to the app underneath.
@@ -330,37 +193,41 @@ final class AreaRecordingSession {
             frame: CGRect(origin: .zero, size: screen.frame.size),
             area: area.rect
         )
-        // A dialog that opens meanwhile, such as an error, ends the
-        // recording, and keeps what was recorded (see `ModalPresentation`).
-        overlay.onCancel = { [weak self] in self?.end(.interrupted) }
-        overlay.orderFrontRegardless()
-        frameOverlay = overlay
-
-        controls.onStop = { [weak self] in self?.stop() }
-        controls.show(.preparing)
-        place(controls, nextTo: area.rect, on: screen)
+        let anchor = (rect: Self.onScreenRect(area.rect, on: screen), screen: screen)
+        return try await runner.record(
+            storage: storage,
+            barAnchor: anchor,
+            overlay: overlay,
+            makeRecorder: { [runner] url, onStart, onFailure in
+                // The bar and the frame must be left out of the recording. See
+                // `ScreenCapturer.shareableContentListingPashari`.
+                let content = try await ScreenCapturer.shareableContentListingPashari()
+                guard !runner.hasEnded else { return nil }
+                guard
+                    let displayID = area.screen.displayID,
+                    let display = content.displays.first(where: { $0.displayID == displayID })
+                else {
+                    throw CaptureError.displayNotFound
+                }
+                return try ScreenRecorder(
+                    area: area.rect,
+                    filter: ScreenCapturer.recordingFilter(of: display, in: content),
+                    url: url,
+                    onStart: onStart,
+                    onFailure: onFailure
+                )
+            }
+        )
     }
 
-    private func hideRecordingPanels() {
-        frameOverlay?.orderOut(nil)
-        frameOverlay = nil
-        controls.orderOut(nil)
-    }
-
-    /// `rect` is in points from the top-left corner of `screen`.
-    private func place(_ controls: RecordingControlPanel, nextTo rect: CGRect, on screen: NSScreen) {
-        let onScreen = CGRect(
+    /// `rect` is in points from the top-left corner of `screen`, converted to
+    /// AppKit screen coordinates.
+    private static func onScreenRect(_ rect: CGRect, on screen: NSScreen) -> CGRect {
+        CGRect(
             x: screen.frame.minX + rect.minX,
             y: screen.frame.maxY - rect.maxY,
             width: rect.width,
             height: rect.height
         )
-        let frame = ControlBarPlacement.frame(ofSize: controls.frame.size, nextTo: onScreen, in: screen.visibleFrame)
-        controls.setFrame(frame, display: false)
-        // Each time: a click on an overlay brings it to the front, over the
-        // bar, which lies at the same level, and so does the recording's
-        // overlay when it comes on screen. The buttons would no longer be
-        // reached, or the bar would be dimmed.
-        controls.orderFrontRegardless()
     }
 }

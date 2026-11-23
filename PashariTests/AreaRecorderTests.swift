@@ -7,40 +7,40 @@ import Testing
 
 struct AreaRecorderSizeTests {
     @Test func anAreaIsRecordedInItsOwnPixels() {
-        let size = AreaRecorder.pixelSize(of: CGSize(width: 300, height: 201), scale: 2)
+        let size = ScreenRecorder.pixelSize(of: CGSize(width: 300, height: 201), scale: 2)
 
         #expect(size == (width: 600, height: 402))
     }
 
     @Test func anOddNumberOfPixelsLosesOne() {
-        let size = AreaRecorder.pixelSize(of: CGSize(width: 301, height: 201), scale: 1)
+        let size = ScreenRecorder.pixelSize(of: CGSize(width: 301, height: 201), scale: 1)
 
         #expect(size == (width: 300, height: 200))
     }
 
     @Test func aWholeFiveKDisplayIsRecordedAtTheEncodersLargestSize() {
-        let size = AreaRecorder.pixelSize(of: CGSize(width: 2560, height: 1440), scale: 2)
+        let size = ScreenRecorder.pixelSize(of: CGSize(width: 2560, height: 1440), scale: 2)
 
         #expect(size == (width: 4096, height: 2304))
     }
 
     @Test func anOddAreaOnAStandardDisplayLosesAColumnRatherThanBeingScaled() {
         let area = CGRect(x: 10, y: 20, width: 17, height: 11)
-        let size = AreaRecorder.pixelSize(of: area.size, scale: 1)
+        let size = ScreenRecorder.pixelSize(of: area.size, scale: 1)
 
-        #expect(AreaRecorder.sourceRect(of: area, width: size.width, height: size.height, scale: 1)
+        #expect(ScreenRecorder.sourceRect(of: area, width: size.width, height: size.height, scale: 1)
             == CGRect(x: 10, y: 20, width: 16, height: 10))
         // On a Retina display every point is two pixels, an even number.
-        let retina = AreaRecorder.pixelSize(of: area.size, scale: 2)
-        #expect(AreaRecorder.sourceRect(of: area, width: retina.width, height: retina.height, scale: 2) == area)
+        let retina = ScreenRecorder.pixelSize(of: area.size, scale: 2)
+        #expect(ScreenRecorder.sourceRect(of: area, width: retina.width, height: retina.height, scale: 2) == area)
         // A whole 5K display is scaled down anyway.
         let wide = CGRect(x: 0, y: 0, width: 2560, height: 1440)
-        let scaled = AreaRecorder.pixelSize(of: wide.size, scale: 2)
-        #expect(AreaRecorder.sourceRect(of: wide, width: scaled.width, height: scaled.height, scale: 2) == wide)
+        let scaled = ScreenRecorder.pixelSize(of: wide.size, scale: 2)
+        #expect(ScreenRecorder.sourceRect(of: wide, width: scaled.width, height: scaled.height, scale: 2) == wide)
     }
 
     @Test func aTinyAreaStillMakesAVideo() {
-        let size = AreaRecorder.pixelSize(of: CGSize(width: 1, height: 1), scale: 1)
+        let size = ScreenRecorder.pixelSize(of: CGSize(width: 1, height: 1), scale: 1)
 
         #expect(size == (width: 2, height: 2))
     }
@@ -97,7 +97,7 @@ struct AreaRecorderTests {
         for step in 0..<50 where size == 0 {
             page.fill(step.isMultiple(of: 2) ? .pageRed : .pageBlue)
             try await Task.sleep(for: .milliseconds(50))
-            size = AreaRecorder.bytesWritten(to: url)
+            size = ScreenRecorder.bytesWritten(to: url)
         }
         _ = try await recorder.stop()
 
@@ -180,11 +180,11 @@ private final class RecorderEvents {
 }
 
 private extension ColorPage {
-    func makeRecorder(writingTo url: URL, reportingTo events: RecorderEvents) async throws -> AreaRecorder {
+    func makeRecorder(writingTo url: URL, reportingTo events: RecorderEvents) async throws -> ScreenRecorder {
         let content = try await listedContent()
         let displayID = try #require(window.screen?.displayID)
         let display = try #require(content.displays.first { $0.displayID == displayID })
-        return try AreaRecorder(
+        return try ScreenRecorder(
             area: area,
             filter: ScreenCapturer.recordingFilter(of: display, in: content),
             url: url,

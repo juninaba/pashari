@@ -15,6 +15,7 @@ struct StatusItemTests {
         defer { NSStatusBar.system.removeStatusItem(statusItem) }
         let menu = try #require(statusItem.menu)
         #expect(menu.items.map(\.title).contains(String(localized: "Record Area")))
+        #expect(menu.items.map(\.title).contains(String(localized: "Record Window")))
 
         coordinator.onRecordingChange?(true)
         #expect(statusItem.menu == nil)

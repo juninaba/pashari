@@ -86,6 +86,21 @@ enum ScreenCapturer {
         return list.compactMap { $0[kCGWindowNumber] as? CGWindowID }
     }
 
+    /// True while the window still exists on the window server (including when
+    /// minimized or on another Space); false once the window has been closed
+    /// and destroyed.
+    static func windowExists(_ windowID: CGWindowID) -> Bool {
+        guard windowID != kCGNullWindowID else { return false }
+        var raw: UnsafeRawPointer? = UnsafeRawPointer(bitPattern: Int(windowID))
+        guard
+            let ids = CFArrayCreate(nil, &raw, 1, nil),
+            let list = CGWindowListCreateDescriptionFromArray(ids) as? [[CFString: Any]]
+        else {
+            return true
+        }
+        return !list.isEmpty
+    }
+
     private static func shareableContent() async throws -> SCShareableContent {
         try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
     }

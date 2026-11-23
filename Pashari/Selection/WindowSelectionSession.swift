@@ -2,6 +2,7 @@ import AppKit
 import ScreenCaptureKit
 
 final class WindowSelectionSession {
+    private let cursor: NSCursor
     private var windows: [SCWindow] = []
     /// Frames of `windows` in AppKit screen coordinates, in the same order.
     private var frames: [CGRect] = []
@@ -14,6 +15,10 @@ final class WindowSelectionSession {
     /// Counts Space changes, so a window list that arrives late, after the
     /// user has already moved on to yet another Space, can be told apart.
     private var spaceChanges = 0
+
+    init(cursor: NSCursor = .camera) {
+        self.cursor = cursor
+    }
 
     /// `windows` must be ordered front to back. Returns the window the user
     /// clicked, or nil when they cancelled.
@@ -43,7 +48,7 @@ final class WindowSelectionSession {
     private func show() {
         for screen in NSScreen.screens {
             let panel = OverlayPanel(screen: screen)
-            let view = WindowSelectionView(frame: CGRect(origin: .zero, size: screen.frame.size))
+            let view = WindowSelectionView(frame: CGRect(origin: .zero, size: screen.frame.size), cursor: cursor)
             view.onPointerMove = { [weak self] in self?.updateHighlight() }
             view.onClick = { [weak self] in self?.click() }
             panel.onCancel = { [weak self] in self?.finish(with: nil) }

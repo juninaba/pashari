@@ -2,6 +2,7 @@ import Foundation
 
 enum CaptureError: LocalizedError {
     case displayNotFound
+    case windowNotFound
     case cannotEncodeImage
     case cannotWriteFile(URL)
     case cannotReadFile(URL)
@@ -14,6 +15,8 @@ enum CaptureError: LocalizedError {
         switch self {
         case .displayNotFound:
             String(localized: "The display to capture could not be found.")
+        case .windowNotFound:
+            String(localized: "The window to record could not be found.")
         case .cannotEncodeImage:
             String(localized: "The screenshot could not be converted to PNG.")
         case .cannotApplyEdits:

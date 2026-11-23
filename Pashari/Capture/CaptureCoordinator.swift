@@ -9,11 +9,12 @@ final class CaptureCoordinator {
     private let ensurePermission: @MainActor () -> Bool
     private let playShutterSound: @MainActor () -> Void
     private let makeRecordingSession: @MainActor (CaptureStorage) -> AreaRecordingSession
+    private let makeWindowRecordingSession: @MainActor (CaptureStorage) -> WindowRecordingSession
     private var isCapturing = false
-    private var recordingSession: AreaRecordingSession?
+    private var recordingSession: (any RecordingSession)?
     private var recordingTask: Task<Void, Never>?
 
-    /// True while an area is being recorded, not while its frame is chosen.
+    /// True while an area or window is being recorded, not while it is chosen.
     var isRecording: Bool { recordingSession?.isRecording == true }
 
     init(
@@ -22,12 +23,16 @@ final class CaptureCoordinator {
         playShutterSound: @escaping @MainActor () -> Void = { Preferences.shutterSound().play() },
         makeRecordingSession: @escaping @MainActor (CaptureStorage) -> AreaRecordingSession = {
             AreaRecordingSession(storage: $0)
+        },
+        makeWindowRecordingSession: @escaping @MainActor (CaptureStorage) -> WindowRecordingSession = {
+            WindowRecordingSession(storage: $0)
         }
     ) {
         self.thumbnailController = thumbnailController
         self.ensurePermission = ensurePermission
         self.playShutterSound = playShutterSound
         self.makeRecordingSession = makeRecordingSession
+        self.makeWindowRecordingSession = makeWindowRecordingSession
     }
 
     func captureFullscreen() {
@@ -73,24 +78,46 @@ final class CaptureCoordinator {
     /// then joins the screenshots' thumbnails.
     @discardableResult
     func recordArea() -> Task<Void, Never>? {
-        if let recordingSession {
-            recordingSession.advance()
+        if let session = recordingSession as? AreaRecordingSession {
+            session.advance()
             return nil
         }
-        recordingTask = start(errorTitle: String(localized: "The recording could not be made")) { [self] in
-            let session = makeRecordingSession(thumbnailController.storage)
+        return startRecording(makeRecordingSession)
+    }
+
+    /// Pick a window on screen to begin recording it; pressed again while
+    /// recording, it stops. The recording then joins the thumbnails.
+    @discardableResult
+    func recordWindow() -> Task<Void, Never>? {
+        if let session = recordingSession as? WindowRecordingSession {
+            session.advance()
+            return nil
+        }
+        return startRecording(makeWindowRecordingSession)
+    }
+
+    private func startRecording(
+        _ makeSession: @escaping @MainActor (CaptureStorage) -> any RecordingSession
+    ) -> Task<Void, Never>? {
+        let task = start(errorTitle: String(localized: "The recording could not be made")) { [self] in
+            let session = makeSession(thumbnailController.storage)
             session.onRecordingChange = { [weak self] isRecording in
                 self?.onRecordingChange?(isRecording)
             }
             recordingSession = session
-            defer { recordingSession = nil }
+            defer {
+                recordingSession = nil
+                recordingTask = nil
+            }
             guard let recording = try await session.run() else {
                 Log.capture.info("Recording cancelled")
                 return
             }
             thumbnailController.show(recording)
         }
-        return recordingTask
+        guard let task else { return nil }
+        recordingTask = task
+        return task
     }
 
     /// The menu bar icon's stop button.
