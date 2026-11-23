@@ -16,9 +16,9 @@ A menu bar screenshot app for macOS, written in Swift.
   global hotkeys
 - Scroll capture: pick an area, scroll its content, and get one tall
   picture of everything that scrolled past
-- Record an area as a video: adjust the frame on the live screen, record
-  up to five minutes, then trim the recording, and copy, save or drag it
-  like a screenshot
+- Record an area or a window as a video: adjust a frame on the live
+  screen or pick a window, record up to five minutes, then trim the
+  recording, and copy, save or drag it like a screenshot
 - A film camera's shutter sound for each capture, if you want it.
   Captures are silent until you pick it under Settings
 - A floating thumbnail after each capture, like an instant photo: copy,
@@ -57,8 +57,8 @@ Default hotkeys (change them under Settings):
 | Capture window     | ⇧⌘3    |
 | Capture fullscreen | ⇧⌘4    |
 
-Capture Scrolling Area and Record Area have no hotkey until you set one
-under Settings.
+Capture Scrolling Area, Record Area and Record Window have no hotkey
+until you set one under Settings.
 
 macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
 System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that
@@ -69,7 +69,7 @@ behind the notch, open Pashari again from Spotlight or the Finder and
 Settings appears.
 
 <p align="center">
-  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area and Record Area have none yet.">
+  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area, Record Area and Record Window have none yet.">
 </p>
 
 ### Scroll capture
@@ -89,7 +89,7 @@ Pashari's bar again.
   little, and carry on more slowly.
 - The picture stops growing at 30,000 pixels (less for very wide areas).
 
-### Recording an area
+### Recording an area or a window
 
 Choose Record Area from the menu bar icon, or press its hotkey, and drag
 a frame over the screen, which goes on as it is. Next time, the frame
@@ -97,10 +97,15 @@ starts where your last recording was; drag elsewhere to draw a new one.
 Drag inside the frame to move it, or drag its edges and corners. Click
 Record or press Return to start; Escape cancels.
 
+Or choose Record Window, or press its hotkey, and click a window to
+start recording it on its own, without whatever is in front of or behind
+it. Escape or a right click cancels. The recording follows the window
+when you move or resize it, and ends automatically if you close it.
+
 While recording, your clicks, scrolls and keys go to your apps as usual.
-To stop, click Stop on the bar next to the frame, click the menu bar icon,
-which has turned into a stop button, or press the hotkey again. A
-recording stops by itself at five minutes.
+To stop, click Stop on the bar, click the menu bar icon, which has
+turned into a stop button, or press the hotkey again. A recording stops
+by itself at five minutes.
 
 - The pointer is in the video, with a ring around each click (macOS 15
   and later). There is no sound. Pashari's bar and frame stay out.
