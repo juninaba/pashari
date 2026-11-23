@@ -244,7 +244,66 @@ struct WindowRecordingTests {
         #expect(page.isShowing(.pageBlue, in: try await TestVideos.image(in: recording.url, at: recording.duration / 2)))
     }
 
-    @Test func destroyingAnExternalWindowEndsTheRecordingAndKeepsWhatWasRecorded() async throws {
+    @Test func draggingAWindowPartiallyOffScreenDoesNotClipTheRecording() async throws {
+        let page = try await ColorPage.show(.pageBlue)
+        defer { page.close() }
+        let screen = try #require(page.window.screen)
+        let scWindow = try await page.scWindow()
+        let url = try TestVideos.temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let events = WindowRecorderEvents()
+        let recorder = try ScreenRecorder(
+            window: scWindow,
+            url: url,
+            onStart: { Task { @MainActor in events.hasStarted = true } },
+            onFailure: { error in Task { @MainActor in events.failure = error } }
+        )
+
+        try await recorder.start()
+        try await events.waitForStart()
+        // Move the right half of the window past the right edge of the display.
+        let halfOffScreen = CGPoint(
+            x: (screen.frame.maxX - page.window.frame.width / 2).rounded(),
+            y: page.window.frame.minY
+        )
+        page.window.setFrameOrigin(halfOffScreen)
+        page.fill(.pageRed)
+        try await Task.sleep(for: .milliseconds(450))
+        let duration = try #require(try await recorder.stop())
+
+        let frame = try await TestVideos.image(in: url, at: duration - 0.05)
+        // Sample inside the right half that extended off the display edge.
+        let offScreenSide = TestImages.pixel(of: frame, x: Int(Double(frame.width) * 0.8), y: frame.height / 2)
+        #expect(offScreenSide.isClose(to: .pageRed, within: 12), "got \(offScreenSide)")
+    }
+
+    @Test func aRecordingThatNeverReceivesAFirstFrameStopsAfterThePreparingTimeout() async throws {
+        let page = try await ColorPage.show(.pageBlue)
+        defer { page.close() }
+        let scWindow = try await page.scWindow()
+        // Hide the window before the stream starts so ScreenCaptureKit suspends
+        // immediately without delivering a first frame.
+        page.window.orderOut(nil)
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let runner = RecordingRunner(preparingTimeout: 0.4)
+
+        let started = Date()
+        let recording = try await runner.record(
+            storage: storage.storage,
+            barAnchor: nil,
+            makeRecorder: { url, onStart, onFailure in
+                try ScreenRecorder(window: scWindow, url: url, onStart: onStart, onFailure: onFailure)
+            }
+        )
+        let elapsed = Date().timeIntervalSince(started)
+
+        #expect(recording == nil)
+        #expect(elapsed < 2, "took \(elapsed) s")
+        #expect(!NSApp.windows.contains { $0 is RecordingControlPanel && $0.isVisible })
+    }
+
+    @Test func recordingEndsWhenWindowExistsReportsTheWindowIsGone() async throws {
         let page = try await ColorPage.show(.pageBlue)
         defer { page.close() }
         let scWindow = try await page.scWindow()

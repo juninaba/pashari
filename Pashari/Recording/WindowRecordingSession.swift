@@ -65,7 +65,7 @@ final class WindowRecordingSession: RecordingSession {
         // Pashari's own windows kept alive after closing (such as Settings)
         // stay on the window server with the same ID, so watch `willClose`.
         let closeObserver = NSApp.windows
-            .first { $0.windowNumber == Int(windowID) }
+            .first { $0.windowNumber > 0 && $0.windowNumber == Int(windowID) }
             .map { ownWindow in
                 NotificationCenter.default.addObserver(
                     forName: NSWindow.willCloseNotification,

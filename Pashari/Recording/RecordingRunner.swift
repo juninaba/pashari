@@ -32,17 +32,23 @@ final class RecordingRunner {
     var hasEnded: Bool { ending != nil }
 
     let controls: RecordingControlPanel
+    private let preparingTimeout: TimeInterval
     private var recorder: ScreenRecorder?
     private var frameOverlay: OverlayPanel?
     private var recordingURL: URL?
+    private var preparedAt: Date?
     private var startedAt: Date?
     private var timer: Timer?
     private var shouldEnd: (() -> Bool)?
     private var ending: Ending?
     private var endingContinuation: CheckedContinuation<Ending, Never>?
 
-    init(controls: RecordingControlPanel = RecordingControlPanel()) {
+    init(
+        controls: RecordingControlPanel = RecordingControlPanel(),
+        preparingTimeout: TimeInterval = 10
+    ) {
         self.controls = controls
+        self.preparingTimeout = preparingTimeout
     }
 
     func stop() {
@@ -107,7 +113,12 @@ final class RecordingRunner {
         } catch {
             self.recorder = nil
             try? FileManager.default.removeItem(at: folder)
-            throw error
+            switch ending {
+            case .done, .interrupted:
+                return nil
+            case .failed, nil:
+                throw error
+            }
         }
         startTimer()
         Log.capture.info("Recording started")
@@ -141,6 +152,7 @@ final class RecordingRunner {
 
     private func startTimer() {
         guard ending == nil, timer == nil else { return }
+        preparedAt = Date()
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
@@ -153,6 +165,13 @@ final class RecordingRunner {
         guard ending == nil else { return }
         if shouldEnd?() == true {
             end(.done)
+            return
+        }
+        if startedAt == nil {
+            if let preparedAt, Date().timeIntervalSince(preparedAt) >= preparingTimeout {
+                Log.capture.info("Recording timed out waiting for the first frame")
+                end(.done)
+            }
             return
         }
         showProgress()

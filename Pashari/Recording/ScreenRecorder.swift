@@ -86,6 +86,9 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         let size = Self.pixelSize(of: contentSize, scale: scale)
         let configuration = Self.makeConfiguration(width: size.width, height: size.height)
         configuration.ignoreShadowsSingleWindow = true
+        // Keep recording the whole window even if the user drags part of it
+        // past the edge of a display.
+        configuration.ignoreGlobalClipSingleWindow = true
         // When the window is resized mid-recording, fit it inside the video's
         // size without stretching it, rather than clipping it.
         configuration.scalesToFit = true

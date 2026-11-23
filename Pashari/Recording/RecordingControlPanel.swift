@@ -1,6 +1,6 @@
 import AppKit
 
-/// The small bar next to the area of a recording. While the frame is
+/// The small bar next to the area or window of a recording. While the frame is
 /// adjusted it shows the frame's size, Cancel and Record; while recording,
 /// how long and how large the recording is so far, and Stop.
 ///
