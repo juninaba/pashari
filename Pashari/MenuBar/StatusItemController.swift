@@ -72,6 +72,9 @@ final class StatusItemController: NSObject {
 
         menu.addItem(makeItem(String(localized: "Record Area"), #selector(recordArea), shortcut: .recordArea))
         menu.addItem(makeItem(String(localized: "Record Window"), #selector(recordWindow), shortcut: .recordWindow))
+        menu.addItem(makeItem(
+            String(localized: "Record Fullscreen"), #selector(recordFullscreen), shortcut: .recordFullscreen
+        ))
 
         menu.addItem(.separator())
 
@@ -123,6 +126,10 @@ final class StatusItemController: NSObject {
 
     @objc private func recordWindow() {
         captureCoordinator.recordWindow()
+    }
+
+    @objc private func recordFullscreen() {
+        captureCoordinator.recordFullscreen()
     }
 
     @objc private func stopRecording() {

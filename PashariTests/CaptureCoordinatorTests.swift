@@ -32,6 +32,7 @@ struct CaptureCoordinatorTests {
             coordinator.captureFullscreen()
             coordinator.recordArea()
             coordinator.recordWindow()
+            coordinator.recordFullscreen()
             #expect(permissionChecks == 0)
         }
 

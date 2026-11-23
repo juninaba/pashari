@@ -481,6 +481,16 @@
         }
       }
     },
+    "Record Fullscreen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全画面を録画"
+          }
+        }
+      }
+    },
     "Record Window" : {
       "localizations" : {
         "ja" : {

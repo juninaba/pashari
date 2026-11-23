@@ -16,6 +16,7 @@ struct StatusItemTests {
         let menu = try #require(statusItem.menu)
         #expect(menu.items.map(\.title).contains(String(localized: "Record Area")))
         #expect(menu.items.map(\.title).contains(String(localized: "Record Window")))
+        #expect(menu.items.map(\.title).contains(String(localized: "Record Fullscreen")))
 
         coordinator.onRecordingChange?(true)
         #expect(statusItem.menu == nil)

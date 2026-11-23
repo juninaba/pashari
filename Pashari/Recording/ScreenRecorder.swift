@@ -1,7 +1,7 @@
 import CoreMedia
 import ScreenCaptureKit
 
-/// Records an area of a display or a single window into an MP4 file: what
+/// Records a display, an area, or a single window into an MP4 file: what
 /// happens there, the pointer and its clicks included, with Pashari's own
 /// panels left out.
 ///
@@ -11,8 +11,7 @@ import ScreenCaptureKit
 /// was checked by hand).
 nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     /// The longer side of a recording, in pixels: the most the Mac's H.264
-    /// encoder takes. Only an area or window on a 5K or 6K display is wider,
-    /// and it is recorded a little smaller.
+    /// encoder takes. Larger captures are scaled to fit.
     static let maximumSide = 4096
 
     let url: URL
@@ -34,32 +33,34 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
     /// out.
     private var endTime: CMTime?
 
-    /// `area` is in points, with the origin at the display's top-left
-    /// corner, and must lie on whole points: ScreenCaptureKit would scale
-    /// the frames of any other area, which blurs them. `filter` is what to
-    /// record of the display, see `ScreenCapturer.recordingFilter`.
+    /// With no `area`, records the entire display. An area starts at the
+    /// display's top-left origin and must lie on whole points to avoid
+    /// blurring. See `ScreenCapturer.recordingFilter` for the display filter.
     /// `onStart` is called with the first frame, which is where the
     /// recording begins.
     convenience init(
-        area: CGRect,
+        area: CGRect? = nil,
         filter: SCContentFilter,
         url: URL,
         onStart: @escaping @Sendable () -> Void,
         onFailure: @escaping @Sendable (Error) -> Void
     ) throws {
         let scale = CGFloat(filter.pointPixelScale)
-        let size = Self.pixelSize(of: area.size, scale: scale)
+        let pointSize = area?.size ?? filter.contentRect.size
+        let size = Self.pixelSize(of: pointSize, scale: scale)
         let configuration = Self.makeConfiguration(width: size.width, height: size.height)
-        configuration.sourceRect = Self.sourceRect(
-            of: area,
-            width: size.width,
-            height: size.height,
-            scale: scale
-        )
+        if let area {
+            configuration.sourceRect = Self.sourceRect(
+                of: area,
+                width: size.width,
+                height: size.height,
+                scale: scale
+            )
+        }
         try self.init(
             filter: filter,
             configuration: configuration,
-            pointSize: area.size,
+            pointSize: pointSize,
             width: size.width,
             height: size.height,
             url: url,
@@ -149,7 +150,7 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         return configuration
     }
 
-    /// The video's size in pixels for an area or window of `size` points:
+    /// The video's size in pixels for a capture of `size` points:
     /// its own pixels, at most `maximumSide` long, and even, because video
     /// stores colour for blocks of two by two pixels.
     static func pixelSize(of size: CGSize, scale: CGFloat) -> (width: Int, height: Int) {

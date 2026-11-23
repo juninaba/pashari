@@ -25,6 +25,7 @@ extension KeyboardShortcuts.Name {
     static let recordArea = Self("recordArea")
     // None either. Pressed again while recording, it stops it.
     static let recordWindow = Self("recordWindow")
+    static let recordFullscreen = Self("recordFullscreen")
 }
 
 enum Hotkeys {
@@ -46,6 +47,9 @@ enum Hotkeys {
         }
         KeyboardShortcuts.onKeyDown(for: .recordWindow) {
             captureCoordinator.recordWindow()
+        }
+        KeyboardShortcuts.onKeyDown(for: .recordFullscreen) {
+            captureCoordinator.recordFullscreen()
         }
     }
 }
