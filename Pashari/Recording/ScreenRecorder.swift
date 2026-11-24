@@ -1,24 +1,26 @@
 import CoreMedia
 import ScreenCaptureKit
 
-/// Records an area of a display into an MP4 file: what happens there, the
-/// pointer and its clicks included, with Pashari's own panels left out.
+/// Records an area of a display or a single window into an MP4 file: what
+/// happens there, the pointer and its clicks included, with Pashari's own
+/// panels left out.
 ///
 /// ScreenCaptureKit hands over the frames on `queue`, a thread of their own,
 /// and `writer` is only touched there, which is what makes it safe to share
 /// this object between threads (`@unchecked Sendable` tells Swift that this
 /// was checked by hand).
-nonisolated final class AreaRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
+nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     /// The longer side of a recording, in pixels: the most the Mac's H.264
-    /// encoder takes. Only an area of a 5K or 6K display is wider, and it
-    /// is recorded a little smaller.
+    /// encoder takes. Only an area or window on a 5K or 6K display is wider,
+    /// and it is recorded a little smaller.
     static let maximumSide = 4096
 
     let url: URL
+    let pointSize: CGSize
     let width: Int
     let height: Int
 
-    private let queue = DispatchQueue(label: "io.github.juninaba.pashari.area-recorder", qos: .userInteractive)
+    private let queue = DispatchQueue(label: "io.github.juninaba.pashari.screen-recorder", qos: .userInteractive)
     private var stream: SCStream?
     private let onStart: @Sendable () -> Void
     private let onFailure: @Sendable (Error) -> Void
@@ -38,31 +40,96 @@ nonisolated final class AreaRecorder: NSObject, SCStreamOutput, SCStreamDelegate
     /// record of the display, see `ScreenCapturer.recordingFilter`.
     /// `onStart` is called with the first frame, which is where the
     /// recording begins.
-    init(
+    convenience init(
         area: CGRect,
         filter: SCContentFilter,
         url: URL,
         onStart: @escaping @Sendable () -> Void,
         onFailure: @escaping @Sendable (Error) -> Void
     ) throws {
-        let size = Self.pixelSize(of: area.size, scale: CGFloat(filter.pointPixelScale))
-        self.url = url
-        width = size.width
-        height = size.height
-        writer = try RecordingWriter(url: url, width: size.width, height: size.height)
-        self.onStart = onStart
-        self.onFailure = onFailure
-        super.init()
-
-        let configuration = SCStreamConfiguration()
+        let scale = CGFloat(filter.pointPixelScale)
+        let size = Self.pixelSize(of: area.size, scale: scale)
+        let configuration = Self.makeConfiguration(width: size.width, height: size.height)
         configuration.sourceRect = Self.sourceRect(
             of: area,
             width: size.width,
             height: size.height,
-            scale: CGFloat(filter.pointPixelScale)
+            scale: scale
         )
-        configuration.width = size.width
-        configuration.height = size.height
+        try self.init(
+            filter: filter,
+            configuration: configuration,
+            pointSize: area.size,
+            width: size.width,
+            height: size.height,
+            url: url,
+            onStart: onStart,
+            onFailure: onFailure
+        )
+    }
+
+    /// Records one window on its own, without whatever is in front of or
+    /// behind it. `onStart` is called with the first frame, which is where
+    /// the recording begins.
+    convenience init(
+        window: SCWindow,
+        url: URL,
+        onStart: @escaping @Sendable () -> Void,
+        onFailure: @escaping @Sendable (Error) -> Void
+    ) throws {
+        let filter = SCContentFilter(desktopIndependentWindow: window)
+        let contentSize = filter.contentRect.size
+        let scale = CGFloat(filter.pointPixelScale)
+        guard contentSize.width > 0, contentSize.height > 0, scale > 0 else {
+            throw CaptureError.windowNotFound
+        }
+        let size = Self.pixelSize(of: contentSize, scale: scale)
+        let configuration = Self.makeConfiguration(width: size.width, height: size.height)
+        configuration.ignoreShadowsSingleWindow = true
+        // Keep recording the whole window even if the user drags part of it
+        // past the edge of a display.
+        configuration.ignoreGlobalClipSingleWindow = true
+        // When the window is resized mid-recording, fit it inside the video's
+        // size without stretching it, rather than clipping it.
+        configuration.scalesToFit = true
+        configuration.preservesAspectRatio = true
+        try self.init(
+            filter: filter,
+            configuration: configuration,
+            pointSize: contentSize,
+            width: size.width,
+            height: size.height,
+            url: url,
+            onStart: onStart,
+            onFailure: onFailure
+        )
+    }
+
+    private init(
+        filter: SCContentFilter,
+        configuration: SCStreamConfiguration,
+        pointSize: CGSize,
+        width: Int,
+        height: Int,
+        url: URL,
+        onStart: @escaping @Sendable () -> Void,
+        onFailure: @escaping @Sendable (Error) -> Void
+    ) throws {
+        self.url = url
+        self.pointSize = pointSize
+        self.width = width
+        self.height = height
+        writer = try RecordingWriter(url: url, width: width, height: height)
+        self.onStart = onStart
+        self.onFailure = onFailure
+        super.init()
+        stream = SCStream(filter: filter, configuration: configuration, delegate: self)
+    }
+
+    private static func makeConfiguration(width: Int, height: Int) -> SCStreamConfiguration {
+        let configuration = SCStreamConfiguration()
+        configuration.width = width
+        configuration.height = height
         configuration.captureResolution = .best
         // The circles around clicks are only drawn into BGRA frames. The
         // encoder turns them into video colours itself.
@@ -79,11 +146,11 @@ nonisolated final class AreaRecorder: NSObject, SCStreamOutput, SCStreamDelegate
         // A few frames for the encoder to work on while new ones arrive.
         // Each frame of a large area takes tens of MB.
         configuration.queueDepth = 6
-        stream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        return configuration
     }
 
-    /// The video's size in pixels for an area of `size` points: the area's
-    /// own pixels, at most `maximumSide` long, and even, because video
+    /// The video's size in pixels for an area or window of `size` points:
+    /// its own pixels, at most `maximumSide` long, and even, because video
     /// stores colour for blocks of two by two pixels.
     static func pixelSize(of size: CGSize, scale: CGFloat) -> (width: Int, height: Int) {
         let width = size.width * scale

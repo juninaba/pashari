@@ -1,24 +1,25 @@
 import AppKit
 
 extension NSCursor {
-    static let camera: NSCursor = makeCameraCursor() ?? .arrow
+    static let camera: NSCursor = makeSymbolCursor(named: "camera.fill") ?? .arrow
+    static let videoCamera: NSCursor = makeSymbolCursor(named: "video.fill") ?? .arrow
 
     static let cameraCursorSize = CGSize(width: 28, height: 28)
 
-    private static func makeCameraCursor() -> NSCursor? {
+    private static func makeSymbolCursor(named symbolName: String) -> NSCursor? {
         guard
-            let black = cameraSymbol(color: .black),
-            let white = cameraSymbol(color: .white)
+            let black = symbol(named: symbolName, color: .black),
+            let white = symbol(named: symbolName, color: .white)
         else { return nil }
 
         let image = NSImage(size: cameraCursorSize)
-        // One bitmap per pixel density, so the camera is sharp on both
+        // One bitmap per pixel density, so the cursor is sharp on both
         // regular and Retina displays. NSCursor picks the one that fits.
         for scale in [1, 2] {
             guard let bitmap = cameraBitmap(scale: scale, black: black, white: white) else { return nil }
             image.addRepresentation(bitmap)
         }
-        // A click counts at the hot spot. The camera has no tip to point
+        // A click counts at the hot spot. The icon has no tip to point
         // with, so it sits in the middle, where the eye looks.
         return NSCursor(
             image: image,
@@ -79,10 +80,10 @@ extension NSCursor {
         )
     }
 
-    private static func cameraSymbol(color: NSColor) -> NSImage? {
+    private static func symbol(named name: String, color: NSColor) -> NSImage? {
         let configuration = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
             .applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-        return NSImage(systemSymbolName: "camera.fill", accessibilityDescription: nil)?
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)
     }
 }

@@ -71,6 +71,7 @@ final class StatusItemController: NSObject {
         menu.addItem(.separator())
 
         menu.addItem(makeItem(String(localized: "Record Area"), #selector(recordArea), shortcut: .recordArea))
+        menu.addItem(makeItem(String(localized: "Record Window"), #selector(recordWindow), shortcut: .recordWindow))
 
         menu.addItem(.separator())
 
@@ -118,6 +119,10 @@ final class StatusItemController: NSObject {
 
     @objc private func recordArea() {
         captureCoordinator.recordArea()
+    }
+
+    @objc private func recordWindow() {
+        captureCoordinator.recordWindow()
     }
 
     @objc private func stopRecording() {

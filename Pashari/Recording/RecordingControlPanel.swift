@@ -1,6 +1,6 @@
 import AppKit
 
-/// The small bar next to the area of a recording. While the frame is
+/// The small bar next to the area or window of a recording. While the frame is
 /// adjusted it shows the frame's size, Cancel and Record; while recording,
 /// how long and how large the recording is so far, and Stop.
 ///
@@ -20,6 +20,8 @@ final class RecordingControlPanel: NSPanel {
     var onRecord: (() -> Void)?
     var onCancel: (() -> Void)?
     var onStop: (() -> Void)?
+    /// Ends the recording when a modal dialog opens (see `ModalPresentation`).
+    var onInterrupt: (() -> Void)?
 
     private(set) var status: Status = .preparing
     private let dot = NSView()
@@ -89,6 +91,25 @@ final class RecordingControlPanel: NSPanel {
     /// Once the user has decided, the buttons have done their part.
     func disableButtons() {
         [cancelButton, recordButton, stopButton].forEach { $0.isEnabled = false }
+    }
+
+    /// Places the bar next to `rect` (in AppKit screen coordinates) on `screen`,
+    /// and raises it in front of any overlay at the same window level.
+    func place(nextTo rect: CGRect, on screen: NSScreen) {
+        let frame = ControlBarPlacement.frame(ofSize: frame.size, nextTo: rect, in: screen.visibleFrame)
+        setFrame(frame, display: false)
+        // Each time: a click on an overlay brings it to the front, over the
+        // bar, which lies at the same level, and so does the recording's
+        // overlay when it comes on screen. The buttons would no longer be
+        // reached, or the bar would be dimmed.
+        orderFrontRegardless()
+    }
+
+    /// Ends any active recording before a modal dialog opens.
+    static func interruptRecording() {
+        for panel in NSApp.windows.compactMap({ $0 as? RecordingControlPanel }) where panel.isVisible {
+            panel.onInterrupt?()
+        }
     }
 
     /// "0:12", "4:59".

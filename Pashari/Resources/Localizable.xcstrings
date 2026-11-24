@@ -481,6 +481,16 @@
         }
       }
     },
+    "Record Window" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ウインドウを録画"
+          }
+        }
+      }
+    },
     "Recover unsaved screenshots and recordings?" : {
       "localizations" : {
         "ja" : {
@@ -847,6 +857,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "スクリーンショットを撮れませんでした"
+          }
+        }
+      }
+    },
+    "The window to record could not be found." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画するウインドウが見つかりませんでした。"
           }
         }
       }

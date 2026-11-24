@@ -13,7 +13,19 @@ final class WindowSelectionView: SelectionOverlayView {
 
     var onClick: (() -> Void)?
 
-    override var cursor: NSCursor { .camera }
+    private let selectionCursor: NSCursor
+
+    init(frame: CGRect, cursor: NSCursor = .camera) {
+        selectionCursor = cursor
+        super.init(frame: frame)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("WindowSelectionView is created in code only")
+    }
+
+    override var cursor: NSCursor { selectionCursor }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
