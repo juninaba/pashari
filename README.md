@@ -16,9 +16,8 @@ A menu bar screenshot app for macOS, written in Swift.
   global hotkeys
 - Scroll capture: pick an area, scroll its content, and get one tall
   picture of everything that scrolled past
-- Record an area or a window as a video: adjust a frame on the live
-  screen or pick a window, record up to five minutes, then trim the
-  recording, and copy, save or drag it like a screenshot
+- Record an area, a window or the full screen for up to five minutes, then
+  trim, copy, save or drag the video like a screenshot
 - A film camera's shutter sound for each capture, if you want it.
   Captures are silent until you pick it under Settings
 - A floating thumbnail after each capture, like an instant photo: copy,
@@ -57,8 +56,8 @@ Default hotkeys (change them under Settings):
 | Capture window     | ⇧⌘3    |
 | Capture fullscreen | ⇧⌘4    |
 
-Capture Scrolling Area, Record Area and Record Window have no hotkey
-until you set one under Settings.
+Capture Scrolling Area, Record Area, Record Window and Record Fullscreen
+have no hotkey until you set one under Settings.
 
 macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
 System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that
@@ -89,7 +88,7 @@ Pashari's bar again.
   little, and carry on more slowly.
 - The picture stops growing at 30,000 pixels (less for very wide areas).
 
-### Recording an area or a window
+### Recording
 
 Choose Record Area from the menu bar icon, or press its hotkey, and drag
 a frame over the screen, which goes on as it is. Next time, the frame
@@ -102,6 +101,10 @@ start recording it on its own, without whatever is in front of or behind
 it. Escape or a right click cancels. The recording follows the window
 when you move or resize it, and ends automatically if you close it.
 
+Choose Record Fullscreen or press its hotkey to start recording the entire
+display under the pointer. If the pointer is outside all displays, Pashari
+uses the main display.
+
 While recording, your clicks, scrolls and keys go to your apps as usual.
 To stop, click Stop on the bar, click the menu bar icon, which has
 turned into a stop button, or press the hotkey again. A recording stops
@@ -110,7 +113,7 @@ by itself at five minutes.
 - The pointer is in the video, with a ring around each click (macOS 15
   and later). There is no sound. Pashari's bar and frame stay out.
 - Recordings are MP4 (H.264) at the screen's full resolution, up to 4,096
-  pixels on the longer side; a larger area is scaled down to fit.
+  pixels on the longer side. Larger recordings are scaled down to fit.
 - The bar shows how long the recording is, and how large its file is so
   far.
 - In the thumbnail, Play opens the recording in a window where you can

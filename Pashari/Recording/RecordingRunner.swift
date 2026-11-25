@@ -1,7 +1,6 @@
 import AppKit
 
-/// Common interface for a recording mode (`AreaRecordingSession`,
-/// `WindowRecordingSession`), so `CaptureCoordinator` treats them alike.
+/// Common interface for recording modes in `CaptureCoordinator`.
 protocol RecordingSession: AnyObject {
     var onRecordingChange: ((Bool) -> Void)? { get set }
     /// True once recording has begun, not while the user is picking what to

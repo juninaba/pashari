@@ -137,6 +137,8 @@ struct SettingsView: View {
                 KeyboardShortcuts.Recorder("Record Area", name: .recordArea)
                 Divider()
                 KeyboardShortcuts.Recorder("Record Window", name: .recordWindow)
+                Divider()
+                KeyboardShortcuts.Recorder("Record Fullscreen", name: .recordFullscreen)
             }
         }
         .labeledContentStyle(SettingsRowStyle())

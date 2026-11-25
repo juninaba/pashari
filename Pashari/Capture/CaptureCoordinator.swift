@@ -14,7 +14,7 @@ final class CaptureCoordinator {
     private var recordingSession: (any RecordingSession)?
     private var recordingTask: Task<Void, Never>?
 
-    /// True while an area or window is being recorded, not while it is chosen.
+    /// True while a recording runs, including while it prepares.
     var isRecording: Bool { recordingSession?.isRecording == true }
 
     init(
@@ -94,6 +94,15 @@ final class CaptureCoordinator {
             return nil
         }
         return startRecording(makeWindowRecordingSession)
+    }
+
+    @discardableResult
+    func recordFullscreen() -> Task<Void, Never>? {
+        if let session = recordingSession as? FullscreenRecordingSession {
+            session.advance()
+            return nil
+        }
+        return startRecording { FullscreenRecordingSession(storage: $0) }
     }
 
     private func startRecording(

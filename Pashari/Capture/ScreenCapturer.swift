@@ -175,6 +175,17 @@ enum ScreenCapturer {
         return content
     }
 
+    static func recordingFilter(for screen: NSScreen) async throws -> SCContentFilter {
+        let content = try await shareableContentListingPashari()
+        guard
+            let displayID = screen.displayID,
+            let display = content.displays.first(where: { $0.displayID == displayID })
+        else {
+            throw CaptureError.displayNotFound
+        }
+        return recordingFilter(of: display, in: content)
+    }
+
     /// What to record of `display` so that the recording, like a
     /// screenshot, leaves out the windows of Pashari's that
     /// `ownWindowsToHide` picks, and also any that Pashari puts on screen

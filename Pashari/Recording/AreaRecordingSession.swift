@@ -199,19 +199,11 @@ final class AreaRecordingSession: RecordingSession {
             barAnchor: anchor,
             overlay: overlay,
             makeRecorder: { [runner] url, onStart, onFailure in
-                // The bar and the frame must be left out of the recording. See
-                // `ScreenCapturer.shareableContentListingPashari`.
-                let content = try await ScreenCapturer.shareableContentListingPashari()
+                let filter = try await ScreenCapturer.recordingFilter(for: screen)
                 guard !runner.hasEnded else { return nil }
-                guard
-                    let displayID = area.screen.displayID,
-                    let display = content.displays.first(where: { $0.displayID == displayID })
-                else {
-                    throw CaptureError.displayNotFound
-                }
                 return try ScreenRecorder(
                     area: area.rect,
-                    filter: ScreenCapturer.recordingFilter(of: display, in: content),
+                    filter: filter,
                     url: url,
                     onStart: onStart,
                     onFailure: onFailure
