@@ -26,7 +26,8 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
 - An annotation editor: arrow, rectangle, ellipse, line, pen, multi-line
   text, numbered badges, blur, crop, with undo and redo
   - Select a mark to move or delete it
-  - Hold Shift for straight lines, squares and circles
+  - Hold Shift to snap arrows and lines in 45° steps, and for squares and
+    circles
 - Saves PNG files at full Retina resolution, and MP4 files for recordings
   (up to 4,096 pixels on the longer side), to the Desktop or a folder of
   your choice
@@ -43,19 +44,19 @@ spread out. Older captures wait until space is available: copy, save, or
 close thumbnails to reveal them. Quitting asks for confirmation while
 screenshots or recordings remain in thumbnails, editors or players.
 
-Working files live in a directory for each run under
+Working files live under
 `~/Library/Application Support/Pashari/PendingCaptures`, which is excluded
-from Time Machine. Quitting removes that run's files. If a run is interrupted,
-Pashari offers to restore its working files to the thumbnail stack, discard
-them, or leave them for a later launch.
+from Time Machine. Quitting removes the current session's files. If any
+remain after an interruption, the next launch offers to restore them to
+the thumbnail stack, discard them, or leave them for later.
 
 Default hotkeys (change them under Settings):
 
 | Action             | Hotkey |
 | ------------------ | ------ |
-| Capture area       | ⇧⌘2    |
-| Capture window     | ⇧⌘3    |
-| Capture fullscreen | ⇧⌘4    |
+| Capture Area       | ⇧⌘2    |
+| Capture Window     | ⇧⌘3    |
+| Capture Fullscreen | ⇧⌘4    |
 
 Capture Scrolling Area, Record Area, Record Window and Record Fullscreen
 have no hotkey until you set one under Settings.
@@ -87,7 +88,8 @@ Pashari's bar again.
   sidebar: they keep Pashari from telling how far the content moved.
 - If you scroll faster than Pashari can follow, it says so. Scroll back a
   little, and carry on more slowly.
-- The picture stops growing at 30,000 pixels (less for very wide areas).
+- Capture ends automatically when the picture would grow past 30,000 pixels
+  tall (less for very wide areas).
 
 ### Recording
 
@@ -104,8 +106,7 @@ Escape or a right click cancels. The recording follows the window when you
 move or resize it, and ends automatically if you close it.
 
 Choose Record Fullscreen, or press its hotkey, to start recording the
-entire display under the pointer. If the pointer is outside all displays,
-Pashari uses the display with the focused window.
+entire display under the pointer.
 
 While recording, your clicks, scrolls and keys go to your apps as usual.
 To stop, click Stop on the bar, click the menu bar icon, which has
