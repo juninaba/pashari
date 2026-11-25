@@ -2,7 +2,7 @@
 
 # Pashari
 
-A menu bar screenshot app for macOS, written in Swift.
+A menu bar screenshot and screen recording app for macOS, written in Swift.
 
 > **Status:** early development.
 
@@ -18,17 +18,18 @@ A menu bar screenshot app for macOS, written in Swift.
   picture of everything that scrolled past
 - Record an area, a window or the full screen for up to five minutes, then
   trim, copy, save or drag the video like a screenshot
-- A film camera's shutter sound for each capture, if you want it.
-  Captures are silent until you pick it under Settings
+- A film camera's shutter sound for each screenshot, if you want it.
+  Screenshots are silent until you pick it under Settings
 - A floating thumbnail after each capture, like an instant photo: copy,
-  save, annotate, drag it into another app, or close it. Captures pile up
-  in the corner; rest the pointer on the pile to spread them out
+  save, annotate or play, drag it into another app, or close it. Captures
+  pile up in the corner; rest the pointer on the pile to spread them out
 - An annotation editor: arrow, rectangle, ellipse, line, pen, multi-line
   text, numbered badges, blur, crop, with undo and redo
   - Select a mark to move or delete it
   - Hold Shift for straight lines, squares and circles
-- Saves PNG files, and MP4 files for recordings, at full Retina
-  resolution, to the Desktop or a folder of your choice
+- Saves PNG files at full Retina resolution, and MP4 files for recordings
+  (up to 4,096 pixels on the longer side), to the Desktop or a folder of
+  your choice
 - Names files like `pashari-20260728-bnan.png` (or `.mp4`): the date, then
   the time of day as four letters, so sorting by name keeps them in the
   order taken
@@ -68,7 +69,7 @@ behind the notch, open Pashari again from Spotlight or the Finder and
 Settings appears.
 
 <p align="center">
-  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area, Record Area and Record Window have none yet.">
+  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area, Record Area, Record Window and Record Fullscreen have none yet.">
 </p>
 
 ### Scroll capture
@@ -94,16 +95,17 @@ Choose Record Area from the menu bar icon, or press its hotkey, and drag
 a frame over the screen, which goes on as it is. Next time, the frame
 starts where your last recording was; drag elsewhere to draw a new one.
 Drag inside the frame to move it, or drag its edges and corners. Click
-Record or press Return to start; Escape cancels.
+Record, press Return or press the hotkey again to start; Escape or a right
+click cancels.
 
-Or choose Record Window, or press its hotkey, and click a window to
-start recording it on its own, without whatever is in front of or behind
-it. Escape or a right click cancels. The recording follows the window
-when you move or resize it, and ends automatically if you close it.
+Choose Record Window, or press its hotkey, and click a window to start
+recording it on its own, without whatever is in front of or behind it.
+Escape or a right click cancels. The recording follows the window when you
+move or resize it, and ends automatically if you close it.
 
-Choose Record Fullscreen or press its hotkey to start recording the entire
-display under the pointer. If the pointer is outside all displays, Pashari
-uses the main display.
+Choose Record Fullscreen, or press its hotkey, to start recording the
+entire display under the pointer. If the pointer is outside all displays,
+Pashari uses the display with the focused window.
 
 While recording, your clicks, scrolls and keys go to your apps as usual.
 To stop, click Stop on the bar, click the menu bar icon, which has
@@ -111,13 +113,16 @@ turned into a stop button, or press the hotkey again. A recording stops
 by itself at five minutes.
 
 - The pointer is in the video, with a ring around each click (macOS 15
-  and later). There is no sound. Pashari's bar and frame stay out.
+  and later). There is no sound. Pashari's bar, frame and thumbnails stay
+  out.
 - Recordings are MP4 (H.264) at the screen's full resolution, up to 4,096
-  pixels on the longer side. Larger recordings are scaled down to fit.
+  pixels on the longer side. Larger recordings are scaled down to fit, and
+  a window recording keeps the size it started at if you resize the window.
 - The bar shows how long the recording is, and how large its file is so
   far.
 - In the thumbnail, Play opens the recording in a window where you can
-  trim it with the yellow handles (⌘T), undo a trim, and copy or save it.
+  trim it with the yellow handles (⌘T), undo or redo trims, and copy or
+  save it.
 - Copy puts the file itself on the clipboard: paste it into Slack,
   Messages, Finder or a browser. Pashari keeps the file until it quits.
 
