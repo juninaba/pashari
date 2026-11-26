@@ -15,8 +15,9 @@ struct HotkeyTests {
         #expect(defaults.count == 3)
     }
 
-    @Test func scrollCaptureHasNoDefault() {
+    @Test func scrollAndTextCaptureHaveNoDefault() {
         #expect(KeyboardShortcuts.Name.captureScrollingArea.defaultShortcut == nil)
+        #expect(KeyboardShortcuts.Name.captureText.defaultShortcut == nil)
     }
 
     @Test func recordingHasNoDefault() {

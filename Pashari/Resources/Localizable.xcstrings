@@ -111,6 +111,16 @@
         }
       }
     },
+    "Capture Text" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストをキャプチャ"
+          }
+        }
+      }
+    },
     "Capture Window" : {
       "localizations" : {
         "ja" : {
@@ -167,6 +177,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "コピー"
+          }
+        }
+      }
+    },
+    "Could not recognize text" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストを読み取れませんでした"
           }
         }
       }
@@ -347,6 +367,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "番号"
+          }
+        }
+      }
+    },
+    "No text found" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストが見つかりませんでした"
           }
         }
       }
@@ -717,6 +747,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "キャプチャするディスプレイが見つかりませんでした。"
+          }
+        }
+      }
+    },
+    "Text copied" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストをコピーしました"
           }
         }
       }

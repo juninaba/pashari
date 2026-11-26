@@ -46,8 +46,13 @@ final class CaptureCoordinator {
 
     func captureArea() {
         run {
-            let frozenScreens = try await ScreenCapturer.captureAllDisplays()
-            return await AreaSelectionSession().run(with: frozenScreens)?.screenshot
+            try await Self.selectArea()?.screenshot
+        }
+    }
+
+    func captureText() {
+        runTextCapture {
+            try await Self.selectArea()?.screenshot
         }
     }
 
@@ -55,12 +60,16 @@ final class CaptureCoordinator {
     /// scrolls it, and the frames are joined into one tall picture.
     func captureScrollingArea() {
         run {
-            let frozenScreens = try await ScreenCapturer.captureAllDisplays()
-            guard let selection = await AreaSelectionSession().run(with: frozenScreens) else {
+            guard let selection = try await Self.selectArea() else {
                 return nil
             }
             return try await ScrollCaptureSession().run(selection)
         }
+    }
+
+    private static func selectArea() async throws -> AreaSelection? {
+        let frozenScreens = try await ScreenCapturer.captureAllDisplays()
+        return await AreaSelectionSession().run(with: frozenScreens)
     }
 
     func captureWindow() {
@@ -108,7 +117,9 @@ final class CaptureCoordinator {
     private func startRecording(
         _ makeSession: @escaping @MainActor (CaptureStorage) -> any RecordingSession
     ) -> Task<Void, Never>? {
-        let task = start(errorTitle: String(localized: "The recording could not be made")) { [self] in
+        let task = start(onError: {
+            ErrorAlert.show($0, title: String(localized: "The recording could not be made"))
+        }) { [self] in
             let session = makeSession(thumbnailController.storage)
             session.onRecordingChange = { [weak self] isRecording in
                 self?.onRecordingChange?(isRecording)
@@ -148,7 +159,9 @@ final class CaptureCoordinator {
     /// Tests pass their own `capture` and wait for the task.
     @discardableResult
     func run(_ capture: @escaping () async throws -> Screenshot?) -> Task<Void, Never>? {
-        start(errorTitle: String(localized: "The screenshot could not be taken")) { [self] in
+        start(onError: {
+            ErrorAlert.show($0, title: String(localized: "The screenshot could not be taken"))
+        }) { [self] in
             guard let screenshot = try await capture() else {
                 Log.capture.info("Capture cancelled")
                 return
@@ -159,11 +172,29 @@ final class CaptureCoordinator {
         }
     }
 
+    @discardableResult
+    func runTextCapture(
+        recognize: @escaping (CGImage) async throws -> String? = TextRecognizer.recognize,
+        pasteboard: NSPasteboard = .general,
+        showFeedback: @escaping (TextCaptureFeedback) -> Void = { $0.show() },
+        _ capture: @escaping () async throws -> Screenshot?
+    ) -> Task<Void, Never>? {
+        start(onError: { _ in showFeedback(.failed) }) {
+            guard let screenshot = try await capture() else { return }
+            guard let text = try await recognize(screenshot.image) else {
+                showFeedback(.noText)
+                return
+            }
+            Clipboard.copy(text: text, to: pasteboard)
+            showFeedback(.copied)
+        }
+    }
+
     /// Shared skeleton of every capture mode: one at a time, never under a
     /// dialog, and only with the Screen Recording permission. `capture`
     /// does the work and shows its result.
     private func start(
-        errorTitle: String,
+        onError: @escaping (Error) -> Void,
         _ capture: @escaping () async throws -> Void
     ) -> Task<Void, Never>? {
         guard NSApp.modalWindow == nil else {
@@ -191,7 +222,7 @@ final class CaptureCoordinator {
                 try await capture()
             } catch {
                 Log.capture.error("Capture failed: \(error.localizedDescription, privacy: .public)")
-                ErrorAlert.show(error, title: errorTitle)
+                onError(error)
             }
         }
     }

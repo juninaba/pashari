@@ -73,6 +73,17 @@ Settings appears.
   <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area, Record Area, Record Window and Record Fullscreen have none yet.">
 </p>
 
+### 画面の文字をコピーする
+
+1. メニューバーの Pashari アイコンから「テキストをキャプチャ」（Capture Text）を選びます。
+2. コピーしたい文字をドラッグで囲みます。
+   マウスボタンを離すと、範囲内の文字がプレーンテキストとしてクリップボードにコピーされます。
+3. 貼り付け先で ⌘V を押します。
+
+英語と日本語を Mac 上で読み取ります。
+設定の「テキストをキャプチャ」でショートカットを割り当てられます。初期状態では未設定です。
+Esc キーまたは右クリックで範囲選択をキャンセルできます。
+
 ### Scroll capture
 
 Select the part of a window that scrolls, wait until the bar next to it
