@@ -12,9 +12,9 @@ extension Annotation {
     static let handleDiameter: CGFloat = 9
     /// Hit radius around a resize handle's centre on screen, in points.
     static let handleHitRadius: CGFloat = 7
-    /// Minimum edge length on screen before a midpoint handle is shown, so
-    /// corners stay easy to grab on narrow or tiny boxes.
-    static let minimumEdgeForSideHandle: CGFloat = 28
+    /// Minimum edge length on screen before side handles are shown, leaving
+    /// a free stroke gap between corner and side hit areas (4 * hitRadius + 16).
+    static let minimumEdgeForSideHandle: CGFloat = 44
     /// Smallest width or height a box may be resized down to, in image points.
     static let minimumResizeSide: CGFloat = 3
 
@@ -157,12 +157,12 @@ extension Annotation {
             switch handle {
             case .start:
                 let moved = constrained
-                    ? EditorTool.arrow.constrainedEnd(from: to, to: point, within: bounds)
+                    ? Self.constrainedEndpoint(tool: .arrow, from: to, to: point, fallback: clamped, within: bounds)
                     : clamped
                 copy.shape = .arrow(from: moved, to: to)
             case .end:
                 let moved = constrained
-                    ? EditorTool.arrow.constrainedEnd(from: from, to: point, within: bounds)
+                    ? Self.constrainedEndpoint(tool: .arrow, from: from, to: point, fallback: clamped, within: bounds)
                     : clamped
                 copy.shape = .arrow(from: from, to: moved)
             default:
@@ -172,12 +172,12 @@ extension Annotation {
             switch handle {
             case .start:
                 let moved = constrained
-                    ? EditorTool.line.constrainedEnd(from: to, to: point, within: bounds)
+                    ? Self.constrainedEndpoint(tool: .line, from: to, to: point, fallback: clamped, within: bounds)
                     : clamped
                 copy.shape = .line(from: moved, to: to)
             case .end:
                 let moved = constrained
-                    ? EditorTool.line.constrainedEnd(from: from, to: point, within: bounds)
+                    ? Self.constrainedEndpoint(tool: .line, from: from, to: point, fallback: clamped, within: bounds)
                     : clamped
                 copy.shape = .line(from: from, to: moved)
             default:
@@ -232,6 +232,27 @@ extension Annotation {
         )
     }
 
+    private static func isInside(_ point: CGPoint, bounds: CGRect) -> Bool {
+        let epsilon: CGFloat = 1e-6
+        return point.x >= bounds.minX - epsilon && point.x <= bounds.maxX + epsilon
+            && point.y >= bounds.minY - epsilon && point.y <= bounds.maxY + epsilon
+    }
+
+    /// Snaps a dragged endpoint to 45° steps, falling back to `fallback` if an
+    /// off-crop anchor would snap the dragged endpoint outside `bounds`.
+    private static func constrainedEndpoint(
+        tool: EditorTool,
+        from anchor: CGPoint,
+        to point: CGPoint,
+        fallback: CGPoint,
+        within bounds: CGRect
+    ) -> CGPoint {
+        let snapped = tool.constrainedEnd(from: anchor, to: point, within: bounds)
+        return isInside(snapped, bounds: bounds) ? snapped : fallback
+    }
+
+    /// Clamps dragged edges to `minimumResizeSide` instead of flipping the box
+    /// inside out, matching `RecordingFrameEditor.resized`.
     private static func resizedRect(
         _ rect: CGRect,
         dragging handle: Handle,

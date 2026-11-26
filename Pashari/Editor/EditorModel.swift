@@ -84,6 +84,15 @@ final class EditorModel {
         return selectedAnnotation?.supportsStyle ?? true
     }
 
+    private struct TypingUndoState: Equatable {
+        var canUndo: Bool
+        var canRedo: Bool
+    }
+
+    /// While an inline text view is open, toolbar Undo/Redo reflect its
+    /// typing stack rather than the document history underneath.
+    private var typingUndo: TypingUndoState?
+
     @ObservationIgnored var onDocumentChange: (() -> Void)?
     @ObservationIgnored var onToolChange: (() -> Void)?
     @ObservationIgnored var onStyleChange: (() -> Void)?
@@ -102,8 +111,19 @@ final class EditorModel {
     // MARK: - Document
 
     var document: AnnotationDocument { history.current }
-    var canUndo: Bool { history.canUndo }
-    var canRedo: Bool { history.canRedo }
+    var canUndo: Bool { typingUndo?.canUndo ?? history.canUndo }
+    var canRedo: Bool { typingUndo?.canRedo ?? history.canRedo }
+
+    func setTypingUndoState(canUndo: Bool, canRedo: Bool) {
+        let next = TypingUndoState(canUndo: canUndo, canRedo: canRedo)
+        if typingUndo != next {
+            typingUndo = next
+        }
+    }
+
+    func clearTypingUndoState() {
+        typingUndo = nil
+    }
 
     var imageBounds: CGRect {
         CGRect(origin: .zero, size: screenshot.pointSize)
@@ -170,7 +190,6 @@ final class EditorModel {
     func chooseColor(_ newColor: AnnotationColor) {
         guard !isExporting else { return }
         if editingText != nil {
-            editingText?.color = newColor
             color = newColor
             return
         }
@@ -187,7 +206,6 @@ final class EditorModel {
     func chooseSize(_ newSize: StrokeSize) {
         guard !isExporting else { return }
         if editingText != nil {
-            editingText?.size = newSize
             size = newSize
             return
         }

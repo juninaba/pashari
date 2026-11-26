@@ -33,6 +33,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
     /// image points).
     private var textView: NSTextView?
     private var textOrigin: CGPoint?
+    private weak var observedUndoManager: UndoManager?
 
     private weak var observedClipView: NSClipView?
     private var lastZoomScale: CGFloat = 1
@@ -252,7 +253,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
                    let selected = model.selectedAnnotation,
                    case .text(let string, let origin) = selected.shape
                 {
-                    beginText(at: origin, initialText: string, editingID: selected.id)
+                    beginText(at: origin, initialText: string, editingID: selected.id, clickPoint: point)
                 } else {
                     moveStart = point
                 }
@@ -393,6 +394,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
                 typingUndo.undo()
                 applyTextStyle()
             }
+            syncTypingUndoState()
         } else {
             cancelDrag()
             model.undo()
@@ -405,6 +407,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
                 typingUndo.redo()
                 applyTextStyle()
             }
+            syncTypingUndoState()
         } else {
             cancelDrag()
             model.redo()
@@ -446,7 +449,12 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
 
     // MARK: - Text tool
 
-    private func beginText(at point: CGPoint, initialText: String = "", editingID: UUID? = nil) {
+    private func beginText(
+        at point: CGPoint,
+        initialText: String = "",
+        editingID: UUID? = nil,
+        clickPoint: CGPoint? = nil
+    ) {
         let visible = model.visibleRect
 
         let textView = NSTextView(
@@ -488,11 +496,22 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         textOrigin = point
         if !initialText.isEmpty {
             textView.string = initialText
-            textView.setSelectedRange(NSRange(location: (initialText as NSString).length, length: 0))
-            textView.undoManager?.removeAllActions()
         }
         applyTextStyle()
         window?.makeFirstResponder(textView)
+        if !initialText.isEmpty {
+            let caretIndex: Int
+            if let clickPoint {
+                let local = CGPoint(x: clickPoint.x - point.x, y: clickPoint.y - point.y)
+                caretIndex = textView.characterIndexForInsertion(at: local)
+            } else {
+                caretIndex = (initialText as NSString).length
+            }
+            textView.setSelectedRange(NSRange(location: caretIndex, length: 0))
+        }
+        textView.undoManager?.removeAllActions()
+        observeTypingUndo(for: textView)
+        syncTypingUndoState()
     }
 
     private func applyTextStyle() {
@@ -525,6 +544,9 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         // which calls back into this method.
         self.textView = nil
         textOrigin = nil
+        stopObservingTypingUndo()
+        textView.undoManager?.removeAllActions()
+        model.clearTypingUndoState()
 
         let text = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         textView.removeFromSuperview()
@@ -536,8 +558,49 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         window?.makeFirstResponder(self)
     }
 
+    private func observeTypingUndo(for textView: NSTextView) {
+        stopObservingTypingUndo()
+        guard let undoManager = textView.undoManager else { return }
+        observedUndoManager = undoManager
+        let center = NotificationCenter.default
+        for name: Notification.Name in [
+            .NSUndoManagerDidUndoChange,
+            .NSUndoManagerDidRedoChange,
+            .NSUndoManagerDidCloseUndoGroup,
+        ] {
+            center.addObserver(self, selector: #selector(typingUndoDidChange), name: name, object: undoManager)
+        }
+    }
+
+    private func stopObservingTypingUndo() {
+        guard let observedUndoManager else { return }
+        let center = NotificationCenter.default
+        for name: Notification.Name in [
+            .NSUndoManagerDidUndoChange,
+            .NSUndoManagerDidRedoChange,
+            .NSUndoManagerDidCloseUndoGroup,
+        ] {
+            center.removeObserver(self, name: name, object: observedUndoManager)
+        }
+        self.observedUndoManager = nil
+    }
+
+    @objc private func typingUndoDidChange(_ notification: Notification) {
+        syncTypingUndoState()
+    }
+
+    private func syncTypingUndoState() {
+        guard let textView else { return }
+        let undoManager = textView.undoManager
+        model.setTypingUndoState(
+            canUndo: undoManager?.canUndo ?? false,
+            canRedo: undoManager?.canRedo ?? false
+        )
+    }
+
     func textDidChange(_ notification: Notification) {
         fitTextViewToText()
+        syncTypingUndoState()
     }
 
     private func fitTextViewToText() {
@@ -597,7 +660,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         addTrackingArea(
             NSTrackingArea(
                 rect: .zero,
-                options: [.activeInKeyWindow, .inVisibleRect, .mouseMoved, .cursorUpdate],
+                options: [.activeInKeyWindow, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved, .cursorUpdate],
                 owner: self
             )
         )
@@ -609,6 +672,15 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
 
     override func mouseMoved(with event: NSEvent) {
         updateCursor(at: imagePoint(of: event))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if window?.isKeyWindow == true,
+           activeResize == nil, moveStart == nil, dragStart == nil, draft == nil
+        {
+            NSCursor.arrow.set()
+        }
+        super.mouseExited(with: event)
     }
 
     private func updateCursorForCurrentPointer() {
@@ -672,6 +744,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
                 }
                 return .frameResize(position: position, directions: .all)
             }
+            // macOS 14 has no diagonal frame-resize cursors; macOS 15+ uses `.frameResize` above.
             switch handle {
             case .left, .right: return .resizeLeftRight
             case .top, .bottom: return .resizeUpDown

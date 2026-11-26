@@ -153,13 +153,29 @@ struct AnnotationGeometryTests {
     }
 
     @Test func boxMarksExposeCornerAndSideHandlesBasedOnScreenSize() {
-        let large = make(.rectangle(CGRect(x: 10, y: 10, width: 60, height: 40)))
+        let large = make(.rectangle(CGRect(x: 10, y: 10, width: 60, height: 48)))
+        let justAtThreshold = make(.rectangle(CGRect(x: 0, y: 0, width: 44, height: 44)))
+        let belowThreshold = make(.rectangle(CGRect(x: 0, y: 0, width: 32, height: 32)))
         let wideAndThin = make(.blur(CGRect(x: 10, y: 10, width: 60, height: 14)))
         let small = make(.ellipse(CGRect(x: 10, y: 10, width: 16, height: 14)))
 
         #expect(Set(large.handles().map(\.handle)) == [
             .topLeft, .top, .topRight, .right, .bottomRight, .bottom, .bottomLeft, .left,
         ])
+        // Just at the side-handle threshold, a stroke point midway between corner
+        // and side handles remains free to move the box.
+        #expect(Set(justAtThreshold.handles().map(\.handle)) == [
+            .topLeft, .top, .topRight, .right, .bottomRight, .bottom, .bottomLeft, .left,
+        ])
+        #expect(justAtThreshold.isHit(at: CGPoint(x: 11, y: 0)))
+        #expect(justAtThreshold.handle(at: CGPoint(x: 11, y: 0)) == nil)
+
+        // Below the threshold, side handles are omitted so the stroke stays easy to grab.
+        #expect(Set(belowThreshold.handles().map(\.handle)) == [
+            .topLeft, .topRight, .bottomRight, .bottomLeft,
+        ])
+        #expect(belowThreshold.handle(at: CGPoint(x: 16, y: 0)) == nil)
+
         // When the short side leaves no room between opposite edge handles, only corners appear.
         #expect(Set(wideAndThin.handles().map(\.handle)) == [
             .topLeft, .topRight, .bottomRight, .bottomLeft,
@@ -168,7 +184,7 @@ struct AnnotationGeometryTests {
             .topLeft, .topRight, .bottomRight, .bottomLeft,
         ])
         // Zooming in gives the small ellipse enough room on screen for side handles too.
-        #expect(Set(small.handles(magnification: 2).map(\.handle)) == [
+        #expect(Set(small.handles(magnification: 4).map(\.handle)) == [
             .topLeft, .top, .topRight, .right, .bottomRight, .bottom, .bottomLeft, .left,
         ])
     }
@@ -223,6 +239,26 @@ struct AnnotationGeometryTests {
 
         let snappedStart = arrow.resized(dragging: .start, to: CGPoint(x: 57, y: 50), constrained: true, within: bounds)
         #expect(snappedStart.shape == .arrow(from: CGPoint(x: 60, y: 50), to: CGPoint(x: 60, y: 20)))
+
+        // When the fixed end sits outside a cropped view, a snap that would pull the
+        // dragged end out of bounds falls back to the clamped pointer instead of vanishing.
+        let cropped = CGRect(x: 50, y: 0, width: 100, height: 100)
+        let croppedLine = make(.line(from: CGPoint(x: 39, y: 10), to: CGPoint(x: 90, y: 10)))
+        let verticalFallback = croppedLine.resized(
+            dragging: .end,
+            to: CGPoint(x: 55, y: 80),
+            constrained: true,
+            within: cropped
+        )
+        #expect(verticalFallback.shape == .line(from: CGPoint(x: 39, y: 10), to: CGPoint(x: 55, y: 80)))
+        // A snap whose dragged end stays inside the crop still snaps cleanly.
+        let horizontalSnap = croppedLine.resized(
+            dragging: .end,
+            to: CGPoint(x: 110, y: 14),
+            constrained: true,
+            within: cropped
+        )
+        #expect(horizontalSnap.shape == .line(from: CGPoint(x: 39, y: 10), to: CGPoint(x: 110, y: 10)))
     }
 
     @Test func resizingBoxMarksAdjustsEdgesCornersAndMinimumSize() {
@@ -593,13 +629,13 @@ struct CanvasSelectionTests {
         ellipseHarness.drag(from: CGPoint(x: 50, y: 40), to: CGPoint(x: 80, y: 50))
         #expect(ellipseHarness.shapes == [.ellipse(CGRect(x: 10, y: 10, width: 70, height: 40))])
 
-        // Blur side handle.
+        // Blur side handle (edge >= 44 screen pt so side handles are present).
         let blurHarness = CanvasHarness()
-        blurHarness.model.add(.blur(CGRect(x: 10, y: 10, width: 40, height: 30)))
+        blurHarness.model.add(.blur(CGRect(x: 10, y: 8, width: 46, height: 44)))
         blurHarness.model.tool = .select
-        blurHarness.click(at: CGPoint(x: 30, y: 25))
-        blurHarness.drag(from: CGPoint(x: 50, y: 25), to: CGPoint(x: 75, y: 25))
-        #expect(blurHarness.shapes == [.blur(CGRect(x: 10, y: 10, width: 65, height: 30))])
+        blurHarness.click(at: CGPoint(x: 33, y: 30))
+        blurHarness.drag(from: CGPoint(x: 56, y: 30), to: CGPoint(x: 80, y: 30))
+        #expect(blurHarness.shapes == [.blur(CGRect(x: 10, y: 8, width: 70, height: 44))])
     }
 
     @Test func handlesStayGrabbableWhenZoomedOutInAScrollView() throws {
@@ -682,8 +718,10 @@ struct CanvasSelectionTests {
         ])
     }
 
-    @Test func releasingOrPressingShiftBeforeMouseUpUpdatesTheCommittedResize() throws {
+    @Test func releasingOrPressingShiftBeforeMouseUpUpdatesPreviewAndCommit() throws {
         let harness = CanvasHarness()
+        harness.model.color = .white
+        harness.model.size = .large
         harness.model.add(.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 50, y: 20)))
         harness.model.tool = .select
         harness.click(at: CGPoint(x: 30, y: 20))
@@ -704,9 +742,33 @@ struct CanvasSelectionTests {
             )
         }
 
-        // Drag with Shift held, then release Shift before mouseUp without moving again.
+        func renderedPixel(at point: CGPoint) throws -> TestImages.RGBA {
+            let bounds = harness.canvas.bounds
+            let width = Int(bounds.width)
+            let height = Int(bounds.height)
+            let context = try #require(
+                CGContext(
+                    data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                    space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                )
+            )
+            context.translateBy(x: 0, y: CGFloat(height))
+            context.scaleBy(x: 1, y: -1)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+            harness.canvas.draw(bounds)
+            NSGraphicsContext.restoreGraphicsState()
+            let image = try #require(context.makeImage())
+            return TestImages.pixel(of: image, x: Int(point.x), y: Int(point.y))
+        }
+
+        // Drag with Shift held -> preview snaps horizontally; releasing Shift before mouseUp
+        // updates the preview immediately to the unsnapped diagonal.
         harness.canvas.mouseDown(with: try mouse(.leftMouseDown, at: CGPoint(x: 50, y: 20), modifiers: []))
-        harness.canvas.mouseDragged(with: try mouse(.leftMouseDragged, at: CGPoint(x: 70, y: 26), modifiers: .shift))
+        harness.canvas.mouseDragged(with: try mouse(.leftMouseDragged, at: CGPoint(x: 70, y: 34), modifiers: .shift))
+        #expect(try renderedPixel(at: CGPoint(x: 68, y: 33)) == .blue)
+
         let releaseShift = try #require(
             NSEvent.keyEvent(
                 with: .flagsChanged, location: .zero, modifierFlags: [], timestamp: 0,
@@ -715,12 +777,17 @@ struct CanvasSelectionTests {
             )
         )
         harness.canvas.flagsChanged(with: releaseShift)
-        harness.canvas.mouseUp(with: try mouse(.leftMouseUp, at: CGPoint(x: 70, y: 26), modifiers: []))
-        #expect(harness.shapes == [.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 70, y: 26))])
+        #expect(try renderedPixel(at: CGPoint(x: 68, y: 33)) != .blue)
 
-        // Drag without Shift, then press Shift before mouseUp without moving again.
-        harness.canvas.mouseDown(with: try mouse(.leftMouseDown, at: CGPoint(x: 70, y: 26), modifiers: []))
-        harness.canvas.mouseDragged(with: try mouse(.leftMouseDragged, at: CGPoint(x: 80, y: 25), modifiers: []))
+        harness.canvas.mouseUp(with: try mouse(.leftMouseUp, at: CGPoint(x: 70, y: 34), modifiers: []))
+        #expect(harness.shapes == [.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 70, y: 34))])
+
+        // Drag without Shift, then press Shift before mouseUp -> preview snaps horizontally
+        // immediately before release.
+        harness.canvas.mouseDown(with: try mouse(.leftMouseDown, at: CGPoint(x: 70, y: 34), modifiers: []))
+        harness.canvas.mouseDragged(with: try mouse(.leftMouseDragged, at: CGPoint(x: 80, y: 36), modifiers: []))
+        #expect(try renderedPixel(at: CGPoint(x: 76, y: 35)) != .blue)
+
         let pressShift = try #require(
             NSEvent.keyEvent(
                 with: .flagsChanged, location: .zero, modifierFlags: .shift, timestamp: 0,
@@ -729,7 +796,10 @@ struct CanvasSelectionTests {
             )
         )
         harness.canvas.flagsChanged(with: pressShift)
-        harness.canvas.mouseUp(with: try mouse(.leftMouseUp, at: CGPoint(x: 80, y: 25), modifiers: .shift))
+        #expect(try renderedPixel(at: CGPoint(x: 76, y: 35)) == .blue)
+        #expect(try renderedPixel(at: CGPoint(x: 76, y: 20)) != .blue)
+
+        harness.canvas.mouseUp(with: try mouse(.leftMouseUp, at: CGPoint(x: 80, y: 36), modifiers: .shift))
         #expect(harness.shapes == [.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 80, y: 20))])
     }
 }

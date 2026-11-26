@@ -169,15 +169,15 @@ struct TextToolTests {
         harness.model.color = .green
         harness.model.size = .small
         harness.model.add(.text("Hello", origin: CGPoint(x: 20, y: 15)))
-        let originalID = try #require(harness.model.document.annotations.first?.id)
+        let original = try #require(harness.model.document.annotations.first)
         harness.model.color = .red
         harness.model.size = .large
 
         harness.model.tool = .select
-        harness.doubleClick(at: CGPoint(x: 25, y: 20))
+        harness.doubleClick(at: CGPoint(x: original.bounds.maxX - 1, y: original.bounds.midY))
 
         let textView = try #require(harness.textView)
-        #expect(harness.model.editingTextID == originalID)
+        #expect(harness.model.editingTextID == original.id)
         #expect(textView.string == "Hello")
         #expect(textView.frame.origin == CGPoint(x: 20, y: 15))
         #expect(harness.model.displayedColor == .green)
@@ -189,7 +189,7 @@ struct TextToolTests {
         #expect(harness.textView == nil)
         #expect(harness.model.editingTextID == nil)
         let updated = try #require(harness.model.document.annotations.first)
-        #expect(updated.id == originalID)
+        #expect(updated.id == original.id)
         #expect(updated.shape == .text("Hello world", origin: CGPoint(x: 20, y: 15)))
         #expect(updated.color == .green)
         #expect(updated.size == .small)
@@ -207,9 +207,10 @@ struct TextToolTests {
         harness.model.color = .red
         harness.model.size = .small
         harness.model.add(.text("Note", origin: CGPoint(x: 15, y: 15)))
+        let original = try #require(harness.model.document.annotations.first)
         harness.model.tool = .select
 
-        harness.doubleClick(at: CGPoint(x: 20, y: 20))
+        harness.doubleClick(at: CGPoint(x: original.bounds.maxX - 1, y: original.bounds.midY))
         let textView = try #require(harness.textView)
 
         harness.type("!")
@@ -378,6 +379,68 @@ struct TextToolTests {
             storage.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
                 == expected[.foregroundColor] as? NSColor
         )
+    }
+
+    @Test func toolbarUndoRedoAvailabilityTracksTypingDuringTextEditing() throws {
+        let harness = CanvasHarness()
+        harness.model.add(.text("Hello", origin: CGPoint(x: 15, y: 15)))
+        // Document has undo history, no redo history.
+        #expect(harness.model.canUndo)
+        #expect(!harness.model.canRedo)
+
+        harness.model.tool = .select
+        harness.doubleClick(at: CGPoint(x: 20, y: 20))
+        // Immediately on opening inline edit, typing has nothing to undo or redo.
+        #expect(!harness.model.canUndo)
+        #expect(!harness.model.canRedo)
+
+        harness.type("!")
+        #expect(harness.model.canUndo)
+        #expect(!harness.model.canRedo)
+
+        harness.canvas.undo(nil)
+        #expect(!harness.model.canUndo)
+        #expect(harness.model.canRedo)
+
+        harness.canvas.redo(nil)
+        #expect(harness.model.canUndo)
+        #expect(!harness.model.canRedo)
+
+        // Finishing restores document history availability and leaves the shared
+        // window undo manager clean for the next text session.
+        harness.canvas.finishEditing()
+        #expect(harness.model.canUndo)
+        #expect(!harness.model.canRedo)
+
+        harness.model.tool = .text
+        harness.click(at: CGPoint(x: 15, y: 35))
+        #expect(!harness.model.canUndo)
+        #expect(!harness.model.canRedo)
+    }
+
+    @Test func doubleClickingCroppedTextPlacesCaretAtTheClickedVisibleCharacter() throws {
+        let harness = CanvasHarness()
+        harness.model.size = .medium
+        harness.model.add(.text("Hello world from Pashari", origin: CGPoint(x: 10, y: 15)))
+        // Crop right edge so the tail of the text is hidden past x = 55.
+        harness.model.crop(to: CGRect(x: 0, y: 0, width: 55, height: 60))
+        harness.model.tool = .select
+
+        // Double-click near the start of the visible prefix ("Hello").
+        harness.doubleClick(at: CGPoint(x: 25, y: 22))
+        let textView = try #require(harness.textView)
+        let caret = textView.selectedRange().location
+        #expect(caret > 0 && caret < ("Hello world from Pashari" as NSString).length)
+        #expect(caret <= 5)
+
+        harness.type("X")
+        harness.canvas.finishEditing()
+        let updated = try #require(harness.model.document.annotations.first)
+        if case .text(let string, _) = updated.shape {
+            #expect(string.prefix(6).contains("X"))
+        } else {
+            Issue.record("Expected updated text shape")
+        }
     }
 }
 
