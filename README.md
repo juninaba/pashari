@@ -28,7 +28,7 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
   - Select a mark to move, resize, restyle or delete it, or double-click
     text to edit it again
   - Hold Shift to snap arrows and lines in 45° steps, and for squares and
-    circles (both when drawing and when resizing)
+    circles, when drawing and when dragging an end or a corner
 - Saves PNG files at full Retina resolution, and MP4 files for recordings
   (up to 4,096 pixels on the longer side), to the Desktop or a folder of
   your choice
