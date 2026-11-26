@@ -565,12 +565,34 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         let visibleMinX = visible.minX - textOrigin.x
         let visibleMaxX = visible.maxX - textOrigin.x
 
-        if fallback == initial,
-           (0..<actual).contains(where: {
-               indexes[$0] == initial && positions[$0] >= visibleMinX && positions[$0] <= visibleMaxX
-           })
-        {
-            return initial
+        func isInitialVisibleInLayout() -> Bool {
+            (0..<actual).contains(where: {
+                indexes[$0] == initial && positions[$0] >= visibleMinX && positions[$0] <= visibleMaxX
+            })
+        }
+
+        // For non-trailing grapheme boundaries (including Arabic ligatures),
+        // `firstRect` reflects the actual drawn caret position; trailing RTL
+        // ends use the layout manager's insertion points instead.
+        if fallback == initial {
+            if initial < length, let window = textView.window {
+                let screenRect = textView.firstRect(
+                    forCharacterRange: NSRange(location: initial, length: 0),
+                    actualRange: nil
+                )
+                if screenRect != .zero {
+                    let windowRect = window.convertFromScreen(screenRect)
+                    let canvasRect = convert(windowRect, from: nil)
+                    let imageX = canvasRect.minX + visible.minX
+                    if imageX >= visible.minX, imageX <= visible.maxX {
+                        return initial
+                    }
+                } else if isInitialVisibleInLayout() {
+                    return initial
+                }
+            } else if isInitialVisibleInLayout() {
+                return initial
+            }
         }
 
         var best: (index: Int, distance: CGFloat)?
@@ -580,10 +602,13 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
             let x = positions[i]
             guard x >= visibleMinX, x <= visibleMaxX else { continue }
             let distance = abs(x - localPoint.x)
-            if best == nil || distance < best!.distance {
+            if best.map({ distance < $0.distance }) ?? true {
                 best = (index, distance)
             }
         }
+        // If no grapheme boundary falls inside a very narrow crop, fall back to
+        // the rounded cluster boundary (which may sit just outside the crop)
+        // rather than splitting a composed character.
         return best?.index ?? fallback
     }
 

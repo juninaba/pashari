@@ -537,6 +537,21 @@ struct TextToolTests {
         rtlLeading.type("ד")
         rtlLeading.canvas.finishEditing()
         #expect(rtlLeading.shapes == [.text("דאבג", origin: CGPoint(x: 10, y: 15))])
+
+        // Arabic ligature cropped to x = 15...26: clicking x = 25.5 (canvas x = 10.5)
+        // keeps the visible rendered caret inside the ligature (`سلXام`).
+        let arabicHarness = CanvasHarness()
+        arabicHarness.model.size = .medium
+        arabicHarness.model.add(.text("سلام", origin: CGPoint(x: 10, y: 15)))
+        arabicHarness.model.crop(to: CGRect(x: 15, y: 0, width: 11, height: 60))
+        arabicHarness.model.tool = .select
+
+        arabicHarness.doubleClick(at: CGPoint(x: 10.5, y: 22))
+        let arabicCaretX = try renderedCaretImageX(in: arabicHarness)
+        #expect(arabicCaretX >= 15 && arabicCaretX <= 26)
+        arabicHarness.type("X")
+        arabicHarness.canvas.finishEditing()
+        #expect(arabicHarness.shapes == [.text("سلXام", origin: CGPoint(x: 10, y: 15))])
     }
 }
 
