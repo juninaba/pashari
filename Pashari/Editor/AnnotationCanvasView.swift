@@ -523,6 +523,11 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
     /// cropped canvas. When a character straddles a crop edge, AppKit can round
     /// to the hidden side; snap back to the nearest visible grapheme boundary
     /// on the same line.
+    ///
+    /// Visibility is judged with the layout manager's line-fragment insertion
+    /// points, which is where NSTextView draws its caret. `firstRect` is not:
+    /// inside a ligature (Arabic lam-alef) it reports the ligature's edge, and
+    /// at the end of a right-to-left line it reports the line's start.
     private func visibleCaretIndex(
         in textView: NSTextView,
         at localPoint: CGPoint,
@@ -565,34 +570,12 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         let visibleMinX = visible.minX - textOrigin.x
         let visibleMaxX = visible.maxX - textOrigin.x
 
-        func isInitialVisibleInLayout() -> Bool {
-            (0..<actual).contains(where: {
-                indexes[$0] == initial && positions[$0] >= visibleMinX && positions[$0] <= visibleMaxX
-            })
-        }
-
-        // For non-trailing grapheme boundaries (including Arabic ligatures),
-        // `firstRect` reflects the actual drawn caret position; trailing RTL
-        // ends use the layout manager's insertion points instead.
-        if fallback == initial {
-            if initial < length, let window = textView.window {
-                let screenRect = textView.firstRect(
-                    forCharacterRange: NSRange(location: initial, length: 0),
-                    actualRange: nil
-                )
-                if screenRect != .zero {
-                    let windowRect = window.convertFromScreen(screenRect)
-                    let canvasRect = convert(windowRect, from: nil)
-                    let imageX = canvasRect.minX + visible.minX
-                    if imageX >= visible.minX, imageX <= visible.maxX {
-                        return initial
-                    }
-                } else if isInitialVisibleInLayout() {
-                    return initial
-                }
-            } else if isInitialVisibleInLayout() {
-                return initial
-            }
+        if fallback == initial,
+           (0..<actual).contains(where: {
+               indexes[$0] == initial && positions[$0] >= visibleMinX && positions[$0] <= visibleMaxX
+           })
+        {
+            return initial
         }
 
         var best: (index: Int, distance: CGFloat)?

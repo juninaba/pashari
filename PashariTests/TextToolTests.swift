@@ -444,17 +444,32 @@ struct TextToolTests {
     }
 
     @Test func doubleClickingNearCropEdgeKeepsCaretInsideVisibleCrop() throws {
+        // Where NSTextView draws the caret, in image x: the layout manager's
+        // insertion point for the caret's index. (`firstRect` differs inside
+        // ligatures and at the end of right-to-left lines.)
         func renderedCaretImageX(in harness: CanvasHarness) throws -> CGFloat {
             let textView = try #require(harness.textView)
+            let layoutManager = try #require(textView.layoutManager)
             let caret = textView.selectedRange().location
-            let screenRect = textView.firstRect(
-                forCharacterRange: NSRange(location: caret, length: 0),
-                actualRange: nil
+            let query = min(caret, (textView.string as NSString).length - 1)
+            let count = layoutManager.getLineFragmentInsertionPoints(
+                forCharacterAt: query,
+                alternatePositions: false,
+                inDisplayOrder: true,
+                positions: nil,
+                characterIndexes: nil
             )
-            try #require(screenRect != .zero)
-            let windowRect = harness.window.convertFromScreen(screenRect)
-            let canvasRect = harness.canvas.convert(windowRect, from: nil)
-            return canvasRect.minX + harness.model.visibleRect.minX
+            var positions = [CGFloat](repeating: 0, count: count)
+            var indexes = [Int](repeating: 0, count: count)
+            _ = layoutManager.getLineFragmentInsertionPoints(
+                forCharacterAt: query,
+                alternatePositions: false,
+                inDisplayOrder: true,
+                positions: &positions,
+                characterIndexes: &indexes
+            )
+            let match = try #require(indexes.firstIndex(of: caret))
+            return textView.frame.minX + harness.model.visibleRect.minX + positions[match]
         }
 
         // Left-to-right text with a glyph straddling the right crop edge at x = 33.
@@ -539,7 +554,8 @@ struct TextToolTests {
         #expect(rtlLeading.shapes == [.text("דאבג", origin: CGPoint(x: 10, y: 15))])
 
         // Arabic ligature cropped to x = 15...26: clicking x = 25.5 (canvas x = 10.5)
-        // keeps the visible rendered caret inside the ligature (`سلXام`).
+        // lands inside the lam-alef ligature, whose caret is drawn at x ≈ 27,
+        // past the crop. It moves to the visible boundary after the ligature.
         let arabicHarness = CanvasHarness()
         arabicHarness.model.size = .medium
         arabicHarness.model.add(.text("سلام", origin: CGPoint(x: 10, y: 15)))
@@ -551,7 +567,7 @@ struct TextToolTests {
         #expect(arabicCaretX >= 15 && arabicCaretX <= 26)
         arabicHarness.type("X")
         arabicHarness.canvas.finishEditing()
-        #expect(arabicHarness.shapes == [.text("سلXام", origin: CGPoint(x: 10, y: 15))])
+        #expect(arabicHarness.shapes == [.text("سلاXم", origin: CGPoint(x: 10, y: 15))])
     }
 }
 
