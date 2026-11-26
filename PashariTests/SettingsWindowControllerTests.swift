@@ -100,11 +100,44 @@ struct SettingsWindowControllerTests {
         #expect(scrollView.documentVisibleRect.maxY >= documentView.frame.height - 1)
     }
 
+    @Test func fittedFrameStaysWithinFractionalVisibleFrameBounds() {
+        let natural = CGSize(width: SettingsView.width, height: 807)
+        let titlebarHeight: CGFloat = 28
+        let fractionalVisible = CGRect(x: 0, y: 45.5, width: 1_280, height: 700)
+        let current = CGRect(x: 120, y: 100, width: SettingsView.width, height: 835)
+
+        let fitted = SettingsWindowController.fittedFrame(
+            for: current,
+            naturalContentSize: natural,
+            in: fractionalVisible,
+            frameRect: { CGRect(origin: $0.origin, size: CGSize(width: $0.width, height: $0.height + titlebarHeight)) },
+            contentRect: { CGRect(origin: $0.origin, size: CGSize(width: $0.width, height: $0.height - titlebarHeight)) }
+        )
+
+        #expect(fitted.height <= fractionalVisible.height)
+        #expect(fitted.minY >= fractionalVisible.minY)
+        #expect(fitted.maxY <= fractionalVisible.maxY)
+    }
+
     @Test func openSettingsWindowRefitsWhenMovedBetweenTallAndShortDisplays() throws {
         let model = SettingsModel()
         let natural = SettingsView.naturalContentSize(for: model)
-        let tallVisibleFrame = CGRect(x: 0, y: 45, width: 1_920, height: natural.height + 150)
-        let shortVisibleFrame = CGRect(x: 0, y: 45, width: 1_280, height: 700)
+        // Keep the simulated short display inside the host display's visible
+        // area so AppKit's `constrainFrameRect(_:to:)` does not shift the
+        // window's origin on compact CI displays (e.g. 1024x768).
+        let hostVisible = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 45, width: 1_280, height: 700)
+        let tallVisibleFrame = CGRect(
+            x: hostVisible.minX,
+            y: hostVisible.minY,
+            width: max(hostVisible.width, 1_920),
+            height: natural.height + 150
+        )
+        let shortVisibleFrame = CGRect(
+            x: hostVisible.minX,
+            y: hostVisible.minY,
+            width: hostVisible.width,
+            height: min(hostVisible.height, 680)
+        )
         var currentVisibleFrame = tallVisibleFrame
 
         let controller = SettingsWindowController(visibleFrameForWindow: { _ in currentVisibleFrame })

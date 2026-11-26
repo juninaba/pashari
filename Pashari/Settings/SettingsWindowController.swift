@@ -38,7 +38,6 @@ final class SettingsWindowController {
             } else {
                 window.center()
             }
-            self.window = window
         } else if let window, let screen {
             let naturalSize = resolvedNaturalContentSize()
             if !window.isVisible {
@@ -176,11 +175,11 @@ final class SettingsWindowController {
             contentRect: contentRect
         )
         let targetFrameSize = frameRect(CGRect(origin: .zero, size: targetContentSize)).size
-        let anchoredY = currentFrame.maxY - targetFrameSize.height
+        let anchoredY = (currentFrame.maxY - targetFrameSize.height).rounded()
         let clampedY = max(
             visibleFrame.minY,
             min(anchoredY, visibleFrame.maxY - targetFrameSize.height)
-        ).rounded()
+        )
         return CGRect(
             x: currentFrame.minX,
             y: clampedY,
