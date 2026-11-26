@@ -372,6 +372,50 @@ struct AudioMixerTests {
             let framesAfterTail = framesBeforeTail + extractFloats(from: tailEmitted).count / 2
             #expect(framesAfterTail == framesBeforeTail + 1)
         }
+
+        // Case G: a buffer with a mismatched non-zero CMTime epoch must be rejected before
+        // entering the resampler so it cannot pollute subsequent silent buffers.
+        do {
+            let mixer = try AudioMixer(sources: [.microphone], maximumDuration: CMTime(value: 1, timescale: 1))
+            let start = CMTime(value: 0, timescale: 96_000, flags: .valid, epoch: 1)
+            let stopAt = CMTime(value: 3_840, timescale: 96_000, flags: .valid, epoch: 1)
+            var emitted: [CMSampleBuffer] = []
+
+            let silent1 = try TestVideos.audioBuffer(sampleRate: 96_000, channels: 2, frames: 960, at: 0) { _, _ in 0 }
+            let wrongEpochLoud = try TestVideos.audioBuffer(sampleRate: 96_000, channels: 2, frames: 960, at: 0) { _, _ in 0.9 }
+            let silent2 = try TestVideos.audioBuffer(sampleRate: 96_000, channels: 2, frames: 960, at: 0) { _, _ in 0 }
+
+            try mixer.append(silent1, from: .microphone, at: start, startTime: start, upTo: stopAt) {
+                emitted.append($0)
+                return true
+            }
+            try mixer.append(
+                wrongEpochLoud,
+                from: .microphone,
+                at: CMTime(value: 960, timescale: 96_000, flags: .valid, epoch: 2),
+                startTime: start,
+                upTo: stopAt
+            ) {
+                emitted.append($0)
+                return true
+            }
+            try mixer.append(
+                silent2,
+                from: .microphone,
+                at: CMTime(value: 960, timescale: 96_000, flags: .valid, epoch: 1),
+                startTime: start,
+                upTo: stopAt
+            ) {
+                emitted.append($0)
+                return true
+            }
+            try mixer.flush(upTo: stopAt, startTime: start) { emitted.append($0); return true }
+
+            let samples = extractFloats(from: emitted)
+            let peak = samples.map(abs).max() ?? 0
+            #expect(samples.count > 0)
+            #expect(peak < 0.001, "mismatched-epoch buffer polluted resampler state (peak \(peak))")
+        }
     }
 
     @Test func disjointBuffersUnderBackpressureDoNotAllocateSilenceAndRespectBufferLimit() throws {

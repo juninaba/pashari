@@ -154,12 +154,19 @@ nonisolated final class AudioMixer {
         let limitFrame = frameLimit(upTo: endTime, startTime: startTime)
         guard limitFrame > 0 else { return }
 
+        // Validate timestamp comparability (e.g. matching non-zero CMTime
+        // epochs) BEFORE calling `converter.convert` so invalid buffers never
+        // mutate the resampler's internal FIR state.
+        let delta = CMTimeSubtract(presentationTime, startTime)
+        guard delta.isNumeric else { return }
+
         let maxSeconds = Double(limitFrame) / Double(Self.sampleRate)
         let deltaSeconds = Self.exactSecondsDifference(presentationTime, startTime)
         // Guard against extreme out-of-range timestamps overflowing Int64 when
-        // scaled to 48 kHz. Allow up to 1 s past `maxSeconds` here so
-        // high-rate inputs that still have `remainingSeconds > 0` can be
-        // resampled and stitched before the final `limitFrame` check.
+        // scaled to 48 kHz. `remainingSeconds > 0` below is the exact upper
+        // gate; the 1 s slack lets high-rate inputs that still have
+        // `remainingSeconds > 0` reach resampling and contiguous stitching
+        // before the final `limitFrame` check.
         guard deltaSeconds.isFinite, deltaSeconds >= -600, deltaSeconds <= maxSeconds + 1 else { return }
 
         // Apply the earlier of explicit `endTime`, `maximumDuration`, and
@@ -184,7 +191,9 @@ nonisolated final class AudioMixer {
                 )
             )
         }
-        if let endTime, endTime.isNumeric, endTime.timescale > 0 {
+        if let endTime, endTime.isNumeric, endTime.timescale > 0,
+           CMTimeSubtract(endTime, presentationTime).isNumeric
+        {
             remainingSeconds = min(
                 remainingSeconds,
                 Self.exactSecondsDifference(endTime, presentationTime)
@@ -204,8 +213,6 @@ nonisolated final class AudioMixer {
         guard frameCount > 0 else { return }
         if deltaSeconds + Double(frameCount) / Double(Self.sampleRate) <= 0 { return }
 
-        let delta = CMTimeSubtract(presentationTime, startTime)
-        guard delta.isNumeric else { return }
         var startFrame = CMTimeConvertScale(
             delta,
             timescale: Int32(Self.sampleRate),
