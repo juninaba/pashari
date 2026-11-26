@@ -444,29 +444,17 @@ struct TextToolTests {
     }
 
     @Test func doubleClickingNearCropEdgeKeepsCaretInsideVisibleCrop() throws {
-        func caretImageX(in textView: NSTextView, textOriginX: CGFloat) throws -> CGFloat {
-            let layoutManager = try #require(textView.layoutManager)
+        func renderedCaretImageX(in harness: CanvasHarness) throws -> CGFloat {
+            let textView = try #require(harness.textView)
             let caret = textView.selectedRange().location
-            let length = (textView.string as NSString).length
-            let queryIndex = min(caret, length - 1)
-            let count = layoutManager.getLineFragmentInsertionPoints(
-                forCharacterAt: queryIndex,
-                alternatePositions: false,
-                inDisplayOrder: true,
-                positions: nil,
-                characterIndexes: nil
+            let screenRect = textView.firstRect(
+                forCharacterRange: NSRange(location: caret, length: 0),
+                actualRange: nil
             )
-            var positions = [CGFloat](repeating: 0, count: count)
-            var indexes = [Int](repeating: 0, count: count)
-            let actual = layoutManager.getLineFragmentInsertionPoints(
-                forCharacterAt: queryIndex,
-                alternatePositions: false,
-                inDisplayOrder: true,
-                positions: &positions,
-                characterIndexes: &indexes
-            )
-            let match = try #require((0..<actual).first { indexes[$0] == caret })
-            return textOriginX + positions[match]
+            #expect(screenRect != .zero)
+            let windowRect = harness.window.convertFromScreen(screenRect)
+            let canvasRect = harness.canvas.convert(windowRect, from: nil)
+            return canvasRect.minX + harness.model.visibleRect.minX
         }
 
         // Left-to-right text with a glyph straddling the right crop edge at x = 33.
@@ -477,8 +465,7 @@ struct TextToolTests {
         harness.model.tool = .select
 
         harness.doubleClick(at: CGPoint(x: 32, y: 22))
-        let ltrTextView = try #require(harness.textView)
-        let ltrCaretX = try caretImageX(in: ltrTextView, textOriginX: 10)
+        let ltrCaretX = try renderedCaretImageX(in: harness)
         #expect(ltrCaretX >= 0 && ltrCaretX <= 33)
 
         // Bidirectional text cropped to x = 30...40: clicking x = 34 keeps the caret inside the crop.
@@ -490,9 +477,20 @@ struct TextToolTests {
 
         // Canvas coordinates are relative to visibleRect (minX = 30), so x = 4 is image x = 34.
         bidiHarness.doubleClick(at: CGPoint(x: 4, y: 22))
-        let bidiTextView = try #require(bidiHarness.textView)
-        let bidiCaretX = try caretImageX(in: bidiTextView, textOriginX: 10)
+        let bidiCaretX = try renderedCaretImageX(in: bidiHarness)
         #expect(bidiCaretX >= 30 && bidiCaretX <= 40)
+
+        // Devanagari conjunct cluster cropped to x = 20...45: clicking x = 38 keeps the caret inside the crop.
+        let devanagariHarness = CanvasHarness()
+        devanagariHarness.model.size = .medium
+        devanagariHarness.model.add(.text("नमस्ते", origin: CGPoint(x: 10, y: 15)))
+        devanagariHarness.model.crop(to: CGRect(x: 20, y: 0, width: 25, height: 60))
+        devanagariHarness.model.tool = .select
+
+        // Canvas coordinates are relative to visibleRect (minX = 20), so x = 18 is image x = 38.
+        devanagariHarness.doubleClick(at: CGPoint(x: 18, y: 22))
+        let devanagariCaretX = try renderedCaretImageX(in: devanagariHarness)
+        #expect(devanagariCaretX >= 20 && devanagariCaretX <= 45)
     }
 }
 

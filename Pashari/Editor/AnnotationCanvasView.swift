@@ -519,9 +519,10 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         syncTypingUndoState()
     }
 
-    /// Insertion index near `localPoint` that stays within the visible cropped
-    /// canvas. When a character straddles a crop edge, AppKit can round to the
-    /// hidden side; snap back to the nearest visible insertion point on the line.
+    /// Insertion index near `localPoint` whose rendered caret stays within the
+    /// visible cropped canvas. When a character straddles a crop edge, AppKit
+    /// can round to the hidden side; snap back to the nearest visible insertion
+    /// point on the same line.
     private func visibleCaretIndex(
         in textView: NSTextView,
         at localPoint: CGPoint,
@@ -529,8 +530,30 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
     ) -> Int {
         let initial = textView.characterIndexForInsertion(at: localPoint)
         guard let layoutManager = textView.layoutManager else { return initial }
-        let length = (textView.string as NSString).length
+        let string = textView.string as NSString
+        let length = string.length
         guard length > 0 else { return initial }
+
+        let visible = model.visibleRect
+        let clickImageX = textOrigin.x + localPoint.x
+
+        func caretImageX(for index: Int) -> CGFloat? {
+            guard let window = textView.window else { return nil }
+            let screenRect = textView.firstRect(
+                forCharacterRange: NSRange(location: index, length: 0),
+                actualRange: nil
+            )
+            guard screenRect != .zero else { return nil }
+            let windowRect = window.convertFromScreen(screenRect)
+            let canvasRect = convert(windowRect, from: nil)
+            return canvasRect.minX + visible.minX
+        }
+
+        if let initialX = caretImageX(for: initial),
+           initialX >= visible.minX, initialX <= visible.maxX
+        {
+            return initial
+        }
 
         let queryIndex = min(initial, length - 1)
         let count = layoutManager.getLineFragmentInsertionPoints(
@@ -542,34 +565,28 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         )
         guard count > 0 else { return initial }
 
-        var positions = [CGFloat](repeating: 0, count: count)
         var indexes = [Int](repeating: 0, count: count)
         let actual = layoutManager.getLineFragmentInsertionPoints(
             forCharacterAt: queryIndex,
             alternatePositions: false,
             inDisplayOrder: true,
-            positions: &positions,
+            positions: nil,
             characterIndexes: &indexes
         )
         guard actual > 0 else { return initial }
 
-        let visible = model.visibleRect
-        let visibleMinX = visible.minX - textOrigin.x
-        let visibleMaxX = visible.maxX - textOrigin.x
-
-        if let match = (0..<actual).first(where: { indexes[$0] == initial }),
-           positions[match] >= visibleMinX, positions[match] <= visibleMaxX
-        {
-            return initial
-        }
-
         var best: (index: Int, distance: CGFloat)?
         for i in 0..<actual {
-            let x = positions[i]
-            guard x >= visibleMinX, x <= visibleMaxX else { continue }
-            let distance = abs(x - localPoint.x)
+            let index = indexes[i]
+            if index < length, string.rangeOfComposedCharacterSequence(at: index).location != index {
+                continue
+            }
+            guard let x = caretImageX(for: index), x >= visible.minX, x <= visible.maxX else {
+                continue
+            }
+            let distance = abs(x - clickImageX)
             if best == nil || distance < best!.distance {
-                best = (indexes[i], distance)
+                best = (index, distance)
             }
         }
         return best?.index ?? initial
