@@ -187,6 +187,64 @@ struct AudioMixerTests {
         #expect(samples.allSatisfy { abs($0 - 0.25) < 0.001 })
     }
 
+    @Test func endTimeTruncationExcludesPostStopSamplesEvenWithJitterSnappingOrResampling() throws {
+        // Case A: +1 ms jitter snapping must not pull post-endTime input samples earlier into the output.
+        do {
+            let mixer = try AudioMixer(sources: [.system], maximumDuration: CMTime(value: 10, timescale: 1))
+            let start = TestVideos.time(0)
+            let stopAt = TestVideos.time(0.031)
+            var emitted: [CMSampleBuffer] = []
+
+            let first = try TestVideos.audioBuffer(frames: 960, at: 0.0) { _, _ in 0 }
+            // Arrives +1 ms late (0.021 s), snapping to 0.020 s. Only the first 10 ms (480 frames)
+            // precede stopAt (0.031 s); the remaining 10 ms at 0.9 are past stopAt and must be discarded.
+            let second = try TestVideos.audioBuffer(frames: 960, at: 0.021) { frame, _ in
+                frame < 480 ? 0 : 0.9
+            }
+            try mixer.append(first, from: .system, at: first.presentationTimeStamp, startTime: start, upTo: stopAt) {
+                emitted.append($0)
+                return true
+            }
+            try mixer.append(second, from: .system, at: second.presentationTimeStamp, startTime: start, upTo: stopAt) {
+                emitted.append($0)
+                return true
+            }
+            try mixer.flush(upTo: stopAt, startTime: start) { emitted.append($0); return true }
+
+            let samples = extractFloats(from: emitted)
+            let peak = samples.map(abs).max() ?? 0
+            #expect(peak < 0.001, "post-stop samples leaked via jitter snapping (peak \(peak))")
+        }
+
+        // Case B: 44.1 kHz input straddling endTime must be truncated BEFORE FIR resampling so
+        // post-stop energy cannot bleed back through the resampler kernel.
+        do {
+            let mixer = try AudioMixer(sources: [.microphone], maximumDuration: CMTime(value: 10, timescale: 1))
+            let start = TestVideos.time(0)
+            let stopAt = TestVideos.time(0.02)
+            var emitted: [CMSampleBuffer] = []
+
+            // 40 ms at 44.1 kHz (1,764 frames): first 20 ms (882 frames) silent, second 20 ms loud.
+            let resampled = try TestVideos.audioBuffer(
+                sampleRate: 44_100,
+                channels: 1,
+                frames: 1_764,
+                at: 0
+            ) { frame, _ in
+                frame < 882 ? 0 : 0.9
+            }
+            try mixer.append(resampled, from: .microphone, at: resampled.presentationTimeStamp, startTime: start, upTo: stopAt) {
+                emitted.append($0)
+                return true
+            }
+            try mixer.flush(upTo: stopAt, startTime: start) { emitted.append($0); return true }
+
+            let samples = extractFloats(from: emitted)
+            let peak = samples.map(abs).max() ?? 0
+            #expect(peak < 0.001, "post-stop 44.1 kHz samples bled through resampler (peak \(peak))")
+        }
+    }
+
     @Test func disjointBuffersUnderBackpressureDoNotAllocateSilenceAndRespectBufferLimit() throws {
         let mixer = try AudioMixer(
             sources: [.system],

@@ -72,9 +72,9 @@ nonisolated final class AudioMixer {
     private var converters: [Source: SourceConverter] = [:]
     private(set) var hasReceivedAudio = false
 
-    /// True while queued PCM or implicit silence is ready to be drained.
+    /// True while queued PCM or implicit silence is ready to be drained now.
     var hasPendingAudio: Bool {
-        !segments.isEmpty || currentReadyTarget() > emittedFrames
+        currentReadyTarget() > emittedFrames
     }
 
     /// Total frames currently stored in PCM segments (for memory bounding and tests).
@@ -144,14 +144,25 @@ nonisolated final class AudioMixer {
         emit: (CMSampleBuffer) throws -> Bool
     ) throws {
         guard presentationTime.isNumeric, startTime.isNumeric else { return }
+        let limitFrame = frameLimit(upTo: endTime, startTime: startTime)
+        guard limitFrame > 0 else { return }
+
+        let maximumInputDuration: CMTime?
+        if let endTime, endTime.isNumeric {
+            let remaining = CMTimeSubtract(endTime, presentationTime)
+            guard remaining.isNumeric, remaining > .zero else { return }
+            maximumInputDuration = remaining
+        } else {
+            maximumInputDuration = nil
+        }
+
         let converter = converter(for: source)
-        guard let converted = converter.convert(sampleBuffer) else { return }
+        guard let converted = converter.convert(sampleBuffer, maximumInputDuration: maximumInputDuration) else {
+            return
+        }
         let samples = converted.samples
         let frameCount = samples.count / Self.channelCount
         guard frameCount > 0 else { return }
-
-        let limitFrame = frameLimit(upTo: endTime, startTime: startTime)
-        guard limitFrame > 0 else { return }
 
         let delta = CMTimeSubtract(presentationTime, startTime)
         guard delta.isNumeric else { return }
@@ -499,25 +510,40 @@ nonisolated final class AudioMixer {
         private var cachedFormat: AVAudioFormat?
         private var converter: AVAudioConverter?
 
-        func convert(_ sampleBuffer: CMSampleBuffer) -> (samples: [Float], inputDuration: CMTime)? {
+        func convert(
+            _ sampleBuffer: CMSampleBuffer,
+            maximumInputDuration: CMTime? = nil
+        ) -> (samples: [Float], inputDuration: CMTime)? {
             guard CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer) else {
                 return nil
             }
-            let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+            let rawFrameCount = CMSampleBufferGetNumSamples(sampleBuffer)
             guard
-                frameCount > 0,
+                rawFrameCount > 0,
                 let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer),
                 CMFormatDescriptionGetMediaType(formatDescription) == kCMMediaType_Audio
             else { return nil }
             let inputFormat = AVAudioFormat(cmAudioFormatDescription: formatDescription)
-            guard
-                inputFormat.channelCount > 0,
-                inputFormat.sampleRate > 0,
-                let pcmBuffer = AVAudioPCMBuffer(
-                    pcmFormat: inputFormat,
-                    frameCapacity: AVAudioFrameCount(frameCount)
-                )
-            else { return nil }
+            guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else { return nil }
+
+            let inputRate = CMTimeScale(inputFormat.sampleRate.rounded())
+            let frameCount: Int
+            if let maximumInputDuration {
+                let allowedFrames = CMTimeConvertScale(
+                    maximumInputDuration,
+                    timescale: inputRate,
+                    method: .roundTowardZero
+                ).value
+                guard allowedFrames > 0 else { return nil }
+                frameCount = min(rawFrameCount, Int(min(allowedFrames, Int64(rawFrameCount))))
+            } else {
+                frameCount = rawFrameCount
+            }
+
+            guard let pcmBuffer = AVAudioPCMBuffer(
+                pcmFormat: inputFormat,
+                frameCapacity: AVAudioFrameCount(frameCount)
+            ) else { return nil }
 
             pcmBuffer.frameLength = AVAudioFrameCount(frameCount)
             let copyStatus = CMSampleBufferCopyPCMDataIntoAudioBufferList(
@@ -528,10 +554,7 @@ nonisolated final class AudioMixer {
             )
             guard copyStatus == noErr else { return nil }
 
-            let inputDuration = CMTime(
-                value: Int64(frameCount),
-                timescale: CMTimeScale(inputFormat.sampleRate.rounded())
-            )
+            let inputDuration = CMTime(value: Int64(frameCount), timescale: inputRate)
             if inputFormat.sampleRate == Double(AudioMixer.sampleRate),
                inputFormat.commonFormat == .pcmFormatFloat32,
                let direct = fastConvertFloat32AtCanonicalRate(pcmBuffer, format: inputFormat)

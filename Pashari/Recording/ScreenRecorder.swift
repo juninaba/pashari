@@ -32,6 +32,7 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
 
     // On `queue`.
     private let writer: RecordingWriter
+    private var activeStreamID: ObjectIdentifier?
     private var hasStarted = false
     private var hasFailed = false
     /// When the recording ended. Stopping can come later, say once a
@@ -237,6 +238,8 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
 
     func start() async throws {
         guard let stream else { return }
+        let streamID = ObjectIdentifier(stream)
+        queue.sync { self.activeStreamID = streamID }
         do {
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
             if audio.systemAudio {
@@ -244,7 +247,15 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
             }
             if audio.microphone {
                 if #available(macOS 15.0, *) {
-                    try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: queue)
+                    do {
+                        try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: queue)
+                    } catch {
+                        Log.capture.warning(
+                            "Microphone output could not be added; continuing without microphone: \(error.localizedDescription, privacy: .public)"
+                        )
+                        try await restartStreamWithoutMicrophone()
+                        return
+                    }
                 } else {
                     await startFallbackMicrophoneCapture(for: stream)
                 }
@@ -266,7 +277,10 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
             microphoneCapture = nil
             // The stream holds on to this object as its output.
             self.stream = nil
-            queue.async { self.writer.cancel() }
+            queue.async {
+                self.activeStreamID = nil
+                self.writer.cancel()
+            }
             throw error
         }
     }
@@ -297,9 +311,13 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
     private func restartStreamWithoutMicrophone() async throws {
         configuration.captureMicrophone = false
         audio.microphone = false
-        queue.sync { self.writer.disableAudioSource(.microphone) }
         let retryStream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        let retryStreamID = ObjectIdentifier(retryStream)
         self.stream = retryStream
+        queue.sync {
+            self.activeStreamID = retryStreamID
+            self.writer.disableAudioSource(.microphone)
+        }
         try retryStream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
         if audio.systemAudio {
             try retryStream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
@@ -336,6 +354,7 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         // wait on the queue. This runs after them.
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
+                self.activeStreamID = nil
                 let end = self.endTime ?? CMClockGetTime(CMClockGetHostTimeClock())
                 self.writer.finish(at: end) { continuation.resume(with: $0) }
             }
@@ -349,6 +368,7 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of type: SCStreamOutputType
     ) {
+        guard ObjectIdentifier(stream) == activeStreamID else { return }
         if type == .screen {
             handleVideo(sampleBuffer)
         } else if type == .audio {
@@ -401,7 +421,12 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
     // MARK: - SCStreamDelegate
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        Log.capture.error("Recording stopped: \(error.localizedDescription, privacy: .public)")
-        onFailure(error)
+        let streamID = ObjectIdentifier(stream)
+        queue.async {
+            guard streamID == self.activeStreamID, !self.hasFailed else { return }
+            self.hasFailed = true
+            Log.capture.error("Recording stopped: \(error.localizedDescription, privacy: .public)")
+            self.onFailure(error)
+        }
     }
 }
