@@ -1,3 +1,4 @@
+import Foundation
 import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
@@ -9,15 +10,15 @@ extension KeyboardShortcuts.Name {
     // does not change it for someone who already has Pashari.
     static let captureArea = Self(
         "captureArea",
-        default: .init(.two, modifiers: [.command, .shift])
+        initial: .init(.two, modifiers: [.command, .shift])
     )
     static let captureWindow = Self(
         "captureWindow",
-        default: .init(.three, modifiers: [.command, .shift])
+        initial: .init(.three, modifiers: [.command, .shift])
     )
     static let captureFullscreen = Self(
         "captureFullscreen",
-        default: .init(.four, modifiers: [.command, .shift])
+        initial: .init(.four, modifiers: [.command, .shift])
     )
     // No shortcuts until the user records them under Settings.
     static let captureScrollingArea = Self("captureScrollingArea")
@@ -30,6 +31,18 @@ extension KeyboardShortcuts.Name {
 }
 
 enum Hotkeys {
+    static func validate(
+        _ shortcut: KeyboardShortcuts.Shortcut, for name: KeyboardShortcuts.Name
+    ) -> KeyboardShortcuts.ValidationResult {
+        let alreadyAssigned = KeyboardShortcuts.storedNames.contains {
+            $0.rawValue != name.rawValue && $0.shortcut == shortcut
+        }
+        if alreadyAssigned {
+            return .disallow(reason: String(localized: "This shortcut is already assigned to another Pashari action."))
+        }
+        return .allow
+    }
+
     static func register(with captureCoordinator: CaptureCoordinator) {
         KeyboardShortcuts.onKeyDown(for: .captureArea) {
             captureCoordinator.captureArea()

@@ -1,3 +1,4 @@
+import Foundation
 import KeyboardShortcuts
 import Testing
 
@@ -9,25 +10,38 @@ struct HotkeyTests {
         KeyboardShortcuts.Name.captureArea,
         .captureWindow,
         .captureFullscreen,
-    ].compactMap(\.defaultShortcut)
+    ].compactMap(\.initialShortcut)
 
     @Test func areaWindowAndFullscreenCaptureHaveADefault() {
         #expect(defaults.count == 3)
     }
 
     @Test func scrollAndTextCaptureHaveNoDefault() {
-        #expect(KeyboardShortcuts.Name.captureScrollingArea.defaultShortcut == nil)
-        #expect(KeyboardShortcuts.Name.captureText.defaultShortcut == nil)
+        #expect(KeyboardShortcuts.Name.captureScrollingArea.initialShortcut == nil)
+        #expect(KeyboardShortcuts.Name.captureText.initialShortcut == nil)
     }
 
     @Test func recordingHasNoDefault() {
-        #expect(KeyboardShortcuts.Name.recordArea.defaultShortcut == nil)
-        #expect(KeyboardShortcuts.Name.recordWindow.defaultShortcut == nil)
-        #expect(KeyboardShortcuts.Name.recordFullscreen.defaultShortcut == nil)
+        #expect(KeyboardShortcuts.Name.recordArea.initialShortcut == nil)
+        #expect(KeyboardShortcuts.Name.recordWindow.initialShortcut == nil)
+        #expect(KeyboardShortcuts.Name.recordFullscreen.initialShortcut == nil)
     }
 
     @Test func theDefaultsAreDifferentFromEachOther() {
         #expect(Set(defaults).count == defaults.count)
+    }
+
+    @Test func anAssignedShortcutCanOnlyBeRecordedForItsCurrentAction() {
+        let action = KeyboardShortcuts.Name("testAction-\(UUID())")
+        let other = KeyboardShortcuts.Name("testOtherAction-\(UUID())")
+        let shortcut = KeyboardShortcuts.Shortcut(.f19, modifiers: [.command, .control, .option, .shift])
+        KeyboardShortcuts.setShortcut(shortcut, for: action)
+        defer { KeyboardShortcuts.setShortcut(nil, for: action) }
+
+        #expect(Hotkeys.validate(shortcut, for: action) == .allow)
+        #expect(Hotkeys.validate(shortcut, for: other) != .allow)
+        #expect(action.shortcut == shortcut)
+        #expect(other.shortcut == nil)
     }
 
     @Test func theDefaultsStayClearOfShortcutsOthersAlreadyUse() {

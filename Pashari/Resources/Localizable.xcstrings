@@ -931,6 +931,16 @@
         }
       }
     },
+    "This shortcut is already assigned to another Pashari action." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このショートカットは Pashari の別の操作に割り当てられています。"
+          }
+        }
+      }
+    },
     "Trim" : {
       "localizations" : {
         "ja" : {

@@ -132,24 +132,29 @@ struct SettingsView: View {
             }
 
             section("Shortcuts") {
-                KeyboardShortcuts.Recorder("Capture Area", name: .captureArea)
+                shortcutRecorder("Capture Area", name: .captureArea)
                 Divider()
-                KeyboardShortcuts.Recorder("Capture Window", name: .captureWindow)
+                shortcutRecorder("Capture Window", name: .captureWindow)
                 Divider()
-                KeyboardShortcuts.Recorder("Capture Fullscreen", name: .captureFullscreen)
+                shortcutRecorder("Capture Fullscreen", name: .captureFullscreen)
                 Divider()
-                KeyboardShortcuts.Recorder("Capture Scrolling Area", name: .captureScrollingArea)
+                shortcutRecorder("Capture Scrolling Area", name: .captureScrollingArea)
                 Divider()
-                KeyboardShortcuts.Recorder("Capture Text", name: .captureText)
+                shortcutRecorder("Capture Text", name: .captureText)
                 Divider()
-                KeyboardShortcuts.Recorder("Record Area", name: .recordArea)
+                shortcutRecorder("Record Area", name: .recordArea)
                 Divider()
-                KeyboardShortcuts.Recorder("Record Window", name: .recordWindow)
+                shortcutRecorder("Record Window", name: .recordWindow)
                 Divider()
-                KeyboardShortcuts.Recorder("Record Fullscreen", name: .recordFullscreen)
+                shortcutRecorder("Record Fullscreen", name: .recordFullscreen)
             }
         }
         .labeledContentStyle(SettingsRowStyle())
+    }
+
+    private func shortcutRecorder(_ title: LocalizedStringKey, name: KeyboardShortcuts.Name) -> some View {
+        KeyboardShortcuts.Recorder(title, name: name)
+            .shortcutValidation { Hotkeys.validate($0, for: name) }
     }
 
     /// A heading on the desk, with its settings on a paper card below it.
