@@ -451,7 +451,7 @@ struct TextToolTests {
                 forCharacterRange: NSRange(location: caret, length: 0),
                 actualRange: nil
             )
-            #expect(screenRect != .zero)
+            try #require(screenRect != .zero)
             let windowRect = harness.window.convertFromScreen(screenRect)
             let canvasRect = harness.canvas.convert(windowRect, from: nil)
             return canvasRect.minX + harness.model.visibleRect.minX
@@ -480,7 +480,8 @@ struct TextToolTests {
         let bidiCaretX = try renderedCaretImageX(in: bidiHarness)
         #expect(bidiCaretX >= 30 && bidiCaretX <= 40)
 
-        // Devanagari conjunct cluster cropped to x = 20...45: clicking x = 38 keeps the caret inside the crop.
+        // Devanagari conjunct cluster cropped to x = 20...45: clicking x = 38 keeps the caret
+        // at a composed-character boundary inside the crop.
         let devanagariHarness = CanvasHarness()
         devanagariHarness.model.size = .medium
         devanagariHarness.model.add(.text("नमस्ते", origin: CGPoint(x: 10, y: 15)))
@@ -489,8 +490,27 @@ struct TextToolTests {
 
         // Canvas coordinates are relative to visibleRect (minX = 20), so x = 18 is image x = 38.
         devanagariHarness.doubleClick(at: CGPoint(x: 18, y: 22))
+        let devanagariView = try #require(devanagariHarness.textView)
+        let devanagariCaret = devanagariView.selectedRange().location
+        let devanagariString = devanagariView.string as NSString
+        if devanagariCaret < devanagariString.length {
+            #expect(devanagariString.rangeOfComposedCharacterSequence(at: devanagariCaret).location == devanagariCaret)
+        }
         let devanagariCaretX = try renderedCaretImageX(in: devanagariHarness)
         #expect(devanagariCaretX >= 20 && devanagariCaretX <= 45)
+
+        // Pure RTL text cropped to x = 9...21: double-clicking near its visible trailing end
+        // (x = 12 -> canvas x = 3) keeps the caret at the end so typing appends.
+        let rtlHarness = CanvasHarness()
+        rtlHarness.model.size = .medium
+        rtlHarness.model.add(.text("אבג", origin: CGPoint(x: 10, y: 15)))
+        rtlHarness.model.crop(to: CGRect(x: 9, y: 0, width: 12, height: 60))
+        rtlHarness.model.tool = .select
+
+        rtlHarness.doubleClick(at: CGPoint(x: 3, y: 22))
+        rtlHarness.type("ד")
+        rtlHarness.canvas.finishEditing()
+        #expect(rtlHarness.shapes == [.text("אבגד", origin: CGPoint(x: 10, y: 15))])
     }
 }
 

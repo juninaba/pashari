@@ -537,24 +537,6 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         let visible = model.visibleRect
         let clickImageX = textOrigin.x + localPoint.x
 
-        func caretImageX(for index: Int) -> CGFloat? {
-            guard let window = textView.window else { return nil }
-            let screenRect = textView.firstRect(
-                forCharacterRange: NSRange(location: index, length: 0),
-                actualRange: nil
-            )
-            guard screenRect != .zero else { return nil }
-            let windowRect = window.convertFromScreen(screenRect)
-            let canvasRect = convert(windowRect, from: nil)
-            return canvasRect.minX + visible.minX
-        }
-
-        if let initialX = caretImageX(for: initial),
-           initialX >= visible.minX, initialX <= visible.maxX
-        {
-            return initial
-        }
-
         let queryIndex = min(initial, length - 1)
         let count = layoutManager.getLineFragmentInsertionPoints(
             forCharacterAt: queryIndex,
@@ -565,23 +547,55 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         )
         guard count > 0 else { return initial }
 
+        var positions = [CGFloat](repeating: 0, count: count)
         var indexes = [Int](repeating: 0, count: count)
         let actual = layoutManager.getLineFragmentInsertionPoints(
             forCharacterAt: queryIndex,
             alternatePositions: false,
             inDisplayOrder: true,
-            positions: nil,
+            positions: &positions,
             characterIndexes: &indexes
         )
         guard actual > 0 else { return initial }
 
+        func isBoundary(_ index: Int) -> Bool {
+            index == length || string.rangeOfComposedCharacterSequence(at: index).location == index
+        }
+
+        func caretImageX(for index: Int) -> CGFloat? {
+            if let window = textView.window {
+                let screenRect = textView.firstRect(
+                    forCharacterRange: NSRange(location: index, length: 0),
+                    actualRange: nil
+                )
+                if screenRect != .zero {
+                    let windowRect = window.convertFromScreen(screenRect)
+                    let canvasRect = convert(windowRect, from: nil)
+                    return canvasRect.minX + visible.minX
+                }
+            }
+            // AppKit can return `.zero` from `firstRect` at the trailing end of
+            // an RTL line; fall back to the layout manager's insertion point.
+            if let match = (0..<actual).first(where: { indexes[$0] == index }) {
+                return textOrigin.x + positions[match]
+            }
+            return nil
+        }
+
+        if isBoundary(initial),
+           let initialX = caretImageX(for: initial),
+           initialX >= visible.minX, initialX <= visible.maxX
+        {
+            return initial
+        }
+
         var best: (index: Int, distance: CGFloat)?
         for i in 0..<actual {
             let index = indexes[i]
-            if index < length, string.rangeOfComposedCharacterSequence(at: index).location != index {
-                continue
-            }
-            guard let x = caretImageX(for: index), x >= visible.minX, x <= visible.maxX else {
+            guard isBoundary(index),
+                  let x = caretImageX(for: index),
+                  x >= visible.minX, x <= visible.maxX
+            else {
                 continue
             }
             let distance = abs(x - clickImageX)
