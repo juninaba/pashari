@@ -116,8 +116,9 @@ by itself at five minutes.
 
 - Recordings are silent until you turn on system audio or the microphone,
   either from the buttons on the Record Area bar or under Settings. Your
-  choice is remembered and applies to area, window and fullscreen
-  recordings. Turning the microphone on asks for the Microphone permission.
+  choice is remembered and applies to area, window (recording that window's
+  app audio) and fullscreen recordings. Turning the microphone on asks for
+  the Microphone permission.
 - The pointer is in the video, with a ring around each click (macOS 15
   and later). Pashari's bar, frame and thumbnails stay out.
 - Recordings are MP4 (H.264, with stereo AAC audio when sound is enabled)

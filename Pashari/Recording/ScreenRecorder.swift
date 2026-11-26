@@ -19,9 +19,11 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
     let pointSize: CGSize
     let width: Int
     let height: Int
-    let audio: RecordingAudio
+    private(set) var audio: RecordingAudio
 
     private let queue = DispatchQueue(label: "io.github.juninaba.pashari.screen-recorder", qos: .userInteractive)
+    private let filter: SCContentFilter
+    private let configuration: SCStreamConfiguration
     private let microphoneDevice: AVCaptureDevice?
     private var stream: SCStream?
     private var microphoneCapture: MicrophoneCapture?
@@ -135,6 +137,8 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         self.width = width
         self.height = height
         self.audio = audio
+        self.filter = filter
+        self.configuration = configuration
         self.microphoneDevice = microphoneDevice
         writer = try RecordingWriter(url: url, width: width, height: height, audioSources: audio.sources)
         self.onStart = onStart
@@ -241,20 +245,22 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
             if audio.microphone {
                 if #available(macOS 15.0, *) {
                     try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: queue)
-                } else if let device = microphoneDevice {
-                    let capture = try MicrophoneCapture(
-                        device: device,
-                        sampleQueue: queue,
-                        targetClock: stream.synchronizationClock ?? CMClockGetHostTimeClock(),
-                        onSample: { [weak self] sampleBuffer, time in
-                            self?.handleAudio(sampleBuffer, from: .microphone, at: time)
-                        }
-                    )
-                    microphoneCapture = capture
-                    try await capture.start()
+                } else {
+                    await startFallbackMicrophoneCapture(for: stream)
                 }
             }
-            try await stream.startCapture()
+            do {
+                try await stream.startCapture()
+            } catch {
+                if #available(macOS 15.0, *), audio.microphone, Self.isMicrophoneStartError(error) {
+                    Log.capture.warning(
+                        "Microphone capture failed to start; continuing without microphone: \(error.localizedDescription, privacy: .public)"
+                    )
+                    try await restartStreamWithoutMicrophone()
+                } else {
+                    throw error
+                }
+            }
         } catch {
             await microphoneCapture?.stop()
             microphoneCapture = nil
@@ -263,6 +269,49 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
             queue.async { self.writer.cancel() }
             throw error
         }
+    }
+
+    private func startFallbackMicrophoneCapture(for stream: SCStream) async {
+        guard let device = microphoneDevice else { return }
+        do {
+            let capture = try MicrophoneCapture(
+                device: device,
+                sampleQueue: queue,
+                targetClock: stream.synchronizationClock ?? CMClockGetHostTimeClock(),
+                onSample: { [weak self] sampleBuffer, time in
+                    self?.handleAudio(sampleBuffer, from: .microphone, at: time)
+                }
+            )
+            try await capture.start()
+            microphoneCapture = capture
+        } catch {
+            Log.capture.warning(
+                "Microphone capture failed to start; continuing without microphone: \(error.localizedDescription, privacy: .public)"
+            )
+            audio.microphone = false
+            queue.sync { self.writer.disableAudioSource(.microphone) }
+        }
+    }
+
+    @available(macOS 15.0, *)
+    private func restartStreamWithoutMicrophone() async throws {
+        configuration.captureMicrophone = false
+        audio.microphone = false
+        queue.sync { self.writer.disableAudioSource(.microphone) }
+        let retryStream = SCStream(filter: filter, configuration: configuration, delegate: self)
+        self.stream = retryStream
+        try retryStream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+        if audio.systemAudio {
+            try retryStream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
+        }
+        try await retryStream.startCapture()
+    }
+
+    @available(macOS 15.0, *)
+    static func isMicrophoneStartError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == SCStreamErrorDomain
+            && nsError.code == SCStreamError.Code.failedToStartMicrophoneCapture.rawValue
     }
 
     /// Ends the recording now, though `stop()` may come only later.
@@ -341,7 +390,7 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         let pts = time ?? sampleBuffer.presentationTimeStamp
         if let endTime, pts >= endTime { return }
         do {
-            try writer.appendAudio(sampleBuffer, from: source, at: pts)
+            try writer.appendAudio(sampleBuffer, from: source, at: pts, upTo: endTime)
         } catch {
             hasFailed = true
             Log.capture.error("Recording audio could not be written: \(error.localizedDescription, privacy: .public)")

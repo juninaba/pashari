@@ -225,14 +225,14 @@ struct SettingsView: View {
 
     private func setRecordSystemAudio(_ enabled: Bool) {
         model.recordingAudio.systemAudio = enabled
-        Preferences.setRecordingAudio(model.recordingAudio)
+        Preferences.setRecordSystemAudio(enabled)
     }
 
     private func setRecordMicrophone(_ enabled: Bool) {
         guard !model.isRequestingMicrophonePermission else { return }
         if !enabled {
             model.recordingAudio.microphone = false
-            Preferences.setRecordingAudio(model.recordingAudio)
+            Preferences.setRecordMicrophone(false)
             return
         }
         model.isRequestingMicrophonePermission = true
@@ -240,7 +240,7 @@ struct SettingsView: View {
             defer { model.isRequestingMicrophonePermission = false }
             guard await MicrophonePermission.requestForToggle() else { return }
             model.recordingAudio.microphone = true
-            Preferences.setRecordingAudio(model.recordingAudio)
+            Preferences.setRecordMicrophone(true)
         }
     }
 }

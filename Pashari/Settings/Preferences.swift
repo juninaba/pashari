@@ -27,6 +27,20 @@ enum Preferences {
     static func setRecordingAudio(_ audio: RecordingAudio, in defaults: UserDefaults = .standard) {
         defaults.set(audio.systemAudio, forKey: recordSystemAudioKey)
         defaults.set(audio.microphone, forKey: recordMicrophoneKey)
+        notifyRecordingAudioChanged(in: defaults)
+    }
+
+    static func setRecordSystemAudio(_ enabled: Bool, in defaults: UserDefaults = .standard) {
+        defaults.set(enabled, forKey: recordSystemAudioKey)
+        notifyRecordingAudioChanged(in: defaults)
+    }
+
+    static func setRecordMicrophone(_ enabled: Bool, in defaults: UserDefaults = .standard) {
+        defaults.set(enabled, forKey: recordMicrophoneKey)
+        notifyRecordingAudioChanged(in: defaults)
+    }
+
+    private static func notifyRecordingAudioChanged(in defaults: UserDefaults) {
         if defaults === UserDefaults.standard {
             NotificationCenter.default.post(name: recordingAudioDidChangeNotification, object: nil)
         }

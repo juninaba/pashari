@@ -148,7 +148,6 @@ enum RecordingFiles {
             // the earlier timestamp when both are ready, and mark each track
             // finished as soon as its reader runs dry so a long static screen
             // never blocks the continuous audio track (or vice versa).
-            var videoExhausted = pendingVideo == nil
             var videoFinished = false
             var pendingAudio = nextAudioBuffer()
             var audioFinished = audioOutput == nil
@@ -161,19 +160,20 @@ enum RecordingFiles {
                 if let video = pendingVideo {
                     try append(video.frame, at: video.time, to: writer)
                     pendingVideo = nextVideoFrame()
-                    videoExhausted = pendingVideo == nil
-                } else if videoExhausted {
+                } else {
                     try writer.finishVideo(at: range.duration)
                     videoFinished = true
                 }
             }
 
             func stepAudio() throws {
-                if let audio = pendingAudio {
-                    try writer.appendAudio(audio.buffer, from: .system, at: audio.time)
+                if writer.hasPendingAudio {
+                    try writer.drainAudio(upTo: range.duration)
+                } else if let audio = pendingAudio {
+                    try writer.appendAudio(audio.buffer, from: .system, at: audio.time, upTo: range.duration)
                     pendingAudio = nextAudioBuffer()
                 }
-                if pendingAudio == nil {
+                if pendingAudio == nil, !writer.hasPendingAudio {
                     try writer.finishAudio(at: range.duration)
                     audioFinished = true
                 }
@@ -186,7 +186,7 @@ enum RecordingFiles {
                 if canWriteVideo && canWriteAudio {
                     let videoTime = pendingVideo?.time ?? range.duration
                     let audioTime = pendingAudio?.time ?? range.duration
-                    if videoTime <= audioTime {
+                    if !writer.hasPendingAudio, videoTime <= audioTime {
                         try stepVideo()
                     } else {
                         try stepAudio()

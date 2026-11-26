@@ -41,6 +41,7 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
 
     var isReadyForMoreVideo: Bool { !isVideoFinished && input.isReadyForMoreMediaData }
     var isReadyForMoreAudio: Bool { !isAudioFinished && (audioInput?.isReadyForMoreMediaData ?? false) }
+    var hasPendingAudio: Bool { !isAudioFinished && (audioMixer?.hasPendingAudio == true) }
     var isWriting: Bool { writer.status == .writing }
 
     /// `width` and `height` are the frames' size in pixels. While
@@ -85,7 +86,11 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
             guard writer.canAdd(audio) else { throw CocoaError(.fileWriteUnknown) }
             writer.add(audio)
             audioInput = audio
-            audioMixer = try AudioMixer(sources: audioSources, maximumDuration: maximumDuration)
+            audioMixer = try AudioMixer(
+                sources: audioSources,
+                maximumDuration: maximumDuration,
+                maximumBufferedFrames: isRealTime ? AudioMixer.defaultMaximumBufferedFrames : nil
+            )
         }
     }
 
@@ -109,17 +114,35 @@ nonisolated final class RecordingWriter: @unchecked Sendable {
         return .appended
     }
 
-    /// Adds PCM audio from `source`. Audio arriving before the first video
-    /// frame or when no audio track was configured is ignored.
+    /// Drops an expected audio source (e.g. when microphone startup fails and
+    /// recording continues with system audio only).
+    func disableAudioSource(_ source: AudioMixer.Source) {
+        audioMixer?.removeSource(source)
+    }
+
+    /// Adds PCM audio from `source`, truncating at `endTime` when provided.
+    /// Audio arriving before the first video frame or when no audio track was
+    /// configured is ignored. Never blocks on audio backpressure; unemitted
+    /// chunks remain queued in `AudioMixer` for `drainAudio()` or `finish(at:)`.
     func appendAudio(
         _ sampleBuffer: CMSampleBuffer,
-        from source: AudioMixer.Source = .system,
-        at presentationTime: CMTime? = nil
+        from source: AudioMixer.Source,
+        at presentationTime: CMTime? = nil,
+        upTo endTime: CMTime? = nil
     ) throws {
         guard let audioInput, let audioMixer, let startTime, !isAudioFinished, writer.status == .writing else { return }
         let time = presentationTime ?? sampleBuffer.presentationTimeStamp
-        try audioMixer.append(sampleBuffer, from: source, at: time, startTime: startTime) { chunk in
-            try writeAudioChunk(chunk, to: audioInput, waitSeconds: isRealTime ? 0 : 10)
+        try audioMixer.append(sampleBuffer, from: source, at: time, startTime: startTime, upTo: endTime) { chunk in
+            try writeAudioChunk(chunk, to: audioInput, waitSeconds: 0)
+        }
+    }
+
+    /// Drains queued audio chunks without blocking; used by offline trimming
+    /// when a large decoded buffer produced more than one chunk.
+    func drainAudio(upTo endTime: CMTime? = nil) throws {
+        guard let audioInput, let audioMixer, let startTime, !isAudioFinished, writer.status == .writing else { return }
+        try audioMixer.drainReady(startTime: startTime, upTo: endTime) { chunk in
+            try writeAudioChunk(chunk, to: audioInput, waitSeconds: 0)
         }
     }
 

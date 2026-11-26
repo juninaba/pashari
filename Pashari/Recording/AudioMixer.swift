@@ -9,6 +9,10 @@ import CoreMedia
 /// playback reliable: there are no edit-list offsets, no overlapping sample
 /// timestamps, and only one AAC track even when system audio and microphone
 /// are both recorded.
+///
+/// Buffered PCM is stored as sorted non-overlapping segments so long silence
+/// gaps never allocate sample arrays, and real-time recordings cap total
+/// queued PCM memory if the encoder stalls.
 nonisolated final class AudioMixer {
     enum Source: Hashable, Sendable {
         case system
@@ -18,14 +22,22 @@ nonisolated final class AudioMixer {
     static let sampleRate: Int = 48_000
     static let channelCount: Int = 2
     /// Maximum time one source waits for the other before flushing ahead
-    /// (150 ms at 48 kHz), bounding memory and preventing stalls if one source
+    /// (150 ms at 48 kHz), bounding latency and preventing stalls if one source
     /// goes quiet or stops delivering buffers.
     static let maximumLeadFrames: Int64 = 7_200
-    /// Small clock jitter between consecutive buffers of the same source
-    /// (up to 10 ms) is absorbed to avoid clicks and single-sample gaps.
-    private static let jitterToleranceFrames: Int64 = 480
+    /// Consecutive buffers from the same source whose input timestamps match
+    /// the previous buffer's end within 2 ms are stitched seamlessly to absorb
+    /// clock rounding and resampler priming delay without swallowing real
+    /// dropped buffers (typically 10-20 ms).
+    private static let contiguousInputToleranceSeconds: Double = 0.002
+    /// Maximum cumulative snap distance (5 ms) when stitching contiguous
+    /// buffers, preventing unbounded drift between device and host clocks.
+    private static let maximumStitchOffsetFrames: Int64 = 240
     /// Maximum frames emitted per output sample buffer (~85 ms).
     private static let maximumChunkFrames: Int = 4_096
+    /// Maximum real-time PCM buffered in memory while waiting on encoder
+    /// backpressure (10 seconds ≈ 3.8 MiB).
+    static let defaultMaximumBufferedFrames: Int = sampleRate * 10
 
     private static let canonicalFormat: AVAudioFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
@@ -36,33 +48,51 @@ nonisolated final class AudioMixer {
 
     private static let silenceChunk = [Float](repeating: 0, count: maximumChunkFrames * channelCount)
 
-    private let expectedSources: Set<Source>
+    private struct Segment {
+        var startFrame: Int64
+        var headFrame: Int = 0
+        var samples: [Float]
+
+        var frameCount: Int { (samples.count / AudioMixer.channelCount) - headFrame }
+        var endFrame: Int64 { startFrame + Int64(frameCount) }
+    }
+
+    private var expectedSources: Set<Source>
     private let maxFrames: Int64
+    private let maximumBufferedFrames: Int?
     private let outputFormatDescription: CMAudioFormatDescription
 
     private var emittedFrames: Int64 = 0
-    /// Timeline frame corresponding to `mixBuffer[mixHead * channelCount]`.
-    /// Always `>= emittedFrames`; frames in `[emittedFrames, bufferStartFrame)`
-    /// represent implicit silence without allocating memory.
-    private var bufferStartFrame: Int64 = 0
-    /// Interleaved stereo floats starting at `bufferStartFrame - mixHead`.
-    private var mixBuffer: [Float] = []
-    /// Frame offset of `bufferStartFrame` within `mixBuffer`.
-    private var mixHead: Int = 0
+    /// Sorted, non-overlapping PCM segments at or after `emittedFrames`.
+    /// Any range between `emittedFrames` and a segment (or between two
+    /// segments) is implicit silence and takes zero memory.
+    private var segments: [Segment] = []
     private var latestFrameBySource: [Source: Int64] = [:]
+    private var lastInputEndTimeBySource: [Source: CMTime] = [:]
     private var converters: [Source: SourceConverter] = [:]
     private(set) var hasReceivedAudio = false
 
-    private var bufferedFrameCount: Int {
-        (mixBuffer.count / Self.channelCount) - mixHead
+    /// True while queued PCM or implicit silence is ready to be drained.
+    var hasPendingAudio: Bool {
+        !segments.isEmpty || currentReadyTarget() > emittedFrames
     }
 
-    init(sources: Set<Source>, maximumDuration: CMTime) throws {
+    /// Total frames currently stored in PCM segments (for memory bounding and tests).
+    var bufferedFrames: Int {
+        segments.reduce(0) { $0 + $1.frameCount }
+    }
+
+    init(
+        sources: Set<Source>,
+        maximumDuration: CMTime,
+        maximumBufferedFrames: Int? = defaultMaximumBufferedFrames
+    ) throws {
         self.expectedSources = sources
         self.maxFrames = max(
             0,
             CMTimeConvertScale(maximumDuration, timescale: Int32(Self.sampleRate), method: .roundHalfAwayFromZero).value
         )
+        self.maximumBufferedFrames = maximumBufferedFrames
         var asbd = AudioStreamBasicDescription(
             mSampleRate: Double(Self.sampleRate),
             mFormatID: kAudioFormatLinearPCM,
@@ -91,28 +121,44 @@ nonisolated final class AudioMixer {
         self.outputFormatDescription = formatDescription
     }
 
+    /// Stops expecting audio from `source`, e.g. when microphone capture fails
+    /// to start and the recording continues with system audio only.
+    func removeSource(_ source: Source) {
+        expectedSources.remove(source)
+        latestFrameBySource.removeValue(forKey: source)
+        lastInputEndTimeBySource.removeValue(forKey: source)
+        converters.removeValue(forKey: source)
+    }
+
     /// Converts `sampleBuffer` to canonical 48 kHz stereo PCM, mixes it into
-    /// the timeline relative to `startTime`, and invokes `emit` for every
-    /// ready output buffer. Returning `false` from `emit` pauses draining
-    /// without discarding buffered samples so they can be emitted once the
-    /// encoder becomes ready again.
+    /// the timeline relative to `startTime`, clips at `endTime` if given, and
+    /// invokes `emit` for every ready output buffer. Returning `false` from
+    /// `emit` pauses draining without discarding buffered samples so they can
+    /// be emitted once the encoder becomes ready again.
     func append(
         _ sampleBuffer: CMSampleBuffer,
         from source: Source,
         at presentationTime: CMTime,
         startTime: CMTime,
+        upTo endTime: CMTime? = nil,
         emit: (CMSampleBuffer) throws -> Bool
     ) throws {
         guard presentationTime.isNumeric, startTime.isNumeric else { return }
         let converter = converter(for: source)
-        guard let samples = converter.convert(sampleBuffer) else { return }
+        guard let converted = converter.convert(sampleBuffer) else { return }
+        let samples = converted.samples
         let frameCount = samples.count / Self.channelCount
         guard frameCount > 0 else { return }
 
+        let limitFrame = frameLimit(upTo: endTime, startTime: startTime)
+        guard limitFrame > 0 else { return }
+
         let delta = CMTimeSubtract(presentationTime, startTime)
         guard delta.isNumeric else { return }
-        let maxSeconds = Double(maxFrames) / Double(Self.sampleRate)
-        if delta.seconds >= maxSeconds + 10 { return }
+        // Guard against extreme out-of-range timestamps overflowing Int64 when
+        // scaled to 48 kHz.
+        let maxSeconds = Double(limitFrame) / Double(Self.sampleRate)
+        if delta.seconds >= maxSeconds { return }
         if delta.seconds + Double(frameCount) / Double(Self.sampleRate) <= 0 { return }
 
         var startFrame = CMTimeConvertScale(
@@ -120,19 +166,32 @@ nonisolated final class AudioMixer {
             timescale: Int32(Self.sampleRate),
             method: .roundHalfAwayFromZero
         ).value
-        if let cursor = latestFrameBySource[source], abs(startFrame - cursor) <= Self.jitterToleranceFrames {
+
+        let inputEndTime = CMTimeAdd(presentationTime, converted.inputDuration)
+        let previousInputEnd = lastInputEndTimeBySource[source]
+        lastInputEndTimeBySource[source] = inputEndTime
+
+        if
+            let cursor = latestFrameBySource[source],
+            let previousInputEnd,
+            abs(CMTimeSubtract(presentationTime, previousInputEnd).seconds) <= Self.contiguousInputToleranceSeconds,
+            abs(startFrame - cursor) <= Self.maximumStitchOffsetFrames
+        {
+            // Device/host clock rounding and FIR resampler priming can shift
+            // consecutive buffers by a few samples. At ~50 ppm clock drift
+            // this stays smooth and only corrects once drift exceeds 5 ms.
             startFrame = cursor
         }
 
         let rawEnd = startFrame + Int64(frameCount)
         if rawEnd <= emittedFrames {
-            latestFrameBySource[source] = max(latestFrameBySource[source] ?? 0, min(rawEnd, maxFrames))
+            latestFrameBySource[source] = max(latestFrameBySource[source] ?? 0, min(rawEnd, limitFrame))
             return
         }
-        guard startFrame < maxFrames else { return }
+        guard startFrame < limitFrame else { return }
 
         let clippedStart = max(startFrame, emittedFrames)
-        let clippedEnd = min(rawEnd, maxFrames)
+        let clippedEnd = min(rawEnd, limitFrame)
         let skipFrames = Int(clippedStart - startFrame)
         let writeFrames = Int(clippedEnd - clippedStart)
         guard writeFrames > 0 else { return }
@@ -140,56 +199,37 @@ nonisolated final class AudioMixer {
         latestFrameBySource[source] = max(latestFrameBySource[source] ?? 0, clippedEnd)
         hasReceivedAudio = true
 
-        let readyFrame = readyTarget(afterUpdating: source, to: clippedEnd)
+        let readyFrame = min(limitFrame, currentReadyTarget())
         let preDrainTarget = min(clippedStart, readyFrame)
         if preDrainTarget > emittedFrames {
             _ = try drain(upTo: preDrainTarget, startTime: startTime, emit: emit)
         }
 
-        if bufferedFrameCount == 0 {
-            bufferStartFrame = clippedStart
-            mixHead = 0
-            mixBuffer.removeAll(keepingCapacity: true)
-        } else if clippedStart < bufferStartFrame {
-            let prependFrames = Int(bufferStartFrame - clippedStart)
-            if mixHead >= prependFrames {
-                let startFloat = (mixHead - prependFrames) * Self.channelCount
-                let endFloat = mixHead * Self.channelCount
-                for index in startFloat..<endFloat {
-                    mixBuffer[index] = 0
-                }
-                mixHead -= prependFrames
-            } else {
-                if mixHead > 0 {
-                    mixBuffer.removeFirst(mixHead * Self.channelCount)
-                    mixHead = 0
-                }
-                mixBuffer.insert(
-                    contentsOf: repeatElement(Float(0), count: prependFrames * Self.channelCount),
-                    at: 0
-                )
-            }
-            bufferStartFrame = clippedStart
-        }
-
-        let relativeStart = Int(clippedStart - bufferStartFrame)
-        let relativeEnd = relativeStart + writeFrames
-        let requiredFloats = (mixHead + relativeEnd) * Self.channelCount
-        if mixBuffer.count < requiredFloats {
-            mixBuffer.append(contentsOf: repeatElement(Float(0), count: requiredFloats - mixBuffer.count))
-        }
-        let dstBase = (mixHead + relativeStart) * Self.channelCount
-        let srcBase = skipFrames * Self.channelCount
-        let floatCount = writeFrames * Self.channelCount
-        for index in 0..<floatCount {
-            let value = samples[srcBase + index]
-            if value.isFinite {
-                mixBuffer[dstBase + index] += value
-            }
-        }
+        mixIntoSegments(
+            samples: samples,
+            sourceFrameOffset: skipFrames,
+            startFrame: clippedStart,
+            frameCount: writeFrames
+        )
+        enforceBufferedFrameLimit()
 
         if readyFrame > emittedFrames {
             _ = try drain(upTo: readyFrame, startTime: startTime, emit: emit)
+        }
+    }
+
+    /// Drains any queued audio that is already ready to emit, stopping if
+    /// `emit` returns `false`.
+    func drainReady(
+        startTime: CMTime,
+        upTo endTime: CMTime? = nil,
+        emit: (CMSampleBuffer) throws -> Bool
+    ) throws {
+        guard hasReceivedAudio, startTime.isNumeric else { return }
+        let limitFrame = frameLimit(upTo: endTime, startTime: startTime)
+        let target = min(limitFrame, currentReadyTarget())
+        if target > emittedFrames {
+            _ = try drain(upTo: target, startTime: startTime, emit: emit)
         }
     }
 
@@ -199,34 +239,38 @@ nonisolated final class AudioMixer {
         startTime: CMTime,
         emit: (CMSampleBuffer) throws -> Bool
     ) throws {
-        defer { resetBuffer() }
+        defer { segments.removeAll(keepingCapacity: false) }
         guard hasReceivedAudio, endTime.isNumeric, startTime.isNumeric else { return }
-        let delta = CMTimeSubtract(endTime, startTime)
-        guard delta.isNumeric, delta > .zero else { return }
-        let endFrame = min(
-            maxFrames,
-            CMTimeConvertScale(delta, timescale: Int32(Self.sampleRate), method: .roundHalfAwayFromZero).value
-        )
+        let limitFrame = frameLimit(upTo: endTime, startTime: startTime)
         let highestWritten = latestFrameBySource.values.max() ?? 0
-        let target = min(endFrame, highestWritten)
+        let target = min(limitFrame, highestWritten)
         if target > emittedFrames {
             _ = try drain(upTo: target, startTime: startTime, emit: emit)
         }
     }
 
     func reset() {
-        resetBuffer()
+        segments.removeAll(keepingCapacity: false)
         latestFrameBySource.removeAll()
+        lastInputEndTimeBySource.removeAll()
         converters.removeAll()
         emittedFrames = 0
-        bufferStartFrame = 0
         hasReceivedAudio = false
     }
 
-    private func resetBuffer() {
-        mixBuffer.removeAll(keepingCapacity: false)
-        mixHead = 0
-        bufferStartFrame = emittedFrames
+    private func frameLimit(upTo endTime: CMTime?, startTime: CMTime) -> Int64 {
+        guard let endTime, endTime.isNumeric else { return maxFrames }
+        let delta = CMTimeSubtract(endTime, startTime)
+        guard delta.isNumeric else { return maxFrames }
+        guard delta > .zero else { return 0 }
+        let maxSeconds = Double(maxFrames) / Double(Self.sampleRate)
+        if delta.seconds >= maxSeconds { return maxFrames }
+        let endFrame = CMTimeConvertScale(
+            delta,
+            timescale: Int32(Self.sampleRate),
+            method: .roundHalfAwayFromZero
+        ).value
+        return min(maxFrames, max(0, endFrame))
     }
 
     private func converter(for source: Source) -> SourceConverter {
@@ -236,18 +280,111 @@ nonisolated final class AudioMixer {
         return created
     }
 
-    private func readyTarget(afterUpdating source: Source, to latestEnd: Int64) -> Int64 {
-        guard expectedSources.count > 1 else {
-            return latestEnd
+    private func currentReadyTarget() -> Int64 {
+        guard hasReceivedAudio else { return 0 }
+        if expectedSources.count <= 1 {
+            return min(maxFrames, latestFrameBySource.values.max() ?? 0)
         }
-        let sourceLatest = latestFrameBySource[source] ?? latestEnd
-        let otherLatest = expectedSources
-            .filter { $0 != source }
-            .map { latestFrameBySource[$0] ?? 0 }
-            .min() ?? 0
-        let minLatest = min(sourceLatest, otherLatest)
-        let maxLatest = max(sourceLatest, otherLatest)
+        let latestValues = expectedSources.map { latestFrameBySource[$0] ?? 0 }
+        let minLatest = latestValues.min() ?? 0
+        let maxLatest = latestValues.max() ?? 0
         return min(maxFrames, max(minLatest, maxLatest - Self.maximumLeadFrames))
+    }
+
+    private func mixIntoSegments(
+        samples: [Float],
+        sourceFrameOffset: Int,
+        startFrame: Int64,
+        frameCount: Int
+    ) {
+        let endFrame = startFrame + Int64(frameCount)
+        let srcFloatBase = sourceFrameOffset * Self.channelCount
+        let floatCount = frameCount * Self.channelCount
+
+        func sanitizedSlice() -> [Float] {
+            var copy = [Float](repeating: 0, count: floatCount)
+            for index in 0..<floatCount {
+                let value = samples[srcFloatBase + index]
+                copy[index] = value.isFinite ? value : 0
+            }
+            return copy
+        }
+
+        // Fast path: append directly to the last segment or add a disjoint tail segment.
+        if let lastIndex = segments.indices.last {
+            if startFrame == segments[lastIndex].endFrame {
+                segments[lastIndex].samples.reserveCapacity(segments[lastIndex].samples.count + floatCount)
+                for index in 0..<floatCount {
+                    let value = samples[srcFloatBase + index]
+                    segments[lastIndex].samples.append(value.isFinite ? value : 0)
+                }
+                return
+            }
+            if startFrame > segments[lastIndex].endFrame {
+                segments.append(Segment(startFrame: startFrame, samples: sanitizedSlice()))
+                return
+            }
+        } else {
+            segments.append(Segment(startFrame: startFrame, samples: sanitizedSlice()))
+            return
+        }
+
+        // General path: insert into a silence gap or coalesce overlapping/adjacent segments.
+        let firstOverlap = segments.firstIndex { $0.endFrame >= startFrame } ?? segments.count
+        var afterOverlap = firstOverlap
+        while afterOverlap < segments.count, segments[afterOverlap].startFrame <= endFrame {
+            afterOverlap += 1
+        }
+        if firstOverlap == afterOverlap {
+            segments.insert(Segment(startFrame: startFrame, samples: sanitizedSlice()), at: firstOverlap)
+            return
+        }
+
+        let mergedStart = min(startFrame, segments[firstOverlap].startFrame)
+        let mergedEnd = max(endFrame, segments[afterOverlap - 1].endFrame)
+        let mergedFloats = Int(mergedEnd - mergedStart) * Self.channelCount
+        var merged = [Float](repeating: 0, count: mergedFloats)
+
+        for segIndex in firstOverlap..<afterOverlap {
+            let segment = segments[segIndex]
+            let dstBase = Int(segment.startFrame - mergedStart) * Self.channelCount
+            let srcBase = segment.headFrame * Self.channelCount
+            let segFloats = segment.frameCount * Self.channelCount
+            for offset in 0..<segFloats {
+                merged[dstBase + offset] += segment.samples[srcBase + offset]
+            }
+        }
+        let incomingDstBase = Int(startFrame - mergedStart) * Self.channelCount
+        for offset in 0..<floatCount {
+            let value = samples[srcFloatBase + offset]
+            if value.isFinite {
+                merged[incomingDstBase + offset] += value
+            }
+        }
+        segments.replaceSubrange(
+            firstOverlap..<afterOverlap,
+            with: [Segment(startFrame: mergedStart, samples: merged)]
+        )
+    }
+
+    private func enforceBufferedFrameLimit() {
+        guard let limit = maximumBufferedFrames else { return }
+        var total = bufferedFrames
+        while total > limit, !segments.isEmpty {
+            let excess = total - limit
+            if segments[0].frameCount <= excess {
+                total -= segments[0].frameCount
+                segments.removeFirst()
+            } else {
+                segments[0].headFrame += excess
+                segments[0].startFrame += Int64(excess)
+                if segments[0].headFrame >= Self.maximumChunkFrames {
+                    segments[0].samples.removeFirst(segments[0].headFrame * Self.channelCount)
+                    segments[0].headFrame = 0
+                }
+                total -= excess
+            }
+        }
     }
 
     private func drain(
@@ -255,73 +392,51 @@ nonisolated final class AudioMixer {
         startTime: CMTime,
         emit: (CMSampleBuffer) throws -> Bool
     ) throws -> Bool {
-        // 1. Implicit silence before `bufferStartFrame`.
-        let silenceEnd = min(targetFrame, bufferStartFrame)
-        while emittedFrames < silenceEnd {
-            let chunkFrames = Int(min(silenceEnd - emittedFrames, Int64(Self.maximumChunkFrames)))
-            let sampleBuffer = try makeSampleBuffer(
-                from: Self.silenceChunk,
-                frameCount: chunkFrames,
-                atFrame: emittedFrames,
-                startTime: startTime
-            )
-            guard try emit(sampleBuffer) else { return false }
-            emittedFrames += Int64(chunkFrames)
-        }
-
-        // 2. Buffered PCM samples starting at `bufferStartFrame`.
-        while emittedFrames < targetFrame, bufferedFrameCount > 0 {
-            let chunkFrames = Int(min(
-                targetFrame - emittedFrames,
-                Int64(bufferedFrameCount),
-                Int64(Self.maximumChunkFrames)
-            ))
-            let floatStart = mixHead * Self.channelCount
-            let floatCount = chunkFrames * Self.channelCount
-            var chunk = [Float](repeating: 0, count: floatCount)
-            for index in 0..<floatCount {
-                let sample = mixBuffer[floatStart + index]
-                chunk[index] = min(max(sample, -1), 1)
-            }
-            let sampleBuffer = try makeSampleBuffer(
-                from: chunk,
-                frameCount: chunkFrames,
-                atFrame: emittedFrames,
-                startTime: startTime
-            )
-            guard try emit(sampleBuffer) else { return false }
-            emittedFrames += Int64(chunkFrames)
-            bufferStartFrame += Int64(chunkFrames)
-            mixHead += chunkFrames
-            compactBufferIfNeeded()
-        }
-
-        // 3. Any remaining silence past the end of `mixBuffer` up to `targetFrame`.
         while emittedFrames < targetFrame {
-            let chunkFrames = Int(min(targetFrame - emittedFrames, Int64(Self.maximumChunkFrames)))
-            let sampleBuffer = try makeSampleBuffer(
-                from: Self.silenceChunk,
-                frameCount: chunkFrames,
-                atFrame: emittedFrames,
-                startTime: startTime
-            )
-            guard try emit(sampleBuffer) else { return false }
-            emittedFrames += Int64(chunkFrames)
-            bufferStartFrame = emittedFrames
+            if segments.isEmpty || emittedFrames < segments[0].startFrame {
+                let silenceEnd = segments.isEmpty
+                    ? targetFrame
+                    : min(targetFrame, segments[0].startFrame)
+                let chunkFrames = Int(min(silenceEnd - emittedFrames, Int64(Self.maximumChunkFrames)))
+                let sampleBuffer = try makeSampleBuffer(
+                    from: Self.silenceChunk,
+                    frameCount: chunkFrames,
+                    atFrame: emittedFrames,
+                    startTime: startTime
+                )
+                guard try emit(sampleBuffer) else { return false }
+                emittedFrames += Int64(chunkFrames)
+            } else {
+                let availEnd = min(targetFrame, segments[0].endFrame)
+                let chunkFrames = Int(min(availEnd - emittedFrames, Int64(Self.maximumChunkFrames)))
+                let floatStart = segments[0].headFrame * Self.channelCount
+                let floatCount = chunkFrames * Self.channelCount
+                var chunk = [Float](repeating: 0, count: floatCount)
+                for index in 0..<floatCount {
+                    let sample = segments[0].samples[floatStart + index]
+                    chunk[index] = min(max(sample, -1), 1)
+                }
+                let sampleBuffer = try makeSampleBuffer(
+                    from: chunk,
+                    frameCount: chunkFrames,
+                    atFrame: emittedFrames,
+                    startTime: startTime
+                )
+                guard try emit(sampleBuffer) else { return false }
+                emittedFrames += Int64(chunkFrames)
+                if chunkFrames >= segments[0].frameCount {
+                    segments.removeFirst()
+                } else {
+                    segments[0].headFrame += chunkFrames
+                    segments[0].startFrame += Int64(chunkFrames)
+                    if segments[0].headFrame >= Self.maximumChunkFrames {
+                        segments[0].samples.removeFirst(segments[0].headFrame * Self.channelCount)
+                        segments[0].headFrame = 0
+                    }
+                }
+            }
         }
         return true
-    }
-
-    private func compactBufferIfNeeded() {
-        let headFloats = mixHead * Self.channelCount
-        if headFloats >= mixBuffer.count {
-            mixBuffer.removeAll(keepingCapacity: true)
-            mixHead = 0
-            bufferStartFrame = emittedFrames
-        } else if mixHead >= Self.maximumChunkFrames {
-            mixBuffer.removeFirst(headFloats)
-            mixHead = 0
-        }
     }
 
     private func makeSampleBuffer(
@@ -384,7 +499,7 @@ nonisolated final class AudioMixer {
         private var cachedFormat: AVAudioFormat?
         private var converter: AVAudioConverter?
 
-        func convert(_ sampleBuffer: CMSampleBuffer) -> [Float]? {
+        func convert(_ sampleBuffer: CMSampleBuffer) -> (samples: [Float], inputDuration: CMTime)? {
             guard CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer) else {
                 return nil
             }
@@ -413,15 +528,21 @@ nonisolated final class AudioMixer {
             )
             guard copyStatus == noErr else { return nil }
 
+            let inputDuration = CMTime(
+                value: Int64(frameCount),
+                timescale: CMTimeScale(inputFormat.sampleRate.rounded())
+            )
             if inputFormat.sampleRate == Double(AudioMixer.sampleRate),
-               inputFormat.commonFormat == .pcmFormatFloat32
+               inputFormat.commonFormat == .pcmFormatFloat32,
+               let direct = fastConvertFloat32AtCanonicalRate(pcmBuffer, format: inputFormat)
             {
-                if let direct = fastConvertFloat32AtCanonicalRate(pcmBuffer, format: inputFormat) {
-                    return direct
-                }
+                return (direct, inputDuration)
             }
 
-            return convertWithAudioConverter(pcmBuffer, inputFormat: inputFormat)
+            guard let converted = convertWithAudioConverter(pcmBuffer, inputFormat: inputFormat) else {
+                return nil
+            }
+            return (converted, inputDuration)
         }
 
         private func fastConvertFloat32AtCanonicalRate(

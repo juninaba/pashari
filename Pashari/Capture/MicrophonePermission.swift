@@ -97,17 +97,24 @@ enum MicrophonePermission {
         case .notDetermined:
             return await request() ? .recordWithMicrophone : .recordWithoutMicrophone
         case .denied, .restricted:
-            switch askWhenDenied() {
-            case .recordWithoutMicrophone:
-                return .recordWithoutMicrophone
-            case .openSettings:
-                openSettings()
-                return .cancel
-            case .cancel:
-                return .cancel
-            }
+            return decisionWhenDenied(askWhenDenied: askWhenDenied, openSettings: openSettings)
         @unknown default:
+            return decisionWhenDenied(askWhenDenied: askWhenDenied, openSettings: openSettings)
+        }
+    }
+
+    private static func decisionWhenDenied(
+        askWhenDenied: () -> DeniedChoice,
+        openSettings: () -> Void
+    ) -> RecordingDecision {
+        switch askWhenDenied() {
+        case .recordWithoutMicrophone:
             return .recordWithoutMicrophone
+        case .openSettings:
+            openSettings()
+            return .cancel
+        case .cancel:
+            return .cancel
         }
     }
 

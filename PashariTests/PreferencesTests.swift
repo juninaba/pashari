@@ -124,6 +124,19 @@ struct PreferencesTests {
         #expect(Preferences.recordingAudio(in: defaults) == audio)
     }
 
+    @Test func updatingOneRecordingAudioSourcePreservesTheOther() {
+        let defaults = makeDefaults()
+
+        Preferences.setRecordSystemAudio(true, in: defaults)
+        #expect(Preferences.recordingAudio(in: defaults) == RecordingAudio(systemAudio: true, microphone: false))
+
+        Preferences.setRecordMicrophone(true, in: defaults)
+        #expect(Preferences.recordingAudio(in: defaults) == RecordingAudio(systemAudio: true, microphone: true))
+
+        Preferences.setRecordSystemAudio(false, in: defaults)
+        #expect(Preferences.recordingAudio(in: defaults) == RecordingAudio(systemAudio: false, microphone: true))
+    }
+
     @Test func settingsShowWhatChangedWhileTheyWereClosed() {
         let system = FakeSettings()
         system.saveDirectory = URL(filePath: "/Volumes/External/Screenshots")

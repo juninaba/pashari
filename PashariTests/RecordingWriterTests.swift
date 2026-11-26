@@ -1,4 +1,5 @@
 import AVFoundation
+import ScreenCaptureKit
 import Testing
 
 @testable import Pashari
@@ -248,6 +249,74 @@ struct RecordingWriterTests {
         let samples = try await TestVideos.decodedAudioSamples(in: url)
         #expect(TestVideos.rms(of: samples, channel: 0, from: 5.0, to: 15.0) < 0.01)
         #expect(TestVideos.rms(of: samples, channel: 0, from: 20.1, to: 20.9) > 0.2)
+    }
+
+    @Test func audioStraddlingStopTimeLeavesNoPostStopAudioEncodedInTheFile() async throws {
+        let url = try TestVideos.temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let writer = try RecordingWriter(
+            url: url,
+            width: 64,
+            height: 48,
+            audioSources: [.system],
+            isRealTime: true
+        )
+        let frame = TestVideos.frame(width: 64, height: 48, color: .blue)
+        #expect(try writer.append(frame, at: TestVideos.time(0)) == .appended)
+
+        let stopAt = TestVideos.time(0.21)
+        // First 200 ms: silent.
+        for chunk in 0..<10 {
+            let silent = try TestVideos.audioBuffer(frames: 960, at: Double(chunk) * 0.02) { _, _ in 0 }
+            try writer.appendAudio(silent, from: .system, upTo: stopAt)
+        }
+        // Buffer straddles stopAt (0.20..0.22): silent before 0.21, loud tone after 0.21.
+        let straddling = try TestVideos.audioBuffer(frames: 960, at: 0.20) { index, _ in
+            guard index >= 480 else { return 0 }
+            return Float(sin(2 * .pi * 1000 * Double(index) / 48_000)) * 0.8
+        }
+        try writer.appendAudio(straddling, from: .system, upTo: stopAt)
+        let duration = try await TestVideos.finish(writer, at: 0.21)
+
+        #expect(abs((duration ?? 0) - 0.21) < 0.005)
+        let samples = try await TestVideos.decodedAudioSamples(in: url)
+        let peak = samples.map(abs).max() ?? 0
+        #expect(peak < 0.02, "post-stop tone leaked into AAC output (peak \(peak))")
+    }
+
+    @Test func disablingMicrophoneSourceLetsSystemAudioWriteWithoutWaiting() async throws {
+        let url = try TestVideos.temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let writer = try RecordingWriter(
+            url: url,
+            width: 64,
+            height: 48,
+            audioSources: [.system, .microphone],
+            isRealTime: true
+        )
+        writer.disableAudioSource(.microphone)
+        let frame = TestVideos.frame(width: 64, height: 48, color: .blue)
+        #expect(try writer.append(frame, at: TestVideos.time(0)) == .appended)
+        let system = try TestVideos.audioBuffer(frames: 960, at: 0) { index, _ in
+            Float(sin(2 * .pi * 440 * Double(index) / 48_000)) * 0.5
+        }
+        try writer.appendAudio(system, from: .system)
+        // With microphone disabled, system audio emits immediately rather than staying buffered for 150 ms.
+        #expect(!writer.hasPendingAudio)
+        _ = try await TestVideos.finish(writer, at: 0.1)
+
+        if #available(macOS 15.0, *) {
+            let micError = NSError(
+                domain: SCStreamErrorDomain,
+                code: SCStreamError.Code.failedToStartMicrophoneCapture.rawValue
+            )
+            let otherError = NSError(
+                domain: SCStreamErrorDomain,
+                code: SCStreamError.Code.failedToStart.rawValue
+            )
+            #expect(ScreenRecorder.isMicrophoneStartError(micError))
+            #expect(!ScreenRecorder.isMicrophoneStartError(otherError))
+        }
     }
 
     private func isClose(_ color: TestImages.RGBA, to expected: TestImages.RGBA) -> Bool {

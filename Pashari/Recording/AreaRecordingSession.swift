@@ -28,8 +28,10 @@ final class AreaRecordingSession: RecordingSession {
 
     private let storage: CaptureStorage
     private let rememberArea: @MainActor (RecordingArea) -> Void
+    private let readAudio: @MainActor () -> RecordingAudio
+    private let setSystemAudio: @MainActor (Bool) -> Void
+    private let setMicrophone: @MainActor (Bool) -> Void
     private var audio: RecordingAudio
-    private let rememberAudio: @MainActor (RecordingAudio) -> Void
     private let microphoneAuthorizationStatus: @MainActor () -> AVAuthorizationStatus
     private let requestMicrophoneAccess: @MainActor () async -> Bool
     private let showMicrophoneDeniedAlert: @MainActor () -> Bool
@@ -42,6 +44,7 @@ final class AreaRecordingSession: RecordingSession {
     private var overlays: [(panel: OverlayPanel, view: RecordingAreaView, screen: NSScreen)] = []
     private var choice: CheckedContinuation<RecordingArea?, Never>?
     private var spaceObserver: SpaceChangeObserver?
+    private var audioObserver: NSObjectProtocol?
     private var isRequestingMicrophonePermission = false
 
     /// `remembered` is the area recorded last; the frame starts there if
@@ -55,10 +58,9 @@ final class AreaRecordingSession: RecordingSession {
                 Preferences.setRecordingArea(area.rect, onDisplay: displayID)
             }
         },
-        audio: RecordingAudio = Preferences.recordingAudio(),
-        rememberAudio: @escaping @MainActor (RecordingAudio) -> Void = {
-            Preferences.setRecordingAudio($0)
-        },
+        readAudio: @escaping @MainActor () -> RecordingAudio = { Preferences.recordingAudio() },
+        setSystemAudio: @escaping @MainActor (Bool) -> Void = { Preferences.setRecordSystemAudio($0) },
+        setMicrophone: @escaping @MainActor (Bool) -> Void = { Preferences.setRecordMicrophone($0) },
         microphoneAuthorizationStatus: @escaping @MainActor () -> AVAuthorizationStatus = {
             MicrophonePermission.authorizationStatus()
         },
@@ -74,8 +76,10 @@ final class AreaRecordingSession: RecordingSession {
     ) {
         self.storage = storage
         self.rememberArea = rememberArea
-        self.audio = audio
-        self.rememberAudio = rememberAudio
+        self.readAudio = readAudio
+        self.setSystemAudio = setSystemAudio
+        self.setMicrophone = setMicrophone
+        self.audio = readAudio()
         self.microphoneAuthorizationStatus = microphoneAuthorizationStatus
         self.requestMicrophoneAccess = requestMicrophoneAccess
         self.showMicrophoneDeniedAlert = showMicrophoneDeniedAlert
@@ -97,8 +101,14 @@ final class AreaRecordingSession: RecordingSession {
     /// recording began, or nothing was recorded.
     func run() async throws -> Recording? {
         guard let area = await choose() else { return nil }
+        let chosenAudio = audio
+        if chosenAudio.microphone {
+            // Hide the `.screenSaver`-level bar before permission resolution
+            // so a system prompt or denied alert is never covered by it.
+            controls.orderOut(nil)
+        }
         guard let resolvedAudio = await MicrophonePermission.resolveAudio(
-            audio,
+            chosenAudio,
             using: resolveMicrophonePermission
         ) else {
             controls.orderOut(nil)
@@ -163,11 +173,21 @@ final class AreaRecordingSession: RecordingSession {
             overlays.append((panel, view, screen))
         }
 
+        audio = readAudio()
         controls.audio = audio
         controls.onToggleSystemAudio = { [weak self] in self?.toggleSystemAudio() }
         controls.onToggleMicrophone = { [weak self] in self?.toggleMicrophone() }
         controls.onRecord = { [weak self] in self?.confirm() }
         controls.onCancel = { [weak self] in self?.finishChoosing(with: nil) }
+        audioObserver = NotificationCenter.default.addObserver(
+            forName: Preferences.recordingAudioDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.syncAudioFromPreferences()
+            }
+        }
         showFrame()
         OverlayPanel.focus(overlays.map(\.panel))
         spaceObserver = SpaceChangeObserver { [weak self] in
@@ -179,11 +199,18 @@ final class AreaRecordingSession: RecordingSession {
         Log.selection.info("Recording area overlay shown on \(self.overlays.count) screen(s)")
     }
 
+    private func syncAudioFromPreferences() {
+        guard choice != nil else { return }
+        audio = readAudio()
+        controls.audio = audio
+    }
+
     private func toggleSystemAudio() {
         guard choice != nil, !isRequestingMicrophonePermission else { return }
-        audio.systemAudio.toggle()
+        let enabled = !audio.systemAudio
+        audio.systemAudio = enabled
         controls.audio = audio
-        rememberAudio(audio)
+        setSystemAudio(enabled)
     }
 
     private func toggleMicrophone() {
@@ -191,14 +218,14 @@ final class AreaRecordingSession: RecordingSession {
         if audio.microphone {
             audio.microphone = false
             controls.audio = audio
-            rememberAudio(audio)
+            setMicrophone(false)
             return
         }
         switch microphoneAuthorizationStatus() {
         case .authorized:
             audio.microphone = true
             controls.audio = audio
-            rememberAudio(audio)
+            setMicrophone(true)
         case .notDetermined:
             isRequestingMicrophonePermission = true
             // Step the full-screen `.screenSaver` overlays aside so macOS's
@@ -213,9 +240,10 @@ final class AreaRecordingSession: RecordingSession {
                     finishChoosing(with: nil)
                     return
                 }
+                audio = readAudio()
                 if granted {
                     audio.microphone = true
-                    rememberAudio(audio)
+                    setMicrophone(true)
                 }
                 restoreChoosingUI()
             }
@@ -228,6 +256,7 @@ final class AreaRecordingSession: RecordingSession {
             if openedSettings || NSApp.modalWindow != nil {
                 finishChoosing(with: nil)
             } else {
+                audio = readAudio()
                 restoreChoosingUI()
             }
         @unknown default:
@@ -281,6 +310,10 @@ final class AreaRecordingSession: RecordingSession {
 
         spaceObserver?.stop()
         spaceObserver = nil
+        if let audioObserver {
+            NotificationCenter.default.removeObserver(audioObserver)
+            self.audioObserver = nil
+        }
         // The overlay held the keyboard. Once it is gone, the keyboard is
         // back with the app the user was working in.
         overlays.forEach { $0.panel.orderOut(nil) }

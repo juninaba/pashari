@@ -118,9 +118,9 @@ struct AudioMixerTests {
         var emitted: [CMSampleBuffer] = []
 
         let first = try TestVideos.audioBuffer(frames: 960, at: 0) { _, _ in 0.4 }
-        // +2 ms jitter (within 10 ms tolerance) should stitch at frame 960 without inserting silence.
-        let jittered = try TestVideos.audioBuffer(frames: 960, at: 0.022) { _, _ in 0.4 }
-        // Jump to 0.1 s (60 ms gap > 10 ms tolerance) should zero-fill frames [1920 ..< 4800).
+        // +1 ms jitter (within 2 ms contiguous tolerance) should stitch at frame 960 without inserting silence.
+        let jittered = try TestVideos.audioBuffer(frames: 960, at: 0.021) { _, _ in 0.4 }
+        // Jump to 0.1 s (59 ms gap) should zero-fill frames [1920 ..< 4800).
         let afterGap = try TestVideos.audioBuffer(frames: 480, at: 0.1) { _, _ in 0.4 }
 
         for buffer in [first, jittered, afterGap] {
@@ -138,6 +138,71 @@ struct AudioMixerTests {
         #expect(samples[2_500 * 2] == 0)
         // Frame 4800 resumes at 0.4.
         #expect(abs(samples[4_800 * 2] - 0.4) < 0.001)
+    }
+
+    @Test func aDroppedTenMillisecondBufferIsPreservedAsSilenceWithoutShiftingLaterAudio() throws {
+        let mixer = try AudioMixer(sources: [.system], maximumDuration: CMTime(value: 10, timescale: 1))
+        let start = TestVideos.time(0)
+        var emitted: [CMSampleBuffer] = []
+
+        // 10 ms buffers at 0.00 s, (0.01 s dropped!), 0.02 s, 0.03 s.
+        let b0 = try TestVideos.audioBuffer(frames: 480, at: 0.00) { _, _ in 0.25 }
+        let b2 = try TestVideos.audioBuffer(frames: 480, at: 0.02) { _, _ in 0.5 }
+        let b3 = try TestVideos.audioBuffer(frames: 480, at: 0.03) { _, _ in 0.75 }
+        for buffer in [b0, b2, b3] {
+            try mixer.append(buffer, from: .system, at: buffer.presentationTimeStamp, startTime: start) {
+                emitted.append($0)
+                return true
+            }
+        }
+
+        let samples = extractFloats(from: emitted)
+        #expect(samples.count == 1_920 * 2)
+        // [0..480) = 0.25, [480..960) = 0 (dropped buffer), [960..1440) = 0.5, [1440..1920) = 0.75.
+        #expect(abs(samples[0] - 0.25) < 0.001)
+        #expect(samples[480 * 2] == 0)
+        #expect(samples[959 * 2] == 0)
+        #expect(abs(samples[960 * 2] - 0.5) < 0.001)
+        #expect(abs(samples[1_440 * 2] - 0.75) < 0.001)
+    }
+
+    @Test func audioStraddlingEndTimeIsTruncatedSampleAccurately() throws {
+        let mixer = try AudioMixer(sources: [.system], maximumDuration: CMTime(value: 10, timescale: 1))
+        let start = TestVideos.time(0)
+        let stopAt = TestVideos.time(0.01)
+        var emitted: [CMSampleBuffer] = []
+
+        // 20 ms buffer: first 10 ms at 0.25, second 10 ms (past stopAt) at 0.9.
+        let straddling = try TestVideos.audioBuffer(frames: 960, at: 0) { frame, _ in
+            frame < 480 ? 0.25 : 0.9
+        }
+        try mixer.append(straddling, from: .system, at: straddling.presentationTimeStamp, startTime: start, upTo: stopAt) {
+            emitted.append($0)
+            return true
+        }
+        try mixer.flush(upTo: stopAt, startTime: start) { emitted.append($0); return true }
+
+        let samples = extractFloats(from: emitted)
+        #expect(samples.count == 480 * 2)
+        #expect(samples.allSatisfy { abs($0 - 0.25) < 0.001 })
+    }
+
+    @Test func disjointBuffersUnderBackpressureDoNotAllocateSilenceAndRespectBufferLimit() throws {
+        let mixer = try AudioMixer(
+            sources: [.system],
+            maximumDuration: CMTime(value: 300, timescale: 1),
+            maximumBufferedFrames: 1_440
+        )
+        let start = TestVideos.time(0)
+
+        // Two buffers 285 seconds apart while the encoder rejects every write.
+        let early = try TestVideos.audioBuffer(frames: 960, at: 0) { _, _ in 0.2 }
+        let late = try TestVideos.audioBuffer(frames: 960, at: 285) { _, _ in 0.8 }
+        try mixer.append(early, from: .system, at: early.presentationTimeStamp, startTime: start) { _ in false }
+        #expect(mixer.bufferedFrames == 960)
+        try mixer.append(late, from: .system, at: late.presentationTimeStamp, startTime: start) { _ in false }
+        // Silence between 0 s and 285 s is never materialized; queued PCM stays capped at 1,440 frames.
+        #expect(mixer.bufferedFrames == 1_440)
     }
 
     @Test func audioPastMaximumDurationIsTruncated() throws {
