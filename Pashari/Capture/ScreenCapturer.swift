@@ -40,7 +40,7 @@ enum ScreenCapturer {
             .filter { window in
                 // Layer 0 holds ordinary app windows. The menu bar, the Dock,
                 // desktop icons and so on live on other layers, and so do
-                // Pashari's thumbnails and selection overlays.
+                // Pashari's thumbnails, pins and selection overlays.
                 window.windowLayer == 0
                     && window.isOnScreen
                     && window.owningApplication != nil
@@ -56,6 +56,10 @@ enum ScreenCapturer {
     /// transparent.
     static func captureWindow(_ window: SCWindow) async throws -> Screenshot {
         let filter = SCContentFilter(desktopIndependentWindow: window)
+        let screenFrame = ScreenGeometry.flipped(
+            window.frame,
+            primaryScreenHeight: ScreenGeometry.primaryScreenHeight
+        )
 
         let scale = CGFloat(filter.pointPixelScale)
         let configuration = SCStreamConfiguration()
@@ -69,7 +73,7 @@ enum ScreenCapturer {
             contentFilter: filter,
             configuration: configuration
         )
-        return Screenshot(image: image, scale: scale, capturedAt: Date())
+        return Screenshot(image: image, scale: scale, capturedAt: Date(), screenFrame: screenFrame)
     }
 
     /// Windows smaller than this are helpers (badges, invisible trackers),
@@ -109,6 +113,7 @@ enum ScreenCapturer {
         _ screen: NSScreen,
         content: SCShareableContent
     ) async throws -> Screenshot {
+        let screenFrame = screen.frame
         guard
             let displayID = screen.displayID,
             let display = content.displays.first(where: { $0.displayID == displayID })
@@ -132,13 +137,13 @@ enum ScreenCapturer {
             contentFilter: filter,
             configuration: configuration
         )
-        return Screenshot(image: image, scale: scale, capturedAt: Date())
+        return Screenshot(image: image, scale: scale, capturedAt: Date(), screenFrame: screenFrame)
     }
 
     /// Pashari's own windows that must not appear in a screenshot: the
-    /// floating thumbnails, the selection overlays, and the menu, which is
-    /// still fading out when the capture starts. They are told apart by
-    /// their window levels.
+    /// floating thumbnails and pins (which share a window level), the
+    /// selection overlays, and the menu, which is still fading out when
+    /// the capture starts. They are told apart by their window levels.
     ///
     /// Everything else of Pashari's stays in the picture like any other
     /// app's windows: Settings, the editor, alerts, the folder picker, and

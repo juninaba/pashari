@@ -152,6 +152,11 @@ struct ScrollRecorderTests {
 
         let screenshot = try #require(try await capture.value)
         #expect(screenshot.image.height == Int(page.area.height * screenshot.scale))
+        let area = page.area.snappedToPixels(scale: 1)
+        let frame = try #require(screenshot.screenFrame)
+        #expect(frame.minX == screen.frame.minX + area.minX)
+        #expect(frame.maxY == screen.frame.maxY - area.minY)
+        #expect(frame.size == screenshot.pointSize)
     }
 
     /// Waits until the bar of a scroll capture shows `text`.

@@ -508,6 +508,69 @@ struct EditorWindowTests {
         #expect(results.count == 1)
     }
 
+    @Test func pinningHandsOffTheEditedPixelsAndClosesTheEditor() async throws {
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 200, height: 120),
+            scale: 2,
+            capturedAt: Date(),
+            screenFrame: CGRect(x: 100, y: 200, width: 100, height: 60)
+        )
+        let controller = AnnotationEditorController()
+        var pinned: [Screenshot] = []
+        var closeResults: [Screenshot?] = []
+        controller.onPin = { pinned.append($0) }
+        controller.onFinish = { _ in Issue.record("Pinning should not open a thumbnail") }
+        let editor = AnnotationEditorWindowController(screenshot: screenshot)
+        controller.keep(editor, onClose: { closeResults.append($0) })
+        editor.model.crop(to: CGRect(x: 10, y: 10, width: 40, height: 30))
+        editor.model.add(.line(from: CGPoint(x: 20, y: 20), to: CGPoint(x: 40, y: 20)))
+        editor.window.orderFrontRegardless()
+        defer { editor.window.orderOut(nil) }
+
+        let task = try #require(editor.pinToScreen())
+        #expect(editor.pinToScreen() == nil)
+        await task.value
+
+        let result = try #require(pinned.first)
+        #expect(pinned.count == 1)
+        #expect(result.screenFrame == CGRect(x: 110, y: 220, width: 40, height: 30))
+        #expect(result.pointSize == CGSize(width: 40, height: 30))
+        #expect(result.capturedAt == screenshot.capturedAt)
+        #expect(TestImages.pixel(of: result.image, x: 40, y: 20) != .blue)
+        #expect(closeResults.count == 1)
+        #expect(closeResults[0] == nil)
+        #expect(!editor.window.isVisible)
+    }
+
+    @Test(arguments: [true, false])
+    func aFailedPinKeepsTheEditsInTheEditor(renderFails: Bool) async {
+        let model = EditorModel(screenshot: makeScreenshot()) { _ in nil }
+        if renderFails {
+            model.add(.blur(CGRect(x: 5, y: 5, width: 20, height: 20)))
+        } else {
+            model.add(.rectangle(CGRect(x: 5, y: 5, width: 20, height: 20)))
+        }
+        let document = model.document
+        var errorCount = 0
+        let editor = AnnotationEditorWindowController(model: model) { _, _ in errorCount += 1 }
+        editor.onPin = { _ in
+            #expect(!renderFails)
+            throw CaptureError.cannotEncodeImage
+        }
+        editor.onClose = { _ in Issue.record("Pinning failed and should leave the editor open") }
+        editor.window.orderFrontRegardless()
+        defer { editor.window.orderOut(nil) }
+
+        let task = editor.pinToScreen()
+        #expect((task == nil) == renderFails)
+        await task?.value
+
+        #expect(errorCount == 1)
+        #expect(editor.window.isVisible)
+        #expect(model.document == document)
+        #expect(!model.isExporting)
+    }
+
     @Test(arguments: [false, true])
     func aFailedCloseKeepsTheEditsForRetryOrDiscard(discard: Bool) throws {
         let screenshot = Screenshot(

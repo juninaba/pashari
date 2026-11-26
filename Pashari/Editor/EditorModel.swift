@@ -26,7 +26,7 @@ final class EditorModel {
         didSet { onStyleChange?() }
     }
 
-    /// True while Copy or Save turns the picture into a PNG. The picture
+    /// True while Pin, Copy or Save turns the picture into a PNG. The picture
     /// cannot change meanwhile: a change would be missing from the result,
     /// and lost when the window closes after it.
     var isExporting = false
@@ -168,7 +168,7 @@ final class EditorModel {
         return cachedBlurredImage
     }
 
-    /// The screenshot with everything baked in, ready to copy or save.
+    /// The screenshot with everything baked in, ready to pin, copy or save.
     /// Returns the untouched original when nothing was changed.
     func flattened() throws -> Screenshot {
         guard !document.isEmpty else { return screenshot }

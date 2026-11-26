@@ -5,6 +5,9 @@ final class ThumbnailController {
     /// already gone by then; the editor takes over.
     var onAnnotate: ((Screenshot) -> Void)?
 
+    /// Hands the working capture and its display to the pin controller.
+    var onPin: ((PendingCapture, CGDirectDisplayID) -> Void)?
+
     /// Called when the user asks to play a recording. The thumbnail is
     /// already gone by then, but not its file: the player takes it over.
     var onPlay: ((Recording) -> Void)?
@@ -84,7 +87,7 @@ final class ThumbnailController {
         show(PendingCapture(recording: recording), onDisplay: displayID)
     }
 
-    private func show(_ capture: PendingCapture, onDisplay displayID: CGDirectDisplayID) {
+    func show(_ capture: PendingCapture, onDisplay displayID: CGDirectDisplayID) {
         entries.insert(Entry(capture: capture, displayID: displayID), at: 0)
         layout()
     }
@@ -112,6 +115,9 @@ final class ThumbnailController {
         card.onCopy = { [weak self] in self?.copy(capture) }
         card.onSave = { [weak self] in self?.save(capture) }
         card.onAnnotate = { [weak self] in self?.annotate(capture) }
+        if capture.kind == .screenshot {
+            card.onPin = { [weak self] in self?.pin(capture) }
+        }
         card.onPlay = { [weak self] in self?.play(capture) }
         card.onClose = { [weak self] in self?.close(capture) }
         card.previewView.fileURL = { [weak self] in
@@ -119,7 +125,7 @@ final class ThumbnailController {
             return capture.readyFileURL
         }
         card.previewView.onDrop = { [weak self] in
-            if let url = capture.readyFileURL { self?.storage.recordDrop(of: url) }
+            if let url = capture.readyFileURL { self?.storage.recordDelivery(of: url) }
             self?.dismiss(capture, keepingFile: true)
         }
         card.setActionsEnabled(!capturesBeingDelivered.contains(ObjectIdentifier(capture)))
@@ -160,7 +166,7 @@ final class ThumbnailController {
             ) { capture in
                 let url = try await capture.fileURL()
                 Clipboard.copy(fileURL: url, to: self.pasteboard)
-                self.storage.recordDrop(of: url)
+                self.storage.recordDelivery(of: url)
             }
         }
     }
@@ -215,6 +221,16 @@ final class ThumbnailController {
         else { return }
         dismiss(capture, keepingFile: true)
         onPlay?(recording)
+    }
+
+    private func pin(_ capture: PendingCapture) {
+        guard
+            let onPin,
+            !capturesBeingDelivered.contains(ObjectIdentifier(capture)),
+            let entry = entries.first(where: { $0.capture === capture })
+        else { return }
+        dismiss(capture, keepingFile: true)
+        onPin(capture, entry.displayID)
     }
 
     private func annotate(_ capture: PendingCapture) {

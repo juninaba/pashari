@@ -1,0 +1,125 @@
+import AppKit
+import Testing
+
+@testable import Pashari
+
+struct PinnedScreenshotLayoutTests {
+    private let screen = CGRect(x: -1440, y: 50, width: 1440, height: 900)
+
+    @Test func pictureOverlaysCaptureAtItsActualPointSize() {
+        let capture = CGRect(x: -1150, y: 300, width: 400, height: 200)
+        let placement = PinnedScreenshotLayout.initialPlacement(
+            imageSize: capture.size, captureFrame: capture, visibleFrame: screen
+        )
+
+        #expect(placement.imageFrame == capture)
+        #expect(screen.contains(placement.frame))
+    }
+
+    @Test func paperAndToolbarStayVisibleWhenCaptureIsNearAnEdge() {
+        let capture = CGRect(x: screen.minX, y: screen.minY, width: 120, height: 100)
+        let placement = PinnedScreenshotLayout.initialPlacement(
+            imageSize: capture.size, captureFrame: capture, visibleFrame: screen
+        )
+
+        #expect(placement.frame.origin == screen.origin)
+        #expect(placement.imageFrame.size == capture.size)
+    }
+
+    @Test func tallCaptureFitsOnScreenWithRoomForAllItsActions() {
+        let placement = PinnedScreenshotLayout.initialPlacement(
+            imageSize: CGSize(width: 500, height: 5000), captureFrame: nil, visibleFrame: screen
+        )
+
+        #expect(placement.imageSize.width < 100)
+        #expect(abs(placement.imageSize.height / placement.imageSize.width - 10) < 0.001)
+        #expect(placement.frame.width == PinnedScreenshotLayout.minimumCardWidth)
+        #expect(placement.frame.midX == screen.midX)
+        #expect(placement.frame.midY == screen.midY)
+        #expect(screen.insetBy(dx: -0.001, dy: -0.001).contains(placement.frame))
+    }
+
+    @Test func aSecondPinLeavesAnEdgeOfTheFirstPinVisible() {
+        let capture = CGRect(x: -1150, y: 300, width: 400, height: 200)
+        let first = PinnedScreenshotLayout.initialPlacement(
+            imageSize: capture.size, captureFrame: capture, visibleFrame: screen
+        )
+        let second = PinnedScreenshotLayout.initialPlacement(
+            imageSize: capture.size, captureFrame: capture, visibleFrame: screen, occupiedFrames: [first.frame]
+        )
+
+        #expect(first.frame.intersects(second.frame))
+        #expect(first.frame.origin != second.frame.origin)
+        #expect(screen.contains(second.frame))
+    }
+
+    @Test func zoomKeepsThePointUnderThePointerStill() {
+        let capture = CGRect(x: -1100, y: 350, width: 300, height: 200)
+        let placement = PinnedScreenshotLayout.initialPlacement(
+            imageSize: capture.size, captureFrame: capture, visibleFrame: screen
+        )
+        let anchor = CGPoint(x: capture.minX + 50, y: capture.midY)
+        let zoomed = PinnedScreenshotLayout.zoomed(
+            placement, originalSize: capture.size, by: 1.5, at: anchor, in: screen
+        )
+
+        #expect(zoomed.imageSize == CGSize(width: 450, height: 300))
+        #expect(zoomed.imageFrame.minX == anchor.x - 75)
+        #expect(zoomed.imageFrame.midY == anchor.y)
+    }
+
+    @Test func switchingToASmallerDisplayMovesAndScalesThePinToFit() {
+        let capture = CGRect(x: -1350, y: 100, width: 1100, height: 750)
+        let placement = PinnedScreenshotLayout.initialPlacement(
+            imageSize: capture.size, captureFrame: capture, visibleFrame: screen
+        )
+        let fallback = CGRect(x: 0, y: 80, width: 800, height: 500)
+        let moved = PinnedScreenshotLayout.relocated(placement, in: fallback)
+
+        #expect(fallback.contains(moved.frame))
+        #expect(moved.imageSize.height == 456)
+        #expect(abs(moved.imageSize.width / moved.imageSize.height - 1100.0 / 750) < 0.001)
+    }
+
+    @Test func movingDisplaysKeepsTheZoomWhenThePinFits() {
+        let capture = CGRect(x: -1150, y: 300, width: 400, height: 200)
+        let placement = PinnedScreenshotLayout.initialPlacement(
+            imageSize: capture.size, captureFrame: capture, visibleFrame: screen
+        )
+        let fallback = CGRect(x: 0, y: 50, width: 1000, height: 800)
+        let moved = PinnedScreenshotLayout.relocated(placement, in: fallback)
+
+        #expect(fallback.contains(moved.frame))
+        #expect(moved.imageSize == placement.imageSize)
+    }
+}
+
+@MainActor
+struct PinnedScreenshotPanelTests {
+    @Test func nonActivatingPanelStillExposesItsActionsToAccessibility() throws {
+        let placement = PinnedScreenshotLayout.initialPlacement(
+            imageSize: CGSize(width: 300, height: 190), captureFrame: nil,
+            visibleFrame: CGRect(x: 0, y: 0, width: 900, height: 700)
+        )
+        let panel = PinnedScreenshotPanel(imageSize: placement.imageSize, placement: placement)
+        defer { panel.close() }
+        let content = try #require(panel.contentView)
+        content.layoutSubtreeIfNeeded()
+
+        #expect(panel.styleMask.contains(.nonactivatingPanel))
+        #expect(!panel.canBecomeKey)
+        #expect(!panel.canBecomeMain)
+        #expect(panel.level == ThumbnailPanel.windowLevel)
+        #expect(panel.collectionBehavior.contains([.canJoinAllSpaces, .fullScreenAuxiliary]))
+        let buttons = content.subviews.compactMap { $0 as? NSButton }
+        #expect(buttons.map { $0.accessibilityLabel() } == [
+            String(localized: "Copy"), String(localized: "Save"),
+            String(localized: "Annotate"), String(localized: "Unpin"),
+        ])
+        var didCopy = false
+        panel.onCopy = { didCopy = true }
+        let copy = try #require(buttons.first)
+        _ = copy.accessibilityPerformPress()
+        #expect(didCopy)
+    }
+}

@@ -35,21 +35,31 @@ struct ScreenCapturerTests {
         // trims a few points off the edges of the frame, so compare loosely.
         #expect(abs(screenshot.pointSize.width - window.frame.width) <= 8)
         #expect(abs(screenshot.pointSize.height - window.frame.height) <= 8)
+        let frame = try #require(screenshot.screenFrame)
+        #expect(abs(frame.minX - window.frame.minX) <= 8)
+        #expect(abs(frame.maxY - window.frame.maxY) <= 8)
     }
 
-    @Test func screenshotsKeepPasharisOrdinaryWindowsAndHideFloatingOnes() async throws {
+    @Test func screenshotsKeepPasharisOrdinaryWindowsAndHidePins() async throws {
         let window = try await showWindow(at: CGPoint(x: 80, y: 80), level: .normal)
-        let floating = try await showWindow(at: CGPoint(x: 360, y: 80), level: .floating)
+        let screen = try #require(window.screen)
+        let placement = PinnedScreenshotLayout.initialPlacement(
+            imageSize: CGSize(width: 240, height: 160), captureFrame: nil, visibleFrame: screen.visibleFrame
+        )
+        let pin = PinnedScreenshotPanel(imageSize: placement.imageSize, placement: placement)
+        pin.orderFrontRegardless()
         defer {
             window.orderOut(nil)
-            floating.orderOut(nil)
+            pin.close()
         }
+        try await waitUntilOnScreen(pin)
 
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let hidden = ScreenCapturer.ownWindowsToHide(in: content).map(\.windowID)
 
         #expect(!hidden.contains(CGWindowID(window.windowNumber)))
-        #expect(hidden.contains(CGWindowID(floating.windowNumber)))
+        #expect(hidden.contains(CGWindowID(pin.windowNumber)))
+        #expect(try await !ScreenCapturer.selectableWindows().contains { $0.windowID == CGWindowID(pin.windowNumber) })
     }
 
     @Test func screenshotsAndRecordingsLeaveOutTheScrollCaptureBar() async throws {

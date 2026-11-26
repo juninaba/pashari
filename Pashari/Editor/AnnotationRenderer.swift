@@ -268,6 +268,15 @@ enum AnnotationRenderer {
         draw(document.annotations, over: screenshot, blurredImage: blurredImage, in: context)
 
         guard let image = context.makeImage() else { throw CaptureError.cannotApplyEdits }
-        return Screenshot(image: image, scale: scale, capturedAt: screenshot.capturedAt)
+        let pixelAlignedCrop = CGRect(
+            x: left / scale,
+            y: top / scale,
+            width: CGFloat(pixelWidth) / scale,
+            height: CGFloat(pixelHeight) / scale
+        )
+        let screenFrame = document.cropRect == nil
+            ? screenshot.screenFrame
+            : screenshot.screenFrame(forImageRect: pixelAlignedCrop)
+        return Screenshot(image: image, scale: scale, capturedAt: screenshot.capturedAt, screenFrame: screenFrame)
     }
 }

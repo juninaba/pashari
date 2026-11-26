@@ -6,6 +6,7 @@ struct EditorToolbarView: View {
     @Bindable var model: EditorModel
     let onUndo: () -> Void
     let onRedo: () -> Void
+    let onPin: () -> Void
     let onCopy: () -> Void
     let onSave: () -> Void
 
@@ -34,6 +35,7 @@ struct EditorToolbarView: View {
                 iconButton("arrow.uturn.forward", label: String(localized: "Redo"), action: onRedo)
                     .disabled(!model.canRedo)
             }
+            iconButton("pin", label: String(localized: "Pin to Screen"), action: onPin)
             // `fixedSize` keeps these two at their natural width, so their
             // titles are never shortened to "Co…" in a narrow window.
             Button(String(localized: "Copy"), action: onCopy)

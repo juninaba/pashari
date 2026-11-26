@@ -211,6 +211,26 @@
         }
       }
     },
+    "Drag File" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルをドラッグ"
+          }
+        }
+      }
+    },
+    "Drag to move. Scroll or pinch to resize. Option-scroll to change opacity." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ドラッグで移動、スクロールまたはピンチでサイズを変更、Option キーを押しながらスクロールで不透明度を変更できます。"
+          }
+        }
+      }
+    },
     "Ellipse" : {
       "localizations" : {
         "ja" : {
@@ -411,6 +431,26 @@
         }
       }
     },
+    "Pin to Screen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面にピン留め"
+          }
+        }
+      }
+    },
+    "Pinned Screenshot" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピン留めしたスクリーンショット"
+          }
+        }
+      }
+    },
     "Play" : {
       "localizations" : {
         "ja" : {
@@ -577,16 +617,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "スクリーンショットと録画の保存先"
-          }
-        }
-      }
-    },
-    "Screenshots and recordings in thumbnails, the editor or the player have not been copied or saved, and will be lost." : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サムネイルやエディタ、プレーヤーに残っているスクリーンショットや録画は、まだコピーも保存もしていないため失われます。"
           }
         }
       }
@@ -821,6 +851,16 @@
         }
       }
     },
+    "The screenshot could not be pinned" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スクリーンショットをピン留めできませんでした"
+          }
+        }
+      }
+    },
     "The screenshot could not be read from %@." : {
       "localizations" : {
         "ja" : {
@@ -921,12 +961,32 @@
         }
       }
     },
+    "Unpin" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ピン留めを解除"
+          }
+        }
+      }
+    },
     "Unsaved screenshots or recordings could not be processed" : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "未保存のスクリーンショットや録画を処理できませんでした"
+          }
+        }
+      }
+    },
+    "Unsaved work in thumbnails, pins, editors or players will be lost." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サムネイル、ピン、エディタ、プレーヤーにある未保存の作業が失われます。"
           }
         }
       }

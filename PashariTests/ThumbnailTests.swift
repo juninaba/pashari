@@ -158,6 +158,39 @@ struct ThumbnailLayoutTests {
 
 @MainActor
 struct ThumbnailControllerTests {
+    @Test func pinningTransfersTheCaptureAndItsWorkingFile() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storage = CaptureStorage(rootDirectory: root)
+        let controller = ThumbnailController(storage: storage)
+        let screen = try #require(NSScreen.underMouse ?? NSScreen.main)
+        let displayID = try #require(screen.displayID)
+        let screenshot = makeScreenshot()
+        let capture = PendingCapture(screenshot: screenshot, storage: storage)
+        controller.show(capture, onDisplay: displayID)
+        let card = try #require(controller.cards.first)
+        let pinLabel = String(localized: "Pin to Screen")
+        let pinButton = try #require(card.subviews.flatMap(\.subviews)
+            .compactMap { $0 as? NSButton }
+            .first { $0.accessibilityLabel() == pinLabel })
+        var pinned: PendingCapture?
+        controller.onPin = { result, display in
+            #expect(display == displayID)
+            #expect(!controller.hasPendingCaptures)
+            pinned = result
+        }
+        defer { controller.onPin = nil }
+
+        // A click can arrive before the PNG is ready.
+        pinButton.performClick(nil)
+
+        let result = try #require(pinned)
+        #expect(result === capture)
+        let file = try await result.file()
+        #expect(file.data == (try await ScreenshotWriter.pngData(for: screenshot)))
+        #expect(FileManager.default.fileExists(atPath: file.url.path))
+    }
+
     @Test func closingImmediatelyAfterSaveWaitsForTheCaptureToBeDelivered() async throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -174,11 +207,13 @@ struct ThumbnailControllerTests {
         let card = try #require(controller.cards.first)
         defer { card.onClose?() }
         let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? NSButton }
-        try #require(buttons.count == 4)
+        try #require(buttons.count == 5)
+        controller.onPin = { _, _ in Issue.record("Pin was called during Save") }
 
-        // Both actions run before the preparation or delivery task can finish.
+        // These actions run before the preparation or delivery task can finish.
         card.onSave?()
         card.onClose?()
+        card.onPin?()
         #expect(controller.pendingCount == 1)
         #expect(buttons.allSatisfy { !$0.isEnabled })
         #expect(card.previewView.fileURL?() == nil)
@@ -712,12 +747,21 @@ struct ThumbnailControllerTests {
         #expect(controller.cards.count == 2)
     }
 
-    @Test func eachCardShowsItsButtonIcons() throws {
-        let card = ThumbnailCardView(imageSize: CGSize(width: 400, height: 300))
+    @Test func theSmallestScreenshotCardHasFiveLabeledButtonsWithRoomToClick() {
+        let card = ThumbnailCardView(imageSize: CGSize(width: 10, height: 10))
         let buttons = card.subviews.flatMap(\.subviews).compactMap { $0 as? ThumbnailButton }
 
-        #expect(buttons.count == 4)
+        let labels = [
+            String(localized: "Copy"), String(localized: "Save"), String(localized: "Annotate"),
+            String(localized: "Pin to Screen"), String(localized: "Close"),
+        ]
+        #expect(buttons.map { $0.accessibilityLabel() } == labels)
+        #expect(buttons.map(\.toolTip) == labels)
+        #expect(buttons.first?.frame.minX == 0)
+        #expect(buttons.last?.frame.maxX == card.bounds.width)
         for button in buttons {
+            #expect(button.frame.width >= 28)
+            #expect(button.frame.height >= 28)
             #expect(button.look.superlayer === card.paper)
             #expect(button.look.sublayers?.contains { $0.contents != nil } == true)
         }
@@ -734,14 +778,14 @@ struct ThumbnailControllerTests {
                 .map { ObjectIdentifier($0 as AnyObject) }
         }
         let lightIcons = icons()
-        try #require(lightIcons.count == 4)
+        try #require(lightIcons.count == 5)
         #expect(card.paper.backgroundColor == ThumbnailStyle.Colors.light.paper)
 
         panel.appearance = NSAppearance(named: .darkAqua)
         #expect(card.paper.backgroundColor == ThumbnailStyle.Colors.dark.paper)
         #expect(card.paper.borderColor == ThumbnailStyle.Colors.dark.edge)
         let darkIcons = icons()
-        #expect(darkIcons.count == 4)
+        #expect(darkIcons.count == 5)
         #expect(Set(darkIcons).isDisjoint(with: lightIcons))
 
         panel.appearance = NSAppearance(named: .aqua)
