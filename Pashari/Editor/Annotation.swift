@@ -32,6 +32,8 @@ struct Annotation: Equatable, Identifiable {
     var isBlur: Bool {
         if case .blur = shape { true } else { false }
     }
+
+    var supportsStyle: Bool { !isBlur }
 }
 
 enum AnnotationColor: String, CaseIterable, Identifiable {

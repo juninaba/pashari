@@ -713,6 +713,13 @@ final class CanvasHarness {
         canvas.mouseUp(with: event(.leftMouseUp, at: point))
     }
 
+    func doubleClick(at point: CGPoint) {
+        canvas.mouseDown(with: event(.leftMouseDown, at: point, clickCount: 1))
+        canvas.mouseUp(with: event(.leftMouseUp, at: point, clickCount: 1))
+        canvas.mouseDown(with: event(.leftMouseDown, at: point, clickCount: 2))
+        canvas.mouseUp(with: event(.leftMouseUp, at: point, clickCount: 2))
+    }
+
     func press(keyCode: Int) {
         let event = NSEvent.keyEvent(
             with: .keyDown,
@@ -732,7 +739,8 @@ final class CanvasHarness {
     private func event(
         _ type: NSEvent.EventType,
         at point: CGPoint,
-        modifiers: NSEvent.ModifierFlags = []
+        modifiers: NSEvent.ModifierFlags = [],
+        clickCount: Int = 1
     ) -> NSEvent {
         NSEvent.mouseEvent(
             with: type,
@@ -742,7 +750,7 @@ final class CanvasHarness {
             windowNumber: window.windowNumber,
             context: nil,
             eventNumber: 0,
-            clickCount: 1,
+            clickCount: clickCount,
             pressure: 1
         )!
     }

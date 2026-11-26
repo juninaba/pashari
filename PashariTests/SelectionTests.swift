@@ -141,6 +141,122 @@ struct AnnotationGeometryTests {
         #expect(document.nextCounterNumber == 4)
     }
 
+    @Test func arrowsAndLinesExposeEndpointHandles() {
+        let arrow = make(.arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 80, y: 50)))
+        let line = make(.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 80, y: 50)))
+
+        #expect(arrow.handles().map(\.handle) == [.start, .end])
+        #expect(line.handles().map(\.handle) == [.start, .end])
+        #expect(arrow.handle(at: CGPoint(x: 12, y: 22)) == .start)
+        #expect(arrow.handle(at: CGPoint(x: 78, y: 49)) == .end)
+        #expect(arrow.handle(at: CGPoint(x: 45, y: 35)) == nil)
+    }
+
+    @Test func boxMarksExposeCornerAndSideHandlesBasedOnScreenSize() {
+        let large = make(.rectangle(CGRect(x: 10, y: 10, width: 60, height: 40)))
+        let wideAndThin = make(.blur(CGRect(x: 10, y: 10, width: 60, height: 14)))
+        let small = make(.ellipse(CGRect(x: 10, y: 10, width: 16, height: 14)))
+
+        #expect(Set(large.handles().map(\.handle)) == [
+            .topLeft, .top, .topRight, .right, .bottomRight, .bottom, .bottomLeft, .left,
+        ])
+        // When the short side leaves no room between opposite edge handles, only corners appear.
+        #expect(Set(wideAndThin.handles().map(\.handle)) == [
+            .topLeft, .topRight, .bottomRight, .bottomLeft,
+        ])
+        #expect(Set(small.handles().map(\.handle)) == [
+            .topLeft, .topRight, .bottomRight, .bottomLeft,
+        ])
+        // Zooming in gives the small ellipse enough room on screen for side handles too.
+        #expect(Set(small.handles(magnification: 2).map(\.handle)) == [
+            .topLeft, .top, .topRight, .right, .bottomRight, .bottom, .bottomLeft, .left,
+        ])
+    }
+
+    @Test func handleHitReachAdaptsToZoomMagnification() {
+        let arrow = make(.arrow(from: CGPoint(x: 20, y: 20), to: CGPoint(x: 80, y: 20)))
+
+        // 12 image points away is outside the 1x hit radius (7 pt), but inside at 0.5x (14 image pt).
+        #expect(arrow.handle(at: CGPoint(x: 92, y: 20), magnification: 1) == nil)
+        #expect(arrow.handle(at: CGPoint(x: 92, y: 20), magnification: 0.5) == .end)
+
+        // 5 image points away is inside at 1x, but outside at 4x (1.75 image pt).
+        #expect(arrow.handle(at: CGPoint(x: 85, y: 20), magnification: 1) == .end)
+        #expect(arrow.handle(at: CGPoint(x: 85, y: 20), magnification: 4) == nil)
+
+        // A 40 pt line at 0.1x keeps its outer visible handle reachable (3 screen pt = 30 image pt outside)
+        // while yielding the middle to move drags.
+        let shortLine = make(.line(from: CGPoint(x: 20, y: 20), to: CGPoint(x: 60, y: 20)))
+        #expect(shortLine.handle(at: CGPoint(x: -10, y: 20), magnification: 0.1) == .start)
+        #expect(shortLine.handle(at: CGPoint(x: 90, y: 20), magnification: 0.1) == .end)
+        #expect(shortLine.handle(at: CGPoint(x: 40, y: 20), magnification: 0.1) == nil)
+
+        // A wide, thin blur at 0.1x omits opposite edge handles and keeps its centre free to move.
+        let thinBlur = make(.blur(CGRect(x: 0, y: 0, width: 400, height: 30)))
+        #expect(thinBlur.handle(at: CGPoint(x: 200, y: 15), magnification: 0.1) == nil)
+        #expect(thinBlur.handle(at: CGPoint(x: -30, y: 0), magnification: 0.1) == .topLeft)
+    }
+
+    @Test func nonResizableMarksHaveNoHandles() {
+        let pen = make(.pen([CGPoint(x: 0, y: 0), CGPoint(x: 30, y: 30)]))
+        let text = make(.text("Hello", origin: CGPoint(x: 10, y: 10)))
+        let counter = make(.counter(1, center: CGPoint(x: 20, y: 20)))
+
+        #expect(pen.handles().isEmpty)
+        #expect(text.handles().isEmpty)
+        #expect(counter.handles().isEmpty)
+    }
+
+    @Test func resizingArrowAndLineEndpointsMovesOnlyTheDraggedEnd() {
+        let bounds = CGRect(x: 0, y: 0, width: 100, height: 60)
+        let arrow = make(.arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 60, y: 20)))
+
+        let movedStart = arrow.resized(dragging: .start, to: CGPoint(x: 20, y: 50), within: bounds)
+        #expect(movedStart.shape == .arrow(from: CGPoint(x: 20, y: 50), to: CGPoint(x: 60, y: 20)))
+
+        let movedEnd = arrow.resized(dragging: .end, to: CGPoint(x: 5, y: 40), within: bounds)
+        #expect(movedEnd.shape == .arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 5, y: 40)))
+
+        // Shift snaps the dragged endpoint in 45° steps around the fixed end.
+        let snappedEnd = arrow.resized(dragging: .end, to: CGPoint(x: 80, y: 25), constrained: true, within: bounds)
+        #expect(snappedEnd.shape == .arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 80, y: 20)))
+
+        let snappedStart = arrow.resized(dragging: .start, to: CGPoint(x: 57, y: 50), constrained: true, within: bounds)
+        #expect(snappedStart.shape == .arrow(from: CGPoint(x: 60, y: 50), to: CGPoint(x: 60, y: 20)))
+    }
+
+    @Test func resizingBoxMarksAdjustsEdgesCornersAndMinimumSize() {
+        let bounds = CGRect(x: 0, y: 0, width: 100, height: 60)
+        let rect = make(.rectangle(CGRect(x: 20, y: 10, width: 40, height: 30)))
+
+        #expect(
+            rect.resized(dragging: .right, to: CGPoint(x: 80, y: 25), within: bounds).shape
+                == .rectangle(CGRect(x: 20, y: 10, width: 60, height: 30))
+        )
+        #expect(
+            rect.resized(dragging: .topLeft, to: CGPoint(x: 10, y: 5), within: bounds).shape
+                == .rectangle(CGRect(x: 10, y: 5, width: 50, height: 35))
+        )
+        // Dragging past the opposite edge clamps at the minimum side length.
+        #expect(
+            rect.resized(dragging: .left, to: CGPoint(x: 90, y: 25), within: bounds).shape
+                == .rectangle(CGRect(x: 57, y: 10, width: 3, height: 30))
+        )
+
+        // Shift on a rectangle or ellipse corner constrains to a square/circle inside bounds.
+        let square = rect.resized(dragging: .bottomRight, to: CGPoint(x: 70, y: 25), constrained: true, within: bounds)
+        #expect(square.shape == .rectangle(CGRect(x: 20, y: 10, width: 50, height: 50)))
+
+        let ellipse = make(.ellipse(CGRect(x: 20, y: 10, width: 40, height: 30)))
+        let circle = ellipse.resized(dragging: .topLeft, to: CGPoint(x: 30, y: 20), constrained: true, within: bounds)
+        #expect(circle.shape == .ellipse(CGRect(x: 30, y: 10, width: 30, height: 30)))
+
+        // Blur stays unconstrained even with Shift.
+        let blur = make(.blur(CGRect(x: 20, y: 10, width: 40, height: 30)))
+        let resizedBlur = blur.resized(dragging: .bottomRight, to: CGPoint(x: 75, y: 30), constrained: true, within: bounds)
+        #expect(resizedBlur.shape == .blur(CGRect(x: 20, y: 10, width: 55, height: 20)))
+    }
+
     private func make(_ shape: Annotation.Shape, size: StrokeSize = .medium) -> Annotation {
         Annotation(shape: shape, color: .red, size: size)
     }
@@ -230,6 +346,129 @@ struct EditorSelectionTests {
 
         #expect(model.document.annotations.count == 1)
     }
+
+    @Test func changingColourAndSizeRestylesTheSelectedMarkWithUndoAndRedo() {
+        let model = makeModel()
+        model.color = .red
+        model.size = .small
+        model.add(.arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 80, y: 20)))
+        model.color = .blue
+        model.size = .large
+
+        model.tool = .select
+        #expect(model.displayedColor == .blue)
+        #expect(model.displayedSize == .large)
+        #expect(model.canEditStyle)
+
+        #expect(model.select(at: CGPoint(x: 40, y: 20)))
+        #expect(model.displayedColor == .red)
+        #expect(model.displayedSize == .small)
+        #expect(model.canEditStyle)
+
+        model.chooseColor(.green)
+        model.chooseSize(.large)
+        #expect(model.selectedAnnotation?.color == .green)
+        #expect(model.selectedAnnotation?.size == .large)
+        #expect(model.displayedColor == .green)
+        #expect(model.displayedSize == .large)
+
+        // Picking the same colour again does not add a redundant undo step.
+        model.chooseColor(.green)
+
+        model.undo()
+        #expect(model.selectedAnnotation?.size == .small)
+        #expect(model.displayedSize == .small)
+        #expect(model.selectedAnnotation?.color == .green)
+
+        model.undo()
+        #expect(model.selectedAnnotation?.color == .red)
+        #expect(model.displayedColor == .red)
+
+        model.redo()
+        #expect(model.selectedAnnotation?.color == .green)
+        #expect(model.displayedColor == .green)
+    }
+
+    @Test func styleChangesWorkAcrossAllStyledShapes() {
+        let shapes: [Annotation.Shape] = [
+            .arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 60, y: 20)),
+            .line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 60, y: 20)),
+            .rectangle(CGRect(x: 10, y: 10, width: 40, height: 30)),
+            .ellipse(CGRect(x: 10, y: 10, width: 40, height: 30)),
+            .pen([CGPoint(x: 10, y: 20), CGPoint(x: 60, y: 20)]),
+            .text("Hi", origin: CGPoint(x: 10, y: 10)),
+            .counter(1, center: CGPoint(x: 30, y: 30)),
+        ]
+        let hitPoints: [CGPoint] = [
+            CGPoint(x: 35, y: 20),
+            CGPoint(x: 35, y: 20),
+            CGPoint(x: 10, y: 20),
+            CGPoint(x: 10, y: 25),
+            CGPoint(x: 35, y: 20),
+            CGPoint(x: 15, y: 15),
+            CGPoint(x: 30, y: 30),
+        ]
+
+        for (shape, hitPoint) in zip(shapes, hitPoints) {
+            let model = makeModel()
+            model.color = .red
+            model.size = .small
+            model.add(shape)
+            model.tool = .select
+            #expect(model.select(at: hitPoint))
+
+            model.chooseColor(.yellow)
+            model.chooseSize(.large)
+
+            let updated = model.selectedAnnotation
+            #expect(updated?.color == .yellow)
+            #expect(updated?.size == .large)
+            #expect(updated?.shape == shape)
+        }
+    }
+
+    @Test func selectingABlurDisablesStyleEditingWithoutMutatingIt() {
+        let model = makeModel()
+        model.color = .blue
+        model.size = .large
+        model.add(.blur(CGRect(x: 10, y: 10, width: 40, height: 30)))
+        model.tool = .select
+
+        #expect(model.select(at: CGPoint(x: 30, y: 25)))
+        #expect(!model.canEditStyle)
+        #expect(model.displayedColor == nil)
+        #expect(model.displayedSize == nil)
+
+        let before = model.document
+        model.chooseColor(.green)
+        model.chooseSize(.small)
+
+        #expect(model.document == before)
+        #expect(model.color == .blue)
+        #expect(model.size == .large)
+
+        // Deselecting restores the toolbar's default drawing style.
+        model.deselect()
+        #expect(model.canEditStyle)
+        #expect(model.displayedColor == .blue)
+        #expect(model.displayedSize == .large)
+    }
+
+    @Test func updatingShapeIsOneUndoStepAndPreservesOrder() {
+        let model = makeModel()
+        model.add(.rectangle(CGRect(x: 10, y: 10, width: 30, height: 20)))
+        model.add(.counter(1, center: CGPoint(x: 80, y: 40)))
+        let firstID = model.document.annotations[0].id
+        model.tool = .select
+        model.select(at: CGPoint(x: 10, y: 20))
+
+        model.updateSelectedShape(.rectangle(CGRect(x: 10, y: 10, width: 50, height: 35)))
+
+        #expect(model.document.annotations[0].id == firstID)
+        #expect(model.document.annotations[0].shape == .rectangle(CGRect(x: 10, y: 10, width: 50, height: 35)))
+        model.undo()
+        #expect(model.document.annotations[0].shape == .rectangle(CGRect(x: 10, y: 10, width: 30, height: 20)))
+    }
 }
 
 @MainActor
@@ -294,5 +533,203 @@ struct CanvasSelectionTests {
 
         #expect(harness.model.selectedID == nil)
         #expect(harness.shapes.count == 1)
+    }
+
+    @Test func draggingAnArrowHandleResizesItInOneUndoStep() {
+        let harness = CanvasHarness()
+        harness.model.add(.arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 60, y: 20)))
+        harness.model.tool = .select
+        harness.click(at: CGPoint(x: 35, y: 20))
+
+        harness.stroke(through: [
+            CGPoint(x: 60, y: 20), CGPoint(x: 70, y: 30), CGPoint(x: 80, y: 45),
+        ])
+
+        #expect(harness.shapes == [.arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 80, y: 45))])
+        harness.model.undo()
+        #expect(harness.shapes == [.arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 60, y: 20))])
+    }
+
+    @Test func draggingALineHandleWithShiftSnapsTo45Degrees() {
+        let harness = CanvasHarness()
+        harness.model.add(.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 50, y: 20)))
+        harness.model.tool = .select
+        harness.click(at: CGPoint(x: 30, y: 20))
+
+        harness.drag(from: CGPoint(x: 50, y: 20), to: CGPoint(x: 70, y: 25), modifiers: .shift)
+
+        #expect(harness.shapes == [.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 70, y: 20))])
+    }
+
+    @Test func draggingAnArrowHandleTooCloseToTheOtherEndKeepsTheOriginal() {
+        let harness = CanvasHarness()
+        harness.model.add(.arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 60, y: 20)))
+        harness.model.tool = .select
+        harness.click(at: CGPoint(x: 35, y: 20))
+
+        harness.drag(from: CGPoint(x: 60, y: 20), to: CGPoint(x: 11, y: 20))
+
+        #expect(harness.shapes == [.arrow(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 60, y: 20))])
+    }
+
+    @Test func draggingRectangleEllipseAndBlurHandlesResizesThemInOneStep() {
+        let harness = CanvasHarness()
+        harness.model.add(.rectangle(CGRect(x: 10, y: 10, width: 40, height: 30)))
+        harness.model.tool = .select
+        harness.click(at: CGPoint(x: 10, y: 20))
+
+        // Drag bottom-right corner with Shift -> square.
+        harness.drag(from: CGPoint(x: 50, y: 40), to: CGPoint(x: 60, y: 30), modifiers: .shift)
+        #expect(harness.shapes == [.rectangle(CGRect(x: 10, y: 10, width: 50, height: 50))])
+        harness.model.undo()
+        #expect(harness.shapes == [.rectangle(CGRect(x: 10, y: 10, width: 40, height: 30))])
+
+        // Ellipse corner handle is outside its stroke, yet grabbing it resizes instead of deselecting.
+        let ellipseHarness = CanvasHarness()
+        ellipseHarness.model.add(.ellipse(CGRect(x: 10, y: 10, width: 40, height: 30)))
+        ellipseHarness.model.tool = .select
+        ellipseHarness.click(at: CGPoint(x: 10, y: 25))
+        #expect(ellipseHarness.model.selectedAnnotation != nil)
+        ellipseHarness.drag(from: CGPoint(x: 50, y: 40), to: CGPoint(x: 80, y: 50))
+        #expect(ellipseHarness.shapes == [.ellipse(CGRect(x: 10, y: 10, width: 70, height: 40))])
+
+        // Blur side handle.
+        let blurHarness = CanvasHarness()
+        blurHarness.model.add(.blur(CGRect(x: 10, y: 10, width: 40, height: 30)))
+        blurHarness.model.tool = .select
+        blurHarness.click(at: CGPoint(x: 30, y: 25))
+        blurHarness.drag(from: CGPoint(x: 50, y: 25), to: CGPoint(x: 75, y: 25))
+        #expect(blurHarness.shapes == [.blur(CGRect(x: 10, y: 10, width: 65, height: 30))])
+    }
+
+    @Test func handlesStayGrabbableWhenZoomedOutInAScrollView() throws {
+        let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
+        editor.onClose = nil
+        editor.model.add(.arrow(from: CGPoint(x: 20, y: 20), to: CGPoint(x: 60, y: 20)))
+        editor.model.tool = .select
+        editor.model.select(at: CGPoint(x: 40, y: 20))
+
+        let scrollView = try #require(
+            editor.window.contentView?.subviews.first { $0 is NSScrollView } as? NSScrollView
+        )
+        scrollView.magnification = 0.5
+        editor.window.layoutIfNeeded()
+
+        func mouse(_ type: NSEvent.EventType, at canvasPoint: CGPoint) throws -> NSEvent {
+            try #require(
+                NSEvent.mouseEvent(
+                    with: type,
+                    location: editor.canvas.convert(canvasPoint, to: nil),
+                    modifierFlags: [],
+                    timestamp: 0,
+                    windowNumber: editor.window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                )
+            )
+        }
+
+        // 10 image points past the tip is 5 screen points at 0.5x magnification:
+        // inside the 7-point screen hit radius. Dragging by (+15, +20) shifts the
+        // tip by that exact delta rather than jumping by the off-centre grab offset.
+        editor.canvas.mouseDown(with: try mouse(.leftMouseDown, at: CGPoint(x: 70, y: 20)))
+        editor.canvas.mouseDragged(with: try mouse(.leftMouseDragged, at: CGPoint(x: 85, y: 40)))
+        editor.canvas.mouseUp(with: try mouse(.leftMouseUp, at: CGPoint(x: 85, y: 40)))
+
+        #expect(editor.model.document.annotations.map(\.shape) == [
+            .arrow(from: CGPoint(x: 20, y: 20), to: CGPoint(x: 75, y: 40)),
+        ])
+    }
+
+    @Test func aShortLineCanStillBeMovedFromItsMiddleWhenZoomedOut() throws {
+        let editor = AnnotationEditorWindowController(screenshot: makeScreenshot())
+        editor.onClose = nil
+        editor.model.add(.line(from: CGPoint(x: 20, y: 20), to: CGPoint(x: 60, y: 20)))
+        editor.model.tool = .select
+        editor.model.select(at: CGPoint(x: 40, y: 20))
+
+        let scrollView = try #require(
+            editor.window.contentView?.subviews.first { $0 is NSScrollView } as? NSScrollView
+        )
+        scrollView.magnification = 0.1
+        editor.window.layoutIfNeeded()
+
+        func mouse(_ type: NSEvent.EventType, at canvasPoint: CGPoint) throws -> NSEvent {
+            try #require(
+                NSEvent.mouseEvent(
+                    with: type,
+                    location: editor.canvas.convert(canvasPoint, to: nil),
+                    modifierFlags: [],
+                    timestamp: 0,
+                    windowNumber: editor.window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                )
+            )
+        }
+
+        // At 0.1x, dragging the midpoint moves the whole line rather than grabbing an endpoint.
+        editor.canvas.mouseDown(with: try mouse(.leftMouseDown, at: CGPoint(x: 40, y: 20)))
+        editor.canvas.mouseDragged(with: try mouse(.leftMouseDragged, at: CGPoint(x: 50, y: 35)))
+        editor.canvas.mouseUp(with: try mouse(.leftMouseUp, at: CGPoint(x: 50, y: 35)))
+
+        #expect(editor.model.document.annotations.map(\.shape) == [
+            .line(from: CGPoint(x: 30, y: 35), to: CGPoint(x: 70, y: 35)),
+        ])
+    }
+
+    @Test func releasingOrPressingShiftBeforeMouseUpUpdatesTheCommittedResize() throws {
+        let harness = CanvasHarness()
+        harness.model.add(.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 50, y: 20)))
+        harness.model.tool = .select
+        harness.click(at: CGPoint(x: 30, y: 20))
+
+        func mouse(_ type: NSEvent.EventType, at point: CGPoint, modifiers: NSEvent.ModifierFlags) throws -> NSEvent {
+            try #require(
+                NSEvent.mouseEvent(
+                    with: type,
+                    location: harness.canvas.convert(point, to: nil),
+                    modifierFlags: modifiers,
+                    timestamp: 0,
+                    windowNumber: harness.window.windowNumber,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                )
+            )
+        }
+
+        // Drag with Shift held, then release Shift before mouseUp without moving again.
+        harness.canvas.mouseDown(with: try mouse(.leftMouseDown, at: CGPoint(x: 50, y: 20), modifiers: []))
+        harness.canvas.mouseDragged(with: try mouse(.leftMouseDragged, at: CGPoint(x: 70, y: 26), modifiers: .shift))
+        let releaseShift = try #require(
+            NSEvent.keyEvent(
+                with: .flagsChanged, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: harness.window.windowNumber, context: nil,
+                characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 56
+            )
+        )
+        harness.canvas.flagsChanged(with: releaseShift)
+        harness.canvas.mouseUp(with: try mouse(.leftMouseUp, at: CGPoint(x: 70, y: 26), modifiers: []))
+        #expect(harness.shapes == [.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 70, y: 26))])
+
+        // Drag without Shift, then press Shift before mouseUp without moving again.
+        harness.canvas.mouseDown(with: try mouse(.leftMouseDown, at: CGPoint(x: 70, y: 26), modifiers: []))
+        harness.canvas.mouseDragged(with: try mouse(.leftMouseDragged, at: CGPoint(x: 80, y: 25), modifiers: []))
+        let pressShift = try #require(
+            NSEvent.keyEvent(
+                with: .flagsChanged, location: .zero, modifierFlags: .shift, timestamp: 0,
+                windowNumber: harness.window.windowNumber, context: nil,
+                characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 56
+            )
+        )
+        harness.canvas.flagsChanged(with: pressShift)
+        harness.canvas.mouseUp(with: try mouse(.leftMouseUp, at: CGPoint(x: 80, y: 25), modifiers: .shift))
+        #expect(harness.shapes == [.line(from: CGPoint(x: 10, y: 20), to: CGPoint(x: 80, y: 20))])
     }
 }

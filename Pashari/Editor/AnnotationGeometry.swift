@@ -1,8 +1,22 @@
 import CoreGraphics
 
 extension Annotation {
+    enum Handle: Equatable, Hashable {
+        case start, end
+        case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
+    }
+
     /// How far outside a mark a click may land and still count as hitting it.
     static let hitSlop: CGFloat = 4
+    /// Visual diameter of a resize handle on screen, in points.
+    static let handleDiameter: CGFloat = 9
+    /// Hit radius around a resize handle's centre on screen, in points.
+    static let handleHitRadius: CGFloat = 7
+    /// Minimum edge length on screen before a midpoint handle is shown, so
+    /// corners stay easy to grab on narrow or tiny boxes.
+    static let minimumEdgeForSideHandle: CGFloat = 28
+    /// Smallest width or height a box may be resized down to, in image points.
+    static let minimumResizeSide: CGFloat = 3
 
     /// The smallest rectangle that contains the whole mark, including the
     /// thickness of its stroke.
@@ -59,6 +73,134 @@ extension Annotation {
         }
     }
 
+    /// Resize handles for this mark, in image points. Side handles are omitted
+    /// when either side is too short on screen to leave room between corners
+    /// and across opposite edges.
+    func handles(magnification: CGFloat = 1) -> [(handle: Handle, point: CGPoint)] {
+        let scale = max(magnification, 0.01)
+        switch shape {
+        case .arrow(let from, let to), .line(let from, let to):
+            return [(.start, from), (.end, to)]
+        case .rectangle(let rect), .ellipse(let rect), .blur(let rect):
+            var result: [(Handle, CGPoint)] = [
+                (.topLeft, CGPoint(x: rect.minX, y: rect.minY)),
+                (.topRight, CGPoint(x: rect.maxX, y: rect.minY)),
+                (.bottomRight, CGPoint(x: rect.maxX, y: rect.maxY)),
+                (.bottomLeft, CGPoint(x: rect.minX, y: rect.maxY)),
+            ]
+            if min(rect.width, rect.height) * scale >= Self.minimumEdgeForSideHandle {
+                result.append((.top, CGPoint(x: rect.midX, y: rect.minY)))
+                result.append((.bottom, CGPoint(x: rect.midX, y: rect.maxY)))
+                result.append((.left, CGPoint(x: rect.minX, y: rect.midY)))
+                result.append((.right, CGPoint(x: rect.maxX, y: rect.midY)))
+            }
+            return result
+        case .pen, .text, .counter:
+            return []
+        }
+    }
+
+    /// The nearest resize handle within screen-constant reach of `point`.
+    /// Keeps the full visible handle reachable from outside while leaving the
+    /// middle of a short or zoomed-out mark free to drag and move.
+    func handle(at point: CGPoint, magnification: CGFloat = 1) -> Handle? {
+        let scale = max(magnification, 0.01)
+        let radius = Self.handleHitRadius / scale
+
+        switch shape {
+        case .arrow(let from, let to), .line(let from, let to):
+            let dx = to.x - from.x
+            let dy = to.y - from.y
+            let lengthSquared = dx * dx + dy * dy
+            if lengthSquared > 0, isHit(at: point) {
+                let t = ((point.x - from.x) * dx + (point.y - from.y) * dy) / lengthSquared
+                if t > 1.0 / 3.0 && t < 2.0 / 3.0 {
+                    return nil
+                }
+            }
+        case .rectangle(let rect), .ellipse(let rect), .blur(let rect):
+            if min(rect.width, rect.height) * scale < Self.minimumEdgeForSideHandle, isHit(at: point) {
+                let inMiddle = rect.width >= rect.height
+                    ? point.x > rect.minX + rect.width / 3 && point.x < rect.maxX - rect.width / 3
+                    : point.y > rect.minY + rect.height / 3 && point.y < rect.maxY - rect.height / 3
+                if inMiddle {
+                    return nil
+                }
+            }
+        case .pen, .text, .counter:
+            return nil
+        }
+
+        var best: (handle: Handle, distance: CGFloat)?
+        for (handle, handlePoint) in handles(magnification: scale) {
+            let distance = hypot(point.x - handlePoint.x, point.y - handlePoint.y)
+            if distance <= radius, best == nil || distance < best!.distance {
+                best = (handle, distance)
+            }
+        }
+        return best?.handle
+    }
+
+    /// A copy with `handle` dragged to `point`, staying inside `bounds`.
+    /// When `constrained` is true, arrows and lines snap in 45° steps, and
+    /// dragging a corner of a rectangle or ellipse makes it a square or circle.
+    func resized(
+        dragging handle: Handle,
+        to point: CGPoint,
+        constrained: Bool = false,
+        within bounds: CGRect
+    ) -> Annotation {
+        var copy = self
+        let clamped = Self.clamped(point, to: bounds)
+        switch shape {
+        case .arrow(let from, let to):
+            switch handle {
+            case .start:
+                let moved = constrained
+                    ? EditorTool.arrow.constrainedEnd(from: to, to: point, within: bounds)
+                    : clamped
+                copy.shape = .arrow(from: moved, to: to)
+            case .end:
+                let moved = constrained
+                    ? EditorTool.arrow.constrainedEnd(from: from, to: point, within: bounds)
+                    : clamped
+                copy.shape = .arrow(from: from, to: moved)
+            default:
+                break
+            }
+        case .line(let from, let to):
+            switch handle {
+            case .start:
+                let moved = constrained
+                    ? EditorTool.line.constrainedEnd(from: to, to: point, within: bounds)
+                    : clamped
+                copy.shape = .line(from: moved, to: to)
+            case .end:
+                let moved = constrained
+                    ? EditorTool.line.constrainedEnd(from: from, to: point, within: bounds)
+                    : clamped
+                copy.shape = .line(from: from, to: moved)
+            default:
+                break
+            }
+        case .rectangle(let rect):
+            copy.shape = .rectangle(
+                Self.resizedRect(rect, dragging: handle, to: clamped, square: constrained, within: bounds)
+            )
+        case .ellipse(let rect):
+            copy.shape = .ellipse(
+                Self.resizedRect(rect, dragging: handle, to: clamped, square: constrained, within: bounds)
+            )
+        case .blur(let rect):
+            copy.shape = .blur(
+                Self.resizedRect(rect, dragging: handle, to: clamped, square: false, within: bounds)
+            )
+        case .pen, .text, .counter:
+            break
+        }
+        return copy
+    }
+
     func translated(by offset: CGSize) -> Annotation {
         func moved(_ point: CGPoint) -> CGPoint {
             CGPoint(x: point.x + offset.width, y: point.y + offset.height)
@@ -82,6 +224,61 @@ extension Annotation {
     }
 
     // MARK: - Helpers
+
+    private static func clamped(_ point: CGPoint, to bounds: CGRect) -> CGPoint {
+        CGPoint(
+            x: min(max(point.x, bounds.minX), bounds.maxX),
+            y: min(max(point.y, bounds.minY), bounds.maxY)
+        )
+    }
+
+    private static func resizedRect(
+        _ rect: CGRect,
+        dragging handle: Handle,
+        to point: CGPoint,
+        square: Bool,
+        within bounds: CGRect
+    ) -> CGRect {
+        let minSide = minimumResizeSide
+        if square, let (anchor, sx, sy) = cornerAnchor(for: handle, in: rect) {
+            let dx = (point.x - anchor.x) * sx
+            let dy = (point.y - anchor.y) * sy
+            let roomX = sx > 0 ? bounds.maxX - anchor.x : anchor.x - bounds.minX
+            let roomY = sy > 0 ? bounds.maxY - anchor.y : anchor.y - bounds.minY
+            let side = max(min(max(dx, dy), roomX, roomY), minSide)
+            let corner = CGPoint(x: anchor.x + sx * side, y: anchor.y + sy * side)
+            return CGRect(corner: anchor, oppositeCorner: corner)
+        }
+
+        var minX = rect.minX, maxX = rect.maxX, minY = rect.minY, maxY = rect.maxY
+        switch handle {
+        case .left, .topLeft, .bottomLeft:
+            minX = min(point.x, maxX - minSide)
+        case .right, .topRight, .bottomRight:
+            maxX = max(point.x, minX + minSide)
+        case .top, .bottom, .start, .end:
+            break
+        }
+        switch handle {
+        case .top, .topLeft, .topRight:
+            minY = min(point.y, maxY - minSide)
+        case .bottom, .bottomLeft, .bottomRight:
+            maxY = max(point.y, minY + minSide)
+        case .left, .right, .start, .end:
+            break
+        }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    private static func cornerAnchor(for handle: Handle, in rect: CGRect) -> (CGPoint, CGFloat, CGFloat)? {
+        switch handle {
+        case .topLeft: (CGPoint(x: rect.maxX, y: rect.maxY), -1, -1)
+        case .topRight: (CGPoint(x: rect.minX, y: rect.maxY), 1, -1)
+        case .bottomRight: (CGPoint(x: rect.minX, y: rect.minY), 1, 1)
+        case .bottomLeft: (CGPoint(x: rect.maxX, y: rect.minY), -1, 1)
+        default: nil
+        }
+    }
 
     static func boundingBox(of points: [CGPoint]) -> CGRect {
         guard let first = points.first else { return .zero }

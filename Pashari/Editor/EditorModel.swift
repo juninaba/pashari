@@ -20,10 +20,20 @@ final class EditorModel {
         }
     }
     var color: AnnotationColor = .red {
-        didSet { onStyleChange?() }
+        didSet {
+            if editingText != nil, editingText?.color != color {
+                editingText?.color = color
+            }
+            onStyleChange?()
+        }
     }
     var size: StrokeSize = .medium {
-        didSet { onStyleChange?() }
+        didSet {
+            if editingText != nil, editingText?.size != size {
+                editingText?.size = size
+            }
+            onStyleChange?()
+        }
     }
 
     /// True while Copy or Save turns the picture into a PNG. The picture
@@ -36,6 +46,43 @@ final class EditorModel {
     /// The mark picked with the select tool. Not part of the undo history:
     /// selecting something is not a change to the picture.
     private(set) var selectedID: UUID?
+
+    private struct TextEditingState: Equatable {
+        let id: UUID
+        var color: AnnotationColor
+        var size: StrokeSize
+    }
+
+    /// An existing text mark currently open for inline re-editing, with its
+    /// uncommitted style so toolbar changes take effect live and commit in one
+    /// undo step together with the text.
+    private var editingText: TextEditingState?
+
+    var editingTextID: UUID? { editingText?.id }
+
+    /// The colour and size shown as active in the toolbar: the mark being
+    /// edited or selected (nil when it has no colour or size, such as a blur),
+    /// or the default style for new marks.
+    var displayedColor: AnnotationColor? {
+        if let editingText { return editingText.color }
+        if let selected = selectedAnnotation {
+            return selected.supportsStyle ? selected.color : nil
+        }
+        return color
+    }
+
+    var displayedSize: StrokeSize? {
+        if let editingText { return editingText.size }
+        if let selected = selectedAnnotation {
+            return selected.supportsStyle ? selected.size : nil
+        }
+        return size
+    }
+
+    var canEditStyle: Bool {
+        if editingText != nil { return true }
+        return selectedAnnotation?.supportsStyle ?? true
+    }
 
     @ObservationIgnored var onDocumentChange: (() -> Void)?
     @ObservationIgnored var onToolChange: (() -> Void)?
@@ -117,15 +164,50 @@ final class EditorModel {
         setSelection(nil)
     }
 
+    /// Applies a colour picked from the toolbar: restyles the selected mark
+    /// (when it has a colour) or the text being edited, and becomes the
+    /// default for new marks.
+    func chooseColor(_ newColor: AnnotationColor) {
+        guard !isExporting else { return }
+        if editingText != nil {
+            editingText?.color = newColor
+            color = newColor
+            return
+        }
+        if let selected = selectedAnnotation {
+            guard selected.supportsStyle else { return }
+            updateSelected { $0.color = newColor }
+        }
+        color = newColor
+    }
+
+    /// Applies a size picked from the toolbar: restyles the selected mark
+    /// (when it has a size) or the text being edited, and becomes the default
+    /// for new marks.
+    func chooseSize(_ newSize: StrokeSize) {
+        guard !isExporting else { return }
+        if editingText != nil {
+            editingText?.size = newSize
+            size = newSize
+            return
+        }
+        if let selected = selectedAnnotation {
+            guard selected.supportsStyle else { return }
+            updateSelected { $0.size = newSize }
+        }
+        size = newSize
+    }
+
     /// Moves the selected mark. One call is one undo step.
     func moveSelected(by offset: CGSize) {
         guard offset != .zero else { return }
-        var document = history.current
-        guard let index = document.annotations.firstIndex(where: { $0.id == selectedID }) else {
-            return
-        }
-        document.annotations[index] = document.annotations[index].translated(by: offset)
-        apply(document)
+        updateSelected { $0 = $0.translated(by: offset) }
+    }
+
+    /// Replaces the selected mark's shape (for example after a handle drag).
+    /// One call is one undo step.
+    func updateSelectedShape(_ shape: Annotation.Shape) {
+        updateSelected { $0.shape = shape }
     }
 
     func deleteSelected() {
@@ -133,6 +215,60 @@ final class EditorModel {
         var document = history.current
         document.annotations.removeAll { $0.id == selectedID }
         selectedID = nil
+        apply(document)
+    }
+
+    func beginEditingText(id: UUID) {
+        guard !isExporting,
+              let annotation = document.annotations.first(where: { $0.id == id }),
+              case .text = annotation.shape
+        else {
+            return
+        }
+        selectedID = id
+        editingText = TextEditingState(id: id, color: annotation.color, size: annotation.size)
+        onDocumentChange?()
+    }
+
+    /// Commits an inline edit to an existing text mark. Empty text removes
+    /// the mark. One call is at most one undo step.
+    func finishEditingText(id: UUID, text: String) {
+        let style = editingText?.id == id ? editingText : nil
+        editingText = nil
+
+        var document = history.current
+        guard !isExporting,
+              let index = document.annotations.firstIndex(where: { $0.id == id })
+        else {
+            onDocumentChange?()
+            return
+        }
+
+        if text.isEmpty {
+            document.annotations.remove(at: index)
+            if selectedID == id {
+                selectedID = nil
+            }
+            apply(document)
+        } else if case .text(_, let origin) = document.annotations[index].shape {
+            document.annotations[index].shape = .text(text, origin: origin)
+            if let style {
+                document.annotations[index].color = style.color
+                document.annotations[index].size = style.size
+            }
+            apply(document)
+        } else {
+            onDocumentChange?()
+        }
+    }
+
+    private func updateSelected(_ mutate: (inout Annotation) -> Void) {
+        guard let selectedID else { return }
+        var document = history.current
+        guard let index = document.annotations.firstIndex(where: { $0.id == selectedID }) else {
+            return
+        }
+        mutate(&document.annotations[index])
         apply(document)
     }
 
@@ -146,6 +282,9 @@ final class EditorModel {
     private func dropStaleSelection() {
         if selectedAnnotation == nil {
             selectedID = nil
+        }
+        if let id = editingText?.id, !document.annotations.contains(where: { $0.id == id }) {
+            editingText = nil
         }
     }
 
