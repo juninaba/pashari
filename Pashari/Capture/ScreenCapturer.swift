@@ -121,10 +121,7 @@ enum ScreenCapturer {
             throw CaptureError.displayNotFound
         }
 
-        let filter = SCContentFilter(
-            display: display,
-            excludingWindows: ownWindowsToHide(in: content)
-        )
+        let filter = displayFilter(of: display, in: content)
 
         let scale = CGFloat(filter.pointPixelScale)
         let configuration = SCStreamConfiguration()
@@ -188,20 +185,20 @@ enum ScreenCapturer {
         else {
             throw CaptureError.displayNotFound
         }
-        return recordingFilter(of: display, in: content)
+        return displayFilter(of: display, in: content)
     }
 
-    /// What to record of `display` so that the recording, like a
-    /// screenshot, leaves out the windows of Pashari's that
+    /// What to capture of `display` so that screenshots and recordings
+    /// leave out the windows of Pashari's that
     /// `ownWindowsToHide` picks, and also any that Pashari puts on screen
-    /// later: those are not in `content` yet. A window just put on screen
-    /// shows up in the list only a moment later.
+    /// later, such as a pin that was still being prepared when the window
+    /// list was taken. A new window only appears in that list a moment later.
     ///
     /// So it leaves out all of Pashari, except for the windows a
     /// screenshot would show. Only if Pashari itself is not listed, which
     /// takes a window of its own on screen, are the windows to hide left
     /// out one by one.
-    static func recordingFilter(of display: SCDisplay, in content: SCShareableContent) -> SCContentFilter {
+    static func displayFilter(of display: SCDisplay, in content: SCShareableContent) -> SCContentFilter {
         let ownProcessID = ProcessInfo.processInfo.processIdentifier
         let hidden = ownWindowsToHide(in: content)
         guard let pashari = content.applications.first(where: { $0.processID == ownProcessID }) else {

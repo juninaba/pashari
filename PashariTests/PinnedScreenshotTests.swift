@@ -161,6 +161,30 @@ struct PinnedScreenshotTests {
         #expect(panel.imageFrame.size == resized)
         #expect(!panel.isKeyWindow)
         #expect(NSWorkspace.shared.frontmostApplication?.processIdentifier == frontmostApp)
+
+        let pinnedFrame = panel.imageFrame
+        panel.onUnpin?()
+        #expect(capture.screenFrame == pinnedFrame)
+    }
+
+    @Test func aScrollCaptureHidesOverlappingPinsUntilItEnds() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let first = fixture.makeCapture()
+        let second = fixture.makeCapture()
+        _ = try await first.fileURL()
+        _ = try await second.fileURL()
+        let existing = try fixture.show(first)
+
+        fixture.pins.showPins(avoiding: existing.frame)
+        #expect(!existing.isVisible)
+        let addedDuringCapture = try fixture.show(second)
+        #expect(!addedDuringCapture.isVisible)
+        #expect(fixture.pins.hasPendingCaptures)
+
+        fixture.pins.showPins(avoiding: nil)
+        #expect(existing.isVisible && addedDuringCapture.isVisible)
+        #expect(existing.frame.origin != addedDuringCapture.frame.origin)
     }
 
     @Test func anInterruptedPinCanBeRecoveredAsAThumbnail() async throws {

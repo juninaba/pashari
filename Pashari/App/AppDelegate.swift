@@ -63,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         playerController.onFinish = { [thumbnailController] recording in
             thumbnailController.show(recording)
         }
+        captureCoordinator.pinController = pinController
 
         statusItemController = StatusItemController(
             captureCoordinator: captureCoordinator,

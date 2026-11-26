@@ -9,7 +9,7 @@ struct Screenshot {
 
     let capturedAt: Date
 
-    /// Where the screenshot was taken, in AppKit screen coordinates.
+    /// Where the screenshot was taken or last pinned, in AppKit screen coordinates.
     let screenFrame: CGRect?
 
     init(image: CGImage, scale: CGFloat, capturedAt: Date, screenFrame: CGRect? = nil) {
@@ -26,11 +26,13 @@ struct Screenshot {
     /// Projects a rectangle from image points (top-left origin) onto the screen.
     func screenFrame(forImageRect rect: CGRect) -> CGRect? {
         screenFrame.map { frame in
-            CGRect(
-                x: frame.minX + rect.minX,
-                y: frame.maxY - rect.maxY,
-                width: rect.width,
-                height: rect.height
+            let xScale = frame.width / pointSize.width
+            let yScale = frame.height / pointSize.height
+            return CGRect(
+                x: frame.minX + rect.minX * xScale,
+                y: frame.maxY - rect.maxY * yScale,
+                width: rect.width * xScale,
+                height: rect.height * yScale
             )
         }
     }

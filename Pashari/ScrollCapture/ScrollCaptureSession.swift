@@ -21,9 +21,14 @@ final class ScrollCaptureSession {
     private var spaceObserver: SpaceChangeObserver?
     private var recorder: ScrollRecorder?
     private var areaSize = CGSize.zero
+    private weak var pinController: PinnedScreenshotController?
 
     private var ending: Ending?
     private var continuation: CheckedContinuation<Ending, Never>?
+
+    init(pinController: PinnedScreenshotController? = nil) {
+        self.pinController = pinController
+    }
 
     /// Returns the joined picture, or nil when the user cancelled.
     func run(_ selection: AreaSelection) async throws -> Screenshot? {
@@ -41,8 +46,12 @@ final class ScrollCaptureSession {
             height: area.height
         )
 
+        pinController?.showPins(avoiding: areaOnScreen)
         show(area, on: screen, areaOnScreen: areaOnScreen)
-        defer { hide() }
+        defer {
+            hide()
+            pinController?.showPins(avoiding: nil)
+        }
 
         let recorder = try await startRecording(area, on: screen)
         Log.capture.info("Scroll recording started")
@@ -96,7 +105,7 @@ final class ScrollCaptureSession {
         let recorder = ScrollRecorder(
             area: area,
             of: display,
-            filter: ScreenCapturer.recordingFilter(of: display, in: content),
+            filter: ScreenCapturer.displayFilter(of: display, in: content),
             onProgress: { [weak self] progress in
                 Task { @MainActor in self?.update(progress) }
             },

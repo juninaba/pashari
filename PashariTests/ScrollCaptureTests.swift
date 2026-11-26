@@ -257,7 +257,7 @@ private final class ScrollingPage {
         return ScrollRecorder(
             area: area,
             of: display,
-            filter: ScreenCapturer.recordingFilter(of: display, in: content),
+            filter: ScreenCapturer.displayFilter(of: display, in: content),
             onProgress: { progress in
                 Task { @MainActor in log.reports.append(progress) }
             },

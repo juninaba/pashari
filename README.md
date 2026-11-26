@@ -60,9 +60,10 @@ copied, saved or dropped. Annotate takes the pin into the editor. Closing
 that editor returns the edited image to the thumbnails.
 
 Pashari leaves pins out of screenshots, scroll captures and recordings.
-Pins are also excluded from window selection. Quitting asks for
-confirmation while unsaved work remains in thumbnails, pins, editors or
-players.
+Pins are also excluded from window selection. During a scroll capture,
+overlapping pins hide temporarily so you can scroll the selected area.
+Quitting asks for confirmation while unsaved work remains in thumbnails,
+pins, editors or players.
 
 Working files live under
 `~/Library/Application Support/Pashari/PendingCaptures`, which is excluded

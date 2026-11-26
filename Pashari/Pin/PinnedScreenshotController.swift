@@ -26,6 +26,7 @@ final class PinnedScreenshotController: NSObject {
     private let showError: @MainActor (Error, String) -> Void
     private let pasteboard: NSPasteboard
     private var pins: [Pin] = []
+    private var scrollCaptureArea: CGRect?
 
     var hasPendingCaptures: Bool { pins.contains { !$0.delivered } }
     var panels: [PinnedScreenshotPanel] { pins.map(\.panel) }
@@ -91,16 +92,34 @@ final class PinnedScreenshotController: NSObject {
         panel.onGeometryChange = { [weak self, weak pin] in
             guard let pin else { return }
             if let id = pin.panel.screen?.displayID { pin.displayID = id }
+            if self?.scrollCaptureArea != nil { self?.updateVisibility(of: pin) }
             self?.refreshPreview(pin)
         }
         pins.append(pin)
-        panel.orderFrontRegardless()
+        updateVisibility(of: pin)
         refreshPreview(pin)
         return true
     }
 
     func showPendingPins() {
-        for pin in pins where !pin.delivered {
+        for pin in pins where !pin.delivered && !overlapsScrollCapture(pin) {
+            pin.panel.orderFrontRegardless()
+        }
+    }
+
+    func showPins(avoiding scrollCaptureArea: CGRect?) {
+        self.scrollCaptureArea = scrollCaptureArea
+        for pin in pins { updateVisibility(of: pin) }
+    }
+
+    private func overlapsScrollCapture(_ pin: Pin) -> Bool {
+        scrollCaptureArea?.intersects(pin.panel.frame) == true
+    }
+
+    private func updateVisibility(of pin: Pin) {
+        if overlapsScrollCapture(pin) {
+            if pin.panel.isVisible { pin.panel.orderOut(nil) }
+        } else if !pin.panel.isVisible {
             pin.panel.orderFrontRegardless()
         }
     }
@@ -130,7 +149,10 @@ final class PinnedScreenshotController: NSObject {
 
     private func copy(_ pin: Pin) {
         perform(String(localized: "The screenshot could not be copied"), on: pin) {
-            Clipboard.copy(pngData: try await pin.capture.file().data, to: self.pasteboard)
+            let file = try await pin.capture.file()
+            guard Clipboard.copy(pngData: file.data, to: self.pasteboard) else {
+                throw CaptureError.cannotWriteClipboard
+            }
             self.markDelivered(pin)
         }
     }
@@ -153,8 +175,8 @@ final class PinnedScreenshotController: NSObject {
         let storage = self.storage
         let onUnpin = self.onUnpin
         perform(String(localized: "The screenshot could not be opened"), on: pin) {
-            self.rememberLocation(pin)
             let capture = pin.capture
+            capture.screenFrame = pin.panel.imageFrame
             let screenshot = try await capture.screenshot()
             let displayID = pin.displayID
             let keepFile = pin.dropped
@@ -196,19 +218,13 @@ final class PinnedScreenshotController: NSObject {
 
     private func unpin(_ pin: Pin) {
         guard !pin.busy, pin.delivered || onUnpin != nil else { return }
-        rememberLocation(pin)
+        pin.capture.screenFrame = pin.panel.imageFrame
         remove(pin)
         if !pin.delivered {
             onUnpin?(pin.capture, pin.displayID)
         } else if !pin.dropped {
             Task { await pin.capture.removeFile() }
         }
-    }
-
-    private func rememberLocation(_ pin: Pin) {
-        let frame = pin.panel.imageFrame
-        let size = pin.capture.pointSize
-        pin.capture.screenFrame = CGRect(x: frame.minX, y: frame.maxY - size.height, width: size.width, height: size.height)
     }
 
     private func remove(_ pin: Pin) {

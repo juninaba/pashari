@@ -86,6 +86,10 @@ final class PinnedScreenshotPanel: NSPanel, NSWindowDelegate {
         onGeometryChange?()
     }
 
+    func windowDidMove(_ notification: Notification) {
+        onGeometryChange?()
+    }
+
     func windowDidChangeBackingProperties(_ notification: Notification) {
         onGeometryChange?()
     }

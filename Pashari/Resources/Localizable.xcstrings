@@ -741,6 +741,16 @@
         }
       }
     },
+    "The clipboard could not be updated." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クリップボードを更新できませんでした。"
+          }
+        }
+      }
+    },
     "The display to capture could not be found." : {
       "localizations" : {
         "ja" : {
