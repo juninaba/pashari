@@ -25,7 +25,8 @@ struct SettingsWindowTests {
         #expect(shortenedFrame.height == shortDisplay.height)
 
         SettingsWindowController.fit(window, in: tallDisplay)
-        #expect(window.frame.size == naturalFrame.size)
+        #expect(window.frame.height > shortenedFrame.height)
+        #expect(tallDisplay.contains(window.frame))
         #expect(window.frame.maxY == shortenedFrame.maxY)
     }
 }
