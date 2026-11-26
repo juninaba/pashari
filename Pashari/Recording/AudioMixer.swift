@@ -147,17 +147,20 @@ nonisolated final class AudioMixer {
         let limitFrame = frameLimit(upTo: endTime, startTime: startTime)
         guard limitFrame > 0 else { return }
 
-        let maximumInputDuration: CMTime?
-        if let endTime, endTime.isNumeric {
-            let remaining = CMTimeSubtract(endTime, presentationTime)
-            guard remaining.isNumeric, remaining > .zero else { return }
-            maximumInputDuration = remaining
+        // Apply the earlier of explicit `endTime` and `startTime + maximumDuration`
+        // BEFORE copying or resampling input PCM so neither jitter snapping nor
+        // resampler lookahead can leak samples past either boundary.
+        let maxEndTime = CMTimeAdd(startTime, CMTime(value: maxFrames, timescale: Int32(Self.sampleRate)))
+        let effectiveEndTime: CMTime = if let endTime, endTime.isNumeric, CMTimeCompare(endTime, maxEndTime) < 0 {
+            endTime
         } else {
-            maximumInputDuration = nil
+            maxEndTime
         }
+        let remainingInput = CMTimeSubtract(effectiveEndTime, presentationTime)
+        guard remainingInput.isNumeric, remainingInput > .zero else { return }
 
         let converter = converter(for: source)
-        guard let converted = converter.convert(sampleBuffer, maximumInputDuration: maximumInputDuration) else {
+        guard let converted = converter.convert(sampleBuffer, maximumInputDuration: remainingInput) else {
             return
         }
         let samples = converted.samples
@@ -535,7 +538,7 @@ nonisolated final class AudioMixer {
                     method: .roundTowardZero
                 ).value
                 guard allowedFrames > 0 else { return nil }
-                frameCount = min(rawFrameCount, Int(min(allowedFrames, Int64(rawFrameCount))))
+                frameCount = Int(min(allowedFrames, Int64(rawFrameCount)))
             } else {
                 frameCount = rawFrameCount
             }

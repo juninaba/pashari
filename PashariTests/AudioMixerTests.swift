@@ -243,6 +243,32 @@ struct AudioMixerTests {
             let peak = samples.map(abs).max() ?? 0
             #expect(peak < 0.001, "post-stop 44.1 kHz samples bled through resampler (peak \(peak))")
         }
+
+        // Case C: hitting `maximumDuration` with no explicit `endTime` (or an `endTime` past
+        // `maximumDuration`) must also clip input PCM before jitter snapping or resampling.
+        do {
+            let mixer = try AudioMixer(sources: [.system], maximumDuration: CMTime(value: 31, timescale: 1_000))
+            let start = TestVideos.time(0)
+            var emitted: [CMSampleBuffer] = []
+
+            let first = try TestVideos.audioBuffer(frames: 960, at: 0.0) { _, _ in 0 }
+            let second = try TestVideos.audioBuffer(frames: 960, at: 0.021) { frame, _ in
+                frame < 480 ? 0 : 0.9
+            }
+            try mixer.append(first, from: .system, at: first.presentationTimeStamp, startTime: start) {
+                emitted.append($0)
+                return true
+            }
+            try mixer.append(second, from: .system, at: second.presentationTimeStamp, startTime: start) {
+                emitted.append($0)
+                return true
+            }
+            try mixer.flush(upTo: TestVideos.time(1), startTime: start) { emitted.append($0); return true }
+
+            let samples = extractFloats(from: emitted)
+            let peak = samples.map(abs).max() ?? 0
+            #expect(peak < 0.001, "post-maximumDuration samples leaked via jitter snapping (peak \(peak))")
+        }
     }
 
     @Test func disjointBuffersUnderBackpressureDoNotAllocateSilenceAndRespectBufferLimit() throws {
