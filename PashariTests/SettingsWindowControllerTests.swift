@@ -47,7 +47,7 @@ struct SettingsWindowControllerTests {
         #expect(windowFrame.maxY <= shortVisibleFrame.maxY)
     }
 
-    @Test func tallSettingsWindowFitsWithoutScrolling() {
+    @Test func tallSettingsWindowFitsWithoutScrolling() throws {
         let model = SettingsModel()
         let natural = SettingsView.naturalContentSize(for: model)
         let hostingController = NSHostingController(rootView: SettingsView(model: model))
@@ -60,14 +60,12 @@ struct SettingsWindowControllerTests {
         window.setContentSize(natural)
         window.layoutIfNeeded()
 
-        let scrollView = firstScrollView(in: hostingController.view)
-        #expect(scrollView != nil)
-        if let scrollView, let documentView = scrollView.documentView {
-            #expect(documentView.frame.height <= scrollView.contentView.bounds.height + 1)
-        }
+        let scrollView = try #require(firstScrollView(in: hostingController.view))
+        let documentView = try #require(scrollView.documentView)
+        #expect(documentView.frame.height <= scrollView.contentView.bounds.height + 1)
     }
 
-    @Test func clampedSettingsWindowScrollsToFullContentHeight() {
+    @Test func clampedSettingsWindowScrollsToFullContentHeight() throws {
         let model = SettingsModel()
         let natural = SettingsView.naturalContentSize(for: model)
         let hostingController = NSHostingController(rootView: SettingsView(model: model))
@@ -91,17 +89,61 @@ struct SettingsWindowControllerTests {
         #expect(window.frame.height <= shortVisibleFrame.height)
         #expect(window.contentLayoutRect.height < natural.height)
 
-        let scrollView = firstScrollView(in: hostingController.view)
-        #expect(scrollView != nil)
-        if let scrollView, let documentView = scrollView.documentView {
-            #expect(documentView.frame.height > scrollView.contentView.bounds.height)
-            // Verify scrolling to the bottom brings the bottom of the document
-            // (including Record Fullscreen) into the visible clip rect.
-            let maxScrollY = documentView.frame.height - scrollView.contentView.bounds.height
-            scrollView.contentView.scroll(to: CGPoint(x: 0, y: maxScrollY))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-            #expect(scrollView.documentVisibleRect.maxY >= documentView.frame.height - 1)
-        }
+        let scrollView = try #require(firstScrollView(in: hostingController.view))
+        let documentView = try #require(scrollView.documentView)
+        #expect(documentView.frame.height > scrollView.contentView.bounds.height)
+        // Verify scrolling to the bottom brings the bottom of the document
+        // (including Record Fullscreen) into the visible clip rect.
+        let maxScrollY = documentView.frame.height - scrollView.contentView.bounds.height
+        scrollView.contentView.scroll(to: CGPoint(x: 0, y: maxScrollY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        #expect(scrollView.documentVisibleRect.maxY >= documentView.frame.height - 1)
+    }
+
+    @Test func openSettingsWindowRefitsWhenMovedBetweenTallAndShortDisplays() throws {
+        let model = SettingsModel()
+        let natural = SettingsView.naturalContentSize(for: model)
+        let tallVisibleFrame = CGRect(x: 0, y: 45, width: 1_920, height: natural.height + 150)
+        let shortVisibleFrame = CGRect(x: 0, y: 45, width: 1_280, height: 700)
+        var currentVisibleFrame = tallVisibleFrame
+
+        let controller = SettingsWindowController(visibleFrameForWindow: { _ in currentVisibleFrame })
+        let window = controller.makeWindow(fitting: tallVisibleFrame)
+        window.setFrameOrigin(NSWindow.originCentering(window.frame.size, in: tallVisibleFrame))
+        window.orderBack(nil)
+        defer { window.orderOut(nil) }
+        window.layoutIfNeeded()
+
+        let tallHeight = window.frame.height
+        #expect(tallHeight > shortVisibleFrame.height)
+
+        // Move the open window onto a shorter display: height and scroll
+        // viewport must clamp so Record Fullscreen remains reachable.
+        currentVisibleFrame = shortVisibleFrame
+        NotificationCenter.default.post(name: NSWindow.didChangeScreenNotification, object: window)
+        window.layoutIfNeeded()
+
+        #expect(window.frame.height <= shortVisibleFrame.height)
+        #expect(window.frame.minY >= shortVisibleFrame.minY)
+        #expect(window.frame.maxY <= shortVisibleFrame.maxY)
+
+        let contentView = try #require(window.contentView)
+        let scrollView = try #require(firstScrollView(in: contentView))
+        let documentView = try #require(scrollView.documentView)
+        #expect(documentView.frame.height > scrollView.contentView.bounds.height)
+        let maxScrollY = documentView.frame.height - scrollView.contentView.bounds.height
+        scrollView.contentView.scroll(to: CGPoint(x: 0, y: maxScrollY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        #expect(scrollView.documentVisibleRect.maxY >= documentView.frame.height - 1)
+
+        // Move the open window back onto a tall display (or grow screen height):
+        // full unclipped height is restored without unnecessary scrolling.
+        currentVisibleFrame = tallVisibleFrame
+        NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp)
+        window.layoutIfNeeded()
+
+        #expect(abs(window.frame.height - tallHeight) <= 1)
+        #expect(documentView.frame.height <= scrollView.contentView.bounds.height + 1)
     }
 
     private func firstScrollView(in view: NSView) -> NSScrollView? {
