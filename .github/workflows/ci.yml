@@ -10,6 +10,12 @@ on:
   push:
     branches: [main]
 
+# Cancel superseded runs on the same pull request, while keeping every push to
+# main in its own group so back-to-back merges are never dropped.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -19,19 +25,54 @@ jobs:
     timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+      XCODEGEN_VERSION: 2.46.0
+      XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Identify Xcode toolchain
+        id: toolchain
+        run: |
+          xcode_build=$(/usr/libexec/PlistBuddy -c 'Print :ProductBuildVersion' "$DEVELOPER_DIR/../version.plist")
+          sdk_build=$(xcrun --show-sdk-build-version)
+          echo "key=${xcode_build}-${sdk_build}" >> "$GITHUB_OUTPUT"
+      - name: Cache build dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/ci-tools/xcodegen
+            build/SourcePackages
+            build/DerivedData-ci/SDKStatCaches.noindex
+            build/DerivedData-ci/CompilationCache.noindex
+          key: >-
+            ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-xg${{ env.XCODEGEN_VERSION }}-${{ hashFiles('project.yml', 'Config/Base.xcconfig') }}
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: |
+          if [ -x build/ci-tools/xcodegen/bin/xcodegen ]; then
+            exit 0
+          fi
+          tmp_zip=$(mktemp)
+          trap 'rm -f "$tmp_zip"' EXIT
+          curl -fsSL --retry 3 --retry-delay 2 -o "$tmp_zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  ${tmp_zip}" | shasum -a 256 -c -
+          rm -rf build/ci-tools/xcodegen
+          mkdir -p build/ci-tools
+          unzip -q "$tmp_zip" -d build/ci-tools
       - name: Generate Xcode project
-        run: xcodegen generate
+        run: build/ci-tools/xcodegen/bin/xcodegen generate
       - name: Build and test
         run: |
           xcodebuild test \
             -scheme Pashari \
             -destination "platform=macOS,arch=$(uname -m)" \
             -derivedDataPath build/DerivedData-ci \
+            -clonedSourcePackagesDirPath build/SourcePackages \
+            -skipPackageUpdates \
             CODE_SIGN_IDENTITY=- \
-            DEVELOPMENT_TEAM=
+            DEVELOPMENT_TEAM= \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            ENABLE_DEBUG_DYLIB=NO \
+            ENABLE_PREVIEWS=NO \
+            COMPILATION_CACHE_ENABLE_CACHING=YES
