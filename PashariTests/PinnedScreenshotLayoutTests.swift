@@ -99,6 +99,24 @@ struct PinnedScreenshotLayoutTests {
         }
     }
 
+    @Test func shorterPinsAtTheSameOriginStillLeaveAnEarlierPinReachable() {
+        let captures = [
+            CGRect(x: -1370, y: 108, width: 1300, height: 800),
+            CGRect(x: -1370, y: 108, width: 1300, height: 760),
+            CGRect(x: -1370, y: 148, width: 1300, height: 760),
+        ]
+        var frames: [CGRect] = []
+        for capture in captures {
+            frames.append(PinnedScreenshotLayout.initialPlacement(
+                imageSize: capture.size, captureFrame: capture, visibleFrame: screen, occupiedFrames: frames
+            ).frame)
+        }
+
+        let first = frames[0]
+        let corner = CGPoint(x: first.minX + 12, y: first.minY + 12)
+        #expect(!frames.dropFirst().contains { $0.contains(corner) })
+    }
+
     @Test func zoomKeepsThePointUnderThePointerStill() {
         let capture = CGRect(x: -1100, y: 350, width: 300, height: 200)
         let placement = PinnedScreenshotLayout.initialPlacement(

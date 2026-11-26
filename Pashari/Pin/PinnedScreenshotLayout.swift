@@ -52,21 +52,26 @@ enum PinnedScreenshotLayout {
             )
         }
 
-        func coversAnEarlierPin(_ frame: CGRect) -> Bool {
+        func needsOffset(_ frame: CGRect) -> Bool {
             // AppKit can round the window's position when it is displayed.
-            let roundedFrame = frame.insetBy(dx: -1, dy: -1)
-            return occupiedFrames.contains { roundedFrame.contains($0) }
+            let tolerance: CGFloat = 1
+            let roundedFrame = frame.insetBy(dx: -tolerance, dy: -tolerance)
+            return occupiedFrames.contains { earlier in
+                let sameOrigin = abs(earlier.minX - frame.minX) < tolerance
+                    && abs(earlier.minY - frame.minY) < tolerance
+                return sameOrigin || roundedFrame.contains(earlier)
+            }
         }
 
         func availableFrame(startingAt frame: CGRect) -> CGRect? {
-            guard coversAnEarlierPin(frame) else { return frame }
+            guard needsOffset(frame) else { return frame }
             for step in 1...occupiedFrames.count {
                 let offset = CGFloat(step) * cascadeStep
                 for direction: CGFloat in [1, -1] {
                     let shifted = confined(
                         frame.offsetBy(dx: offset * direction, dy: -offset * direction), to: visibleFrame
                     )
-                    if !coversAnEarlierPin(shifted) { return shifted }
+                    if !needsOffset(shifted) { return shifted }
                 }
             }
             return nil
