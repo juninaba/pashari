@@ -499,18 +499,44 @@ struct TextToolTests {
         let devanagariCaretX = try renderedCaretImageX(in: devanagariHarness)
         #expect(devanagariCaretX >= 20 && devanagariCaretX <= 45)
 
+        // Devanagari narrow crop with no grapheme boundary inside x = 35...52:
+        // fallback still rounds to the cluster boundary instead of splitting the conjunct.
+        let narrowDevanagari = CanvasHarness()
+        narrowDevanagari.model.size = .medium
+        narrowDevanagari.model.add(.text("नमस्ते", origin: CGPoint(x: 10, y: 15)))
+        narrowDevanagari.model.crop(to: CGRect(x: 35, y: 0, width: 17, height: 60))
+        narrowDevanagari.model.tool = .select
+
+        narrowDevanagari.doubleClick(at: CGPoint(x: 5, y: 22))  // image x = 40
+        narrowDevanagari.type("X")
+        narrowDevanagari.canvas.finishEditing()
+        #expect(narrowDevanagari.shapes == [.text("नमXस्ते", origin: CGPoint(x: 10, y: 15))])
+
         // Pure RTL text cropped to x = 9...21: double-clicking near its visible trailing end
         // (x = 12 -> canvas x = 3) keeps the caret at the end so typing appends.
-        let rtlHarness = CanvasHarness()
-        rtlHarness.model.size = .medium
-        rtlHarness.model.add(.text("אבג", origin: CGPoint(x: 10, y: 15)))
-        rtlHarness.model.crop(to: CGRect(x: 9, y: 0, width: 12, height: 60))
-        rtlHarness.model.tool = .select
+        let rtlTrailing = CanvasHarness()
+        rtlTrailing.model.size = .medium
+        rtlTrailing.model.add(.text("אבג", origin: CGPoint(x: 10, y: 15)))
+        rtlTrailing.model.crop(to: CGRect(x: 9, y: 0, width: 12, height: 60))
+        rtlTrailing.model.tool = .select
 
-        rtlHarness.doubleClick(at: CGPoint(x: 3, y: 22))
-        rtlHarness.type("ד")
-        rtlHarness.canvas.finishEditing()
-        #expect(rtlHarness.shapes == [.text("אבגד", origin: CGPoint(x: 10, y: 15))])
+        rtlTrailing.doubleClick(at: CGPoint(x: 3, y: 22))
+        rtlTrailing.type("ד")
+        rtlTrailing.canvas.finishEditing()
+        #expect(rtlTrailing.shapes == [.text("אבגד", origin: CGPoint(x: 10, y: 15))])
+
+        // Pure RTL text cropped to its visible leading end (x = 36...47):
+        // clicking x = 36.5 (canvas x = 0.5) inserts at the visible start rather than the hidden end.
+        let rtlLeading = CanvasHarness()
+        rtlLeading.model.size = .medium
+        rtlLeading.model.add(.text("אבג", origin: CGPoint(x: 10, y: 15)))
+        rtlLeading.model.crop(to: CGRect(x: 36, y: 0, width: 11, height: 60))
+        rtlLeading.model.tool = .select
+
+        rtlLeading.doubleClick(at: CGPoint(x: 0.5, y: 22))
+        rtlLeading.type("ד")
+        rtlLeading.canvas.finishEditing()
+        #expect(rtlLeading.shapes == [.text("דאבג", origin: CGPoint(x: 10, y: 15))])
     }
 }
 

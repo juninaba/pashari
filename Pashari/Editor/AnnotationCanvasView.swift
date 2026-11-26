@@ -519,10 +519,10 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         syncTypingUndoState()
     }
 
-    /// Insertion index near `localPoint` whose rendered caret stays within the
-    /// visible cropped canvas. When a character straddles a crop edge, AppKit
-    /// can round to the hidden side; snap back to the nearest visible insertion
-    /// point on the same line.
+    /// Insertion index near `localPoint` whose caret stays within the visible
+    /// cropped canvas. When a character straddles a crop edge, AppKit can round
+    /// to the hidden side; snap back to the nearest visible grapheme boundary
+    /// on the same line.
     private func visibleCaretIndex(
         in textView: NSTextView,
         at localPoint: CGPoint,
@@ -534,9 +534,12 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         let length = string.length
         guard length > 0 else { return initial }
 
-        let visible = model.visibleRect
-        let clickImageX = textOrigin.x + localPoint.x
+        func boundaryIndex(for index: Int) -> Int {
+            guard index < length else { return length }
+            return string.rangeOfComposedCharacterSequence(at: index).location
+        }
 
+        let fallback = boundaryIndex(for: initial)
         let queryIndex = min(initial, length - 1)
         let count = layoutManager.getLineFragmentInsertionPoints(
             forCharacterAt: queryIndex,
@@ -545,7 +548,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
             positions: nil,
             characterIndexes: nil
         )
-        guard count > 0 else { return initial }
+        guard count > 0 else { return fallback }
 
         var positions = [CGFloat](repeating: 0, count: count)
         var indexes = [Int](repeating: 0, count: count)
@@ -556,35 +559,16 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
             positions: &positions,
             characterIndexes: &indexes
         )
-        guard actual > 0 else { return initial }
+        guard actual > 0 else { return fallback }
 
-        func isBoundary(_ index: Int) -> Bool {
-            index == length || string.rangeOfComposedCharacterSequence(at: index).location == index
-        }
+        let visible = model.visibleRect
+        let visibleMinX = visible.minX - textOrigin.x
+        let visibleMaxX = visible.maxX - textOrigin.x
 
-        func caretImageX(for index: Int) -> CGFloat? {
-            if let window = textView.window {
-                let screenRect = textView.firstRect(
-                    forCharacterRange: NSRange(location: index, length: 0),
-                    actualRange: nil
-                )
-                if screenRect != .zero {
-                    let windowRect = window.convertFromScreen(screenRect)
-                    let canvasRect = convert(windowRect, from: nil)
-                    return canvasRect.minX + visible.minX
-                }
-            }
-            // AppKit can return `.zero` from `firstRect` at the trailing end of
-            // an RTL line; fall back to the layout manager's insertion point.
-            if let match = (0..<actual).first(where: { indexes[$0] == index }) {
-                return textOrigin.x + positions[match]
-            }
-            return nil
-        }
-
-        if isBoundary(initial),
-           let initialX = caretImageX(for: initial),
-           initialX >= visible.minX, initialX <= visible.maxX
+        if fallback == initial,
+           (0..<actual).contains(where: {
+               indexes[$0] == initial && positions[$0] >= visibleMinX && positions[$0] <= visibleMaxX
+           })
         {
             return initial
         }
@@ -592,18 +576,15 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         var best: (index: Int, distance: CGFloat)?
         for i in 0..<actual {
             let index = indexes[i]
-            guard isBoundary(index),
-                  let x = caretImageX(for: index),
-                  x >= visible.minX, x <= visible.maxX
-            else {
-                continue
-            }
-            let distance = abs(x - clickImageX)
+            guard boundaryIndex(for: index) == index else { continue }
+            let x = positions[i]
+            guard x >= visibleMinX, x <= visibleMaxX else { continue }
+            let distance = abs(x - localPoint.x)
             if best == nil || distance < best!.distance {
                 best = (index, distance)
             }
         }
-        return best?.index ?? initial
+        return best?.index ?? fallback
     }
 
     private func applyTextStyle() {
