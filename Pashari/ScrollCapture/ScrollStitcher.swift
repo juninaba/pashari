@@ -128,6 +128,24 @@ nonisolated struct ScrollStitcher {
         canvasHeight + (footer ?? 0)
     }
 
+    /// How tall the stitched content is so far, in pixels, without the fixed
+    /// footer or blank spring-back space at the end.
+    var stitchedContentHeight: Int {
+        pictureContentHeight
+    }
+
+    /// Whether the last placed frame covers any of the bottom `maximumRows`
+    /// rows of the stitched content.
+    func lastFrameOverlapsTail(maximumRows: Int, contentHeight: Int? = nil) -> Bool {
+        guard maximumRows > 0, !canvas.isEmpty else { return false }
+        let contentHeight = min(contentHeight ?? pictureContentHeight, canvasHeight)
+        guard contentHeight > 0 else { return false }
+        let tailStart = max(0, contentHeight - maximumRows)
+        let frameStart = max(frameTop + (header ?? 0), canvasHeader ?? 0)
+        let frameEnd = frameTop + height - (footer ?? 0)
+        return frameStart < contentHeight && frameEnd > tailStart
+    }
+
     private var canvasHeight: Int {
         canvas.count / rowLength
     }
@@ -618,12 +636,50 @@ nonisolated struct ScrollStitcher {
         // means each byte is copied only once, not again as it grows.
         var pixels = Data(capacity: contentHeight * rowLength + footerLength)
         pixels.append(canvas.prefix(contentHeight * rowLength))
-        showLatestLook(in: &pixels, above: contentHeight)
+        showLatestLook(in: &pixels, for: 0..<contentHeight)
         pixels.append(lastFrame.suffix(footerLength))
+        return makeCGImage(
+            from: pixels,
+            height: pixels.count / rowLength,
+            colorSpace: colorSpace,
+            shouldInterpolate: false
+        )
+    }
+
+    /// The bottom rows of the stitched content so far, at most `maximumRows`
+    /// tall, for previewing how far the picture reaches without copying the
+    /// whole canvas.
+    func makeTailImage(
+        maximumRows: Int,
+        colorSpace: CGColorSpace,
+        contentHeight: Int? = nil
+    ) -> CGImage? {
+        guard maximumRows > 0, !canvas.isEmpty else { return nil }
+        let contentHeight = min(contentHeight ?? pictureContentHeight, canvasHeight)
+        let rowCount = min(contentHeight, maximumRows)
+        guard rowCount > 0 else { return nil }
+        let startRow = contentHeight - rowCount
+        let startByte = startRow * rowLength
+        let byteCount = rowCount * rowLength
+        // Copy only the tail rows into an independent buffer so the preview
+        // never retains the full canvas or forces copy-on-write on later rows.
+        var pixels = canvas.withUnsafeBytes { bytes in
+            Data(bytes: bytes.baseAddress! + startByte, count: byteCount)
+        }
+        showLatestLook(in: &pixels, for: startRow..<contentHeight)
+        return makeCGImage(from: pixels, height: rowCount, colorSpace: colorSpace, shouldInterpolate: true)
+    }
+
+    private func makeCGImage(
+        from pixels: Data,
+        height: Int,
+        colorSpace: CGColorSpace,
+        shouldInterpolate: Bool
+    ) -> CGImage? {
         guard let provider = CGDataProvider(data: pixels as CFData) else { return nil }
         return CGImage(
             width: width,
-            height: pixels.count / rowLength,
+            height: height,
             bitsPerComponent: 8,
             bitsPerPixel: 32,
             bytesPerRow: rowLength,
@@ -633,31 +689,31 @@ nonisolated struct ScrollStitcher {
             ),
             provider: provider,
             decode: nil,
-            shouldInterpolate: false,
+            shouldInterpolate: shouldInterpolate,
             intent: .defaultIntent
         )
     }
 
     /// Since the content last moved, the area may have changed in place: an
     /// image finished loading, or the scroll bar faded. The rows of the
-    /// picture above `contentHeight` that the latest frame shows at least
-    /// as near the middle as their own look take the latest one, so that
-    /// the picture ends as the area looks now, like its footer. Rows seen
-    /// nearer the middle keep that look: by the edges, a bar may dim them.
-    private func showLatestLook(in pixels: inout Data, above contentHeight: Int) {
+    /// picture in `rows` that the latest frame shows at least as near the
+    /// middle as their own look take the latest one, so that the picture
+    /// ends as the area looks now, like its footer. Rows seen nearer the
+    /// middle keep that look: by the edges, a bar may dim them.
+    private func showLatestLook(in pixels: inout Data, for rows: Range<Int>) {
         let rowLength = rowLength
-        let firstRow = canvasHeader ?? 0
+        let firstRow = max(canvasHeader ?? 0, rows.lowerBound)
         let contentRows = (header ?? 0)..<(height - (footer ?? 0))
         lastFrame.withUnsafeBytes { latest in
             pixels.withUnsafeMutableBytes { pixels in
                 for y in contentRows {
                     let row = frameTop + y
                     guard
-                        row >= firstRow, row < contentHeight,
+                        row >= firstRow, row < rows.upperBound,
                         abs(y - lastMiddle) <= canvasDistances[row]
                     else { continue }
                     pixels.baseAddress!
-                        .advanced(by: row * rowLength)
+                        .advanced(by: (row - rows.lowerBound) * rowLength)
                         .copyMemory(from: latest.baseAddress! + y * rowLength, byteCount: rowLength)
                 }
             }

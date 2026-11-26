@@ -81,6 +81,7 @@ final class ScrollCaptureSession {
             area: area,
             of: display,
             filter: ScreenCapturer.recordingFilter(of: display, in: content),
+            previewSize: controls?.previewSize ?? .zero,
             onProgress: { [weak self] progress in
                 Task { @MainActor in self?.update(progress) }
             },
@@ -99,7 +100,9 @@ final class ScrollCaptureSession {
         // scrolling adds to the picture.
         controls?.show(
             size: CGSize(width: areaSize.width, height: CGFloat(progress.pictureHeight) / recorder.scale),
-            status: progress.isLost ? .lost : .recording
+            status: progress.isLost ? .lost : .recording,
+            preview: progress.preview,
+            scale: recorder.scale
         )
         if progress.isFull {
             Log.capture.info("Scroll capture reached the height limit")
