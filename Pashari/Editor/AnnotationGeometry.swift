@@ -13,8 +13,8 @@ extension Annotation {
     /// Hit radius around a resize handle's centre on screen, in points.
     static let handleHitRadius: CGFloat = 7
     /// Minimum edge length on screen before side handles are shown, leaving
-    /// a free stroke gap between corner and side hit areas (4 * hitRadius + 16).
-    static let minimumEdgeForSideHandle: CGFloat = 44
+    /// a free stroke gap between corner and side hit areas.
+    static let minimumEdgeForSideHandle: CGFloat = 4 * handleHitRadius + 16
     /// Smallest width or height a box may be resized down to, in image points.
     static let minimumResizeSide: CGFloat = 3
 
@@ -268,7 +268,9 @@ extension Annotation {
             let roomY = sy > 0 ? bounds.maxY - anchor.y : anchor.y - bounds.minY
             let side = max(min(max(dx, dy), roomX, roomY), minSide)
             let corner = CGPoint(x: anchor.x + sx * side, y: anchor.y + sy * side)
-            return CGRect(corner: anchor, oppositeCorner: corner)
+            if isInside(corner, bounds: bounds) {
+                return CGRect(corner: anchor, oppositeCorner: corner)
+            }
         }
 
         var minX = rect.minX, maxX = rect.maxX, minY = rect.minY, maxY = rect.maxY

@@ -291,6 +291,27 @@ struct AnnotationGeometryTests {
         let blur = make(.blur(CGRect(x: 20, y: 10, width: 40, height: 30)))
         let resizedBlur = blur.resized(dragging: .bottomRight, to: CGPoint(x: 75, y: 30), constrained: true, within: bounds)
         #expect(resizedBlur.shape == .blur(CGRect(x: 20, y: 10, width: 55, height: 20)))
+
+        // When a box's fixed corner lies outside a crop and a square snap would pull
+        // the dragged corner outside the crop too, fall back to unconstrained resize.
+        let cropped = CGRect(x: 50, y: 0, width: 100, height: 60)
+        let croppedRect = make(.rectangle(CGRect(x: 0, y: 30, width: 80, height: 20)))
+        let fallbackRect = croppedRect.resized(
+            dragging: .bottomRight,
+            to: CGPoint(x: 80, y: 50),
+            constrained: true,
+            within: cropped
+        )
+        #expect(fallbackRect.shape == .rectangle(CGRect(x: 0, y: 30, width: 80, height: 20)))
+
+        let croppedEllipse = make(.ellipse(CGRect(x: 0, y: 30, width: 80, height: 20)))
+        let fallbackEllipse = croppedEllipse.resized(
+            dragging: .bottomRight,
+            to: CGPoint(x: 90, y: 55),
+            constrained: true,
+            within: cropped
+        )
+        #expect(fallbackEllipse.shape == .ellipse(CGRect(x: 0, y: 30, width: 90, height: 25)))
     }
 
     private func make(_ shape: Annotation.Shape, size: StrokeSize = .medium) -> Annotation {

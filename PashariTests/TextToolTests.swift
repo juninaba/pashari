@@ -442,6 +442,32 @@ struct TextToolTests {
             Issue.record("Expected updated text shape")
         }
     }
+
+    @Test func doubleClickingNearCropEdgeKeepsCaretInsideVisibleCrop() throws {
+        let harness = CanvasHarness()
+        harness.model.size = .medium
+        harness.model.add(.text("Hello world", origin: CGPoint(x: 10, y: 15)))
+        // Crop tightly at x = 33 so a glyph straddles the right crop edge.
+        harness.model.crop(to: CGRect(x: 0, y: 0, width: 33, height: 60))
+        harness.model.tool = .select
+
+        // Double-click at x = 32, just inside the right crop edge.
+        harness.doubleClick(at: CGPoint(x: 32, y: 22))
+        let textView = try #require(harness.textView)
+        let layoutManager = try #require(textView.layoutManager)
+        let caret = textView.selectedRange().location
+        let caretLocalX: CGFloat
+        if caret == 0 {
+            caretLocalX = 0
+        } else if caret < (textView.string as NSString).length {
+            caretLocalX = layoutManager.location(forGlyphAt: layoutManager.glyphIndexForCharacter(at: caret)).x
+        } else {
+            let lastGlyph = layoutManager.glyphIndexForCharacter(at: caret - 1)
+            caretLocalX = layoutManager.lineFragmentUsedRect(forGlyphAt: lastGlyph, effectiveRange: nil).maxX
+        }
+        let caretImageX = 10 + caretLocalX
+        #expect(caretImageX >= 0 && caretImageX <= 33)
+    }
 }
 
 extension CanvasHarness {

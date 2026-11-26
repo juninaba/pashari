@@ -326,7 +326,12 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         }
 
         needsDisplay = true
-        updateCursor(at: imagePoint(of: event))
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        if bounds.contains(viewPoint) {
+            updateCursor(at: imagePoint(of: event))
+        } else if window?.isKeyWindow == true {
+            NSCursor.arrow.set()
+        }
     }
 
     private func updateResize(to rawPoint: CGPoint, constrained: Bool) {
@@ -503,7 +508,7 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
             let caretIndex: Int
             if let clickPoint {
                 let local = CGPoint(x: clickPoint.x - point.x, y: clickPoint.y - point.y)
-                caretIndex = textView.characterIndexForInsertion(at: local)
+                caretIndex = visibleCaretIndex(in: textView, at: local, textOrigin: point)
             } else {
                 caretIndex = (initialText as NSString).length
             }
@@ -512,6 +517,72 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         textView.undoManager?.removeAllActions()
         observeTypingUndo(for: textView)
         syncTypingUndoState()
+    }
+
+    /// Insertion index near `localPoint` that stays within the visible cropped
+    /// canvas. When a character straddles a crop edge, AppKit can round to the
+    /// hidden side; snap back to the nearest visible position on the same line.
+    private func visibleCaretIndex(
+        in textView: NSTextView,
+        at localPoint: CGPoint,
+        textOrigin: CGPoint
+    ) -> Int {
+        let initial = textView.characterIndexForInsertion(at: localPoint)
+        guard let layoutManager = textView.layoutManager else { return initial }
+        let string = textView.string as NSString
+        guard string.length > 0 else { return initial }
+
+        let visible = model.visibleRect
+        let visibleMinX = visible.minX - textOrigin.x
+        let visibleMaxX = visible.maxX - textOrigin.x
+        let lineRange = string.lineRange(for: NSRange(location: min(initial, string.length), length: 0))
+        var lineEnd = NSMaxRange(lineRange)
+        while lineEnd > lineRange.location {
+            let codeUnit = string.character(at: lineEnd - 1)
+            if codeUnit == 0x0A || codeUnit == 0x0D {
+                lineEnd -= 1
+            } else {
+                break
+            }
+        }
+
+        func caretX(for index: Int) -> CGFloat? {
+            if index <= lineRange.location {
+                return 0
+            }
+            if index < lineEnd {
+                let glyph = layoutManager.glyphIndexForCharacter(at: index)
+                guard glyph < layoutManager.numberOfGlyphs else { return nil }
+                return layoutManager.location(forGlyphAt: glyph).x
+            }
+            let lastGlyph = layoutManager.glyphIndexForCharacter(at: lineEnd - 1)
+            guard lastGlyph < layoutManager.numberOfGlyphs else { return nil }
+            return layoutManager.lineFragmentUsedRect(forGlyphAt: lastGlyph, effectiveRange: nil).maxX
+        }
+
+        if let initialX = caretX(for: initial), initialX >= visibleMinX && initialX <= visibleMaxX {
+            return initial
+        }
+
+        var candidates: [Int] = [lineRange.location]
+        var cursor = lineRange.location
+        while cursor < lineEnd {
+            let sequence = string.rangeOfComposedCharacterSequence(at: cursor)
+            cursor = NSMaxRange(sequence)
+            candidates.append(cursor)
+        }
+
+        var best: (index: Int, distance: CGFloat)?
+        for candidate in candidates {
+            guard let x = caretX(for: candidate), x >= visibleMinX && x <= visibleMaxX else {
+                continue
+            }
+            let distance = abs(x - localPoint.x)
+            if best == nil || distance < best!.distance {
+                best = (candidate, distance)
+            }
+        }
+        return best?.index ?? initial
     }
 
     private func applyTextStyle() {
