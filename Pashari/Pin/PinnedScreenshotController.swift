@@ -28,6 +28,12 @@ final class PinnedScreenshotController: NSObject {
     private var pins: [Pin] = []
     private var scrollCaptureArea: CGRect?
 
+    // Recording can follow a window as it moves, so keep pins out of the
+    // way from preparation through the end of any recording mode.
+    var isRecording = false {
+        didSet { pins.forEach(updateVisibility(of:)) }
+    }
+
     var hasPendingCaptures: Bool { pins.contains { !$0.delivered } }
     var panels: [PinnedScreenshotPanel] { pins.map(\.panel) }
 
@@ -102,22 +108,22 @@ final class PinnedScreenshotController: NSObject {
     }
 
     func showPendingPins() {
-        for pin in pins where !pin.delivered && !overlapsScrollCapture(pin) {
+        for pin in pins where !pin.delivered && !shouldHide(pin) {
             pin.panel.orderFrontRegardless()
         }
     }
 
     func showPins(avoiding scrollCaptureArea: CGRect?) {
         self.scrollCaptureArea = scrollCaptureArea
-        for pin in pins { updateVisibility(of: pin) }
+        pins.forEach(updateVisibility(of:))
     }
 
-    private func overlapsScrollCapture(_ pin: Pin) -> Bool {
-        scrollCaptureArea?.intersects(pin.panel.frame) == true
+    private func shouldHide(_ pin: Pin) -> Bool {
+        isRecording || scrollCaptureArea?.intersects(pin.panel.frame) == true
     }
 
     private func updateVisibility(of pin: Pin) {
-        if overlapsScrollCapture(pin) {
+        if shouldHide(pin) {
             if pin.panel.isVisible { pin.panel.orderOut(nil) }
         } else if !pin.panel.isVisible {
             pin.panel.orderFrontRegardless()

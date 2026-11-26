@@ -112,6 +112,7 @@ final class CaptureCoordinator {
         let task = start(errorTitle: String(localized: "The recording could not be made")) { [self] in
             let session = makeSession(thumbnailController.storage)
             session.onRecordingChange = { [weak self] isRecording in
+                self?.pinController?.isRecording = isRecording
                 self?.onRecordingChange?(isRecording)
             }
             recordingSession = session

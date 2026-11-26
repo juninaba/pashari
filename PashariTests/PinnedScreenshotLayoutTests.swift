@@ -69,6 +69,21 @@ struct PinnedScreenshotLayoutTests {
         #expect(abs(second.frame.minY - displayedFrame.minY) >= 1)
     }
 
+    @Test func aSecondScreenFillingPinLeavesRoomToReachTheFirst() {
+        let imageSize = CGSize(width: 1424, height: 856)
+        let first = PinnedScreenshotLayout.initialPlacement(
+            imageSize: imageSize, captureFrame: nil, visibleFrame: screen
+        )
+        let second = PinnedScreenshotLayout.initialPlacement(
+            imageSize: imageSize, captureFrame: nil, visibleFrame: screen, occupiedFrames: [first.frame]
+        )
+
+        #expect(first.frame == screen)
+        #expect(first.frame.contains(second.frame))
+        #expect(second.frame.minY > first.frame.minY + PinnedScreenshotLayout.toolbarHeight / 2)
+        #expect(abs(second.imageSize.width / second.imageSize.height - imageSize.width / imageSize.height) < 0.001)
+    }
+
     @Test func zoomKeepsThePointUnderThePointerStill() {
         let capture = CGRect(x: -1100, y: 350, width: 300, height: 200)
         let placement = PinnedScreenshotLayout.initialPlacement(
@@ -137,5 +152,30 @@ struct PinnedScreenshotPanelTests {
         let copy = try #require(buttons.first)
         _ = copy.accessibilityPerformPress()
         #expect(didCopy)
+    }
+
+    @Test func endingAFileDragOutsideThePinClearsTheHover() throws {
+        let placement = PinnedScreenshotLayout.initialPlacement(
+            imageSize: CGSize(width: 300, height: 190), captureFrame: nil,
+            visibleFrame: CGRect(x: 0, y: 0, width: 900, height: 700)
+        )
+        let panel = PinnedScreenshotPanel(imageSize: placement.imageSize, placement: placement)
+        defer { panel.close() }
+        let pointer = NSEvent.mouseLocation
+        panel.setFrameOrigin(CGPoint(x: pointer.x + 1000, y: pointer.y + 1000))
+        try #require(!panel.frame.contains(NSEvent.mouseLocation))
+        let content = try #require(panel.contentView)
+        let handle = try #require(content.subviews.compactMap { $0 as? ThumbnailPreviewView }.first)
+        let icon = try #require(content.subviews.compactMap { $0 as? NSImageView }.first)
+        let enter = try #require(NSEvent.enterExitEvent(
+            with: .mouseEntered, location: .zero, modifierFlags: [], timestamp: 0,
+            windowNumber: panel.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil
+        ))
+        content.mouseEntered(with: enter)
+        #expect(icon.alphaValue == 1)
+
+        handle.dragDidEnd(operation: .copy)
+
+        #expect(icon.alphaValue == 0)
     }
 }

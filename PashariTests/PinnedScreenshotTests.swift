@@ -162,6 +162,13 @@ struct PinnedScreenshotTests {
         #expect(!panel.isKeyWindow)
         #expect(NSWorkspace.shared.frontmostApplication?.processIdentifier == frontmostApp)
 
+        scroll.flags = []
+        scroll.setIntegerValueField(.scrollWheelEventMomentumPhase, value: 1)
+        let momentum = try #require(NSEvent(cgEvent: scroll))
+        try #require(!momentum.momentumPhase.isEmpty)
+        content.scrollWheel(with: momentum)
+        #expect(panel.imageFrame.size == resized)
+
         let pinnedFrame = panel.imageFrame
         panel.onUnpin?()
         #expect(capture.screenFrame == pinnedFrame)
@@ -185,6 +192,26 @@ struct PinnedScreenshotTests {
         fixture.pins.showPins(avoiding: nil)
         #expect(existing.isVisible && addedDuringCapture.isVisible)
         #expect(existing.frame.origin != addedDuringCapture.frame.origin)
+    }
+
+    @Test func recordingKeepsPinsHiddenUntilItEnds() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let first = fixture.makeCapture()
+        let second = fixture.makeCapture()
+        _ = try await first.fileURL()
+        _ = try await second.fileURL()
+        let existing = try fixture.show(first)
+        #expect(existing.isVisible)
+
+        fixture.pins.isRecording = true
+        let addedDuringRecording = try fixture.show(second)
+        fixture.pins.showPendingPins()
+        #expect(!existing.isVisible && !addedDuringRecording.isVisible)
+        #expect(fixture.pins.hasPendingCaptures)
+
+        fixture.pins.isRecording = false
+        #expect(existing.isVisible && addedDuringRecording.isVisible)
     }
 
     @Test func anInterruptedPinCanBeRecoveredAsAThumbnail() async throws {

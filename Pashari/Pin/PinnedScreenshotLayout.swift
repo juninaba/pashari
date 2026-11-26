@@ -57,22 +57,35 @@ enum PinnedScreenshotLayout {
             occupiedFrames.contains { abs($0.minX - origin.x) < 1 && abs($0.minY - origin.y) < 1 }
         }
 
-        let frame = confined(CGRect(origin: location, size: cardSize), to: visibleFrame)
-        guard hasPin(at: frame.origin) else {
-            return Placement(frame: frame, imageSize: size)
-        }
-        for step in 1...occupiedFrames.count {
-            let offset = CGFloat(step) * cascadeStep
-            for direction: CGFloat in [1, -1] {
-                let shifted = confined(
-                    frame.offsetBy(dx: offset * direction, dy: -offset * direction), to: visibleFrame
-                )
-                if !hasPin(at: shifted.origin) {
-                    return Placement(frame: shifted, imageSize: size)
+        func unoccupiedFrame(startingAt frame: CGRect) -> CGRect? {
+            guard hasPin(at: frame.origin) else { return frame }
+            for step in 1...occupiedFrames.count {
+                let offset = CGFloat(step) * cascadeStep
+                for direction: CGFloat in [1, -1] {
+                    let shifted = confined(
+                        frame.offsetBy(dx: offset * direction, dy: -offset * direction), to: visibleFrame
+                    )
+                    if !hasPin(at: shifted.origin) { return shifted }
                 }
             }
+            return nil
         }
-        return Placement(frame: frame, imageSize: size)
+
+        let frame = confined(CGRect(origin: location, size: cardSize), to: visibleFrame)
+        if let freeFrame = unoccupiedFrame(startingAt: frame) {
+            return Placement(frame: freeFrame, imageSize: size)
+        }
+
+        // If there is no room to offset a screen-filling pin, leave a
+        // margin around the new pin so the one under it is still reachable.
+        let inset = visibleFrame.insetBy(dx: cascadeStep, dy: cascadeStep)
+        let reducedSize = scaledSize(imageSize, by: min(scale, fittingScale(for: imageSize, in: inset)))
+        let reducedCard = Self.cardSize(for: reducedSize)
+        let reducedFrame = CGRect(
+            x: frame.midX - reducedCard.width / 2, y: frame.midY - reducedCard.height / 2,
+            width: reducedCard.width, height: reducedCard.height
+        )
+        return Placement(frame: unoccupiedFrame(startingAt: reducedFrame) ?? reducedFrame, imageSize: reducedSize)
     }
 
     /// Keep the point beneath the pointer in place while the image zooms.

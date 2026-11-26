@@ -172,6 +172,7 @@ private final class PinnedScreenshotCard: NSView {
             return panel?.fileURL?()
         }
         fileDrag.onDrop = { [weak panel] in panel?.onDrop?() }
+        fileDrag.onDragEnd = { [weak self] in self?.refreshHoverAfterDrag() }
         needsLayout = true
     }
 
@@ -254,6 +255,14 @@ private final class PinnedScreenshotCard: NSView {
         updateControls()
     }
 
+    private func refreshHoverAfterDrag() {
+        // Dragging out of the card can skip mouseExited.
+        guard let window else { return }
+        let point = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+        isHovered = bounds.contains(convert(point, from: nil))
+        updateControls()
+    }
+
     private func updateControls() {
         let opacity: Float = isHovered ? 1 : 0
         let current = controls.presentation()?.opacity ?? controls.opacity
@@ -275,6 +284,7 @@ private final class PinnedScreenshotCard: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        guard event.momentumPhase.isEmpty, event.scrollingDeltaY != 0 else { return }
         let delta = event.scrollingDeltaY * (event.hasPreciseScrollingDeltas ? 0.008 : 0.1)
         if event.modifierFlags.contains(.option) {
             (window as? PinnedScreenshotPanel)?.adjustOpacity(by: delta)
