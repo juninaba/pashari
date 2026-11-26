@@ -35,7 +35,7 @@ jobs:
         id: toolchain
         run: |
           xcode_build=$(/usr/libexec/PlistBuddy -c 'Print :ProductBuildVersion' "$DEVELOPER_DIR/../version.plist")
-          sdk_build=$(xcrun --show-sdk-build-version)
+          sdk_build=$(/usr/libexec/PlistBuddy -c 'Print :ProductBuildVersion' "$DEVELOPER_DIR/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/CoreServices/SystemVersion.plist")
           echo "key=${xcode_build}-${sdk_build}" >> "$GITHUB_OUTPUT"
       - name: Cache build dependencies
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -46,7 +46,7 @@ jobs:
             build/DerivedData-ci/SDKStatCaches.noindex
             build/DerivedData-ci/CompilationCache.noindex
           key: >-
-            ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-xg${{ env.XCODEGEN_VERSION }}-${{ hashFiles('project.yml', 'Config/Base.xcconfig') }}
+            ci-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-xg${{ env.XCODEGEN_VERSION }}-${{ env.XCODEGEN_SHA256 }}-${{ hashFiles('project.yml', 'Config/Base.xcconfig') }}
       - name: Install XcodeGen
         run: |
           if [ -x build/ci-tools/xcodegen/bin/xcodegen ]; then
