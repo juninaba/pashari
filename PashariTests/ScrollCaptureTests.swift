@@ -40,6 +40,30 @@ struct ScrollCaptureControlPanelTests {
         #expect(frame.minX == 12)
     }
 
+    @Test func theTallerScrollPanelGoesBesideATallAreaBeforeCoveringIt() {
+        let panelSize = ScrollCaptureControlPanel().frame.size
+        let wideScreen = CGRect(x: 0, y: 0, width: 1600, height: 900)
+
+        // Too little vertical margin above and below, room on the right.
+        let leftArea = CGRect(x: 60, y: 90, width: 500, height: 720)
+        let rightFrame = ControlBarPlacement.frame(ofSize: panelSize, nextTo: leftArea, in: wideScreen)
+        #expect(rightFrame.minX == leftArea.maxX + ControlBarPlacement.gap)
+        #expect(!rightFrame.intersects(leftArea))
+        #expect(wideScreen.contains(rightFrame))
+
+        // Too little vertical margin and no room on the right, room on the left.
+        let rightArea = CGRect(x: 1000, y: 90, width: 540, height: 720)
+        let leftFrame = ControlBarPlacement.frame(ofSize: panelSize, nextTo: rightArea, in: wideScreen)
+        #expect(leftFrame.maxX == rightArea.minX - ControlBarPlacement.gap)
+        #expect(!leftFrame.intersects(rightArea))
+        #expect(wideScreen.contains(leftFrame))
+
+        // No room on any side: falls back inside the bottom edge.
+        let fullFrame = ControlBarPlacement.frame(ofSize: panelSize, nextTo: wideScreen, in: wideScreen)
+        #expect(fullFrame.minY == ControlBarPlacement.gap)
+        #expect(wideScreen.contains(fullFrame))
+    }
+
     @Test func theBarAsksToWaitUntilRecordingHasBegun() {
         let controls = ScrollCaptureControlPanel()
         #expect(texts(in: controls.contentView).contains(String(localized: "Getting ready…")))
@@ -101,15 +125,17 @@ struct ScrollCaptureControlPanelTests {
         let controls = ScrollCaptureControlPanel()
         let width = Int(controls.previewSize.width)
         let height = Int(controls.previewSize.height)
-        // Top half blue, bottom half red.
+        // Twice as tall as the preview well: the top half is clipped out, and
+        // inside the visible bottom half the upper band is blue and the lower
+        // band is red.
         let image = TestImages.make(
             width: width,
-            height: height,
+            height: height * 2,
             background: .pageBlue,
             patch: .pageRed,
-            patchRect: CGRect(x: 0, y: height / 2, width: width, height: height - height / 2)
+            patchRect: CGRect(x: 0, y: height + height / 2, width: width, height: height - height / 2)
         )
-        controls.show(size: CGSize(width: width, height: height), status: .recording, preview: image, scale: 1)
+        controls.show(size: CGSize(width: width, height: height * 2), status: .recording, preview: image, scale: 1)
 
         let previewView = try #require(
             controls.contentView?.subviews.first { $0.frame.height == ScrollCaptureControlPanel.previewHeight }
@@ -178,16 +204,18 @@ struct ScrollRecorderTests {
         page.scroll(to: 40)
         let beforeJumpHeight = Int((page.area.height + 40) * recorder.scale)
         try await progress.wait { $0.pictureHeight == beforeJumpHeight && !$0.isLost }
-        let beforeJumpPreview = try #require(progress.reports.last?.preview)
         // Further than the scrolling part is tall.
         page.scroll(to: 40 + ScrollingPage.visibleHeight + 100)
         try await progress.wait { $0.isLost }
-        #expect(progress.reports.last?.preview === beforeJumpPreview)
+        let lostIndex = try #require(progress.reports.firstIndex { $0.isLost })
+        #expect(lostIndex > 0)
+        let lostPreview = try #require(progress.reports[lostIndex].preview)
+        #expect(lostPreview === progress.reports[lostIndex - 1].preview)
         page.scroll(to: 80)
         let afterRecoveryHeight = Int((page.area.height + 80) * recorder.scale)
         try await progress.wait { $0.pictureHeight == afterRecoveryHeight && !$0.isLost }
         let afterRecoveryPreview = try #require(progress.reports.last?.preview)
-        #expect(afterRecoveryPreview !== beforeJumpPreview)
+        #expect(afterRecoveryPreview !== lostPreview)
         let image = try #require(await recorder.stop())
 
         #expect(image.height == Int((page.area.height + 80) * recorder.scale))

@@ -514,6 +514,88 @@ struct ScrollStitcherTests {
         #expect(!stitcher.lastFrameOverlapsTail(maximumRows: 45))
     }
 
+    @Test func lastFrameOverlapsTailIsFalseWhenScrolledAboveTheHeader() {
+        let document = Document.noise(width: width, height: 400, seed: 30)
+        let header = Document.noise(width: width, height: 10, seed: 31)
+        var stitcher = makeStitcher()
+        // Start mid-document so scrolling up can push the frame above canvasHeader.
+        _ = stitcher.add(document.frame(at: 120, height: frameHeight, header: header))
+        _ = stitcher.add(document.frame(at: 90, height: frameHeight, header: header))
+        _ = stitcher.add(document.frame(at: 60, height: frameHeight, header: header))
+
+        #expect(!stitcher.lastFrameOverlapsTail(maximumRows: frameHeight))
+    }
+
+    @Test func progressTrackerCoalescesIdleFramesAndKeepsTailAlignedWithMakeImage() throws {
+        let document = Document.noise(width: width, height: 400, seed: 32)
+        let header = Document.noise(width: width, height: 4, seed: 33)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+        var tracker = ScrollRecorder.ProgressTracker(previewTailRows: 25)
+
+        func step(_ slice: Document.Slice) -> ScrollRecorder.Progress? {
+            let outcome = stitcher.add(slice)
+            return tracker.update(after: outcome, stitcher: stitcher, colorSpace: colorSpace)
+        }
+
+        let started = try #require(step(document.frame(at: 0, height: frameHeight, header: header)))
+        #expect(started.preview != nil)
+
+        // Idle `.unchanged` frames must not allocate a new preview or emit progress.
+        #expect(step(document.frame(at: 0, height: frameHeight, header: header)) == nil)
+
+        // Grow the picture, then apply an in-place change in the tail.
+        for offset in [40, 80] {
+            _ = step(document.frame(at: offset, height: frameHeight, header: header))
+        }
+        var loaded = document
+        loaded.paint(columns: 0..<width, rows: 120..<132, value: 215)
+        let inPlace = try #require(step(loaded.frame(at: 80, height: frameHeight, header: header)))
+        let inPlaceTail = try #require(inPlace.preview)
+        #expect(isClose(Array(rows(of: inPlaceTail)[5..<17]), loaded.rows(120..<132)))
+
+        // Jump upward past the tail: `lastFrame` no longer overlays the tail, so
+        // the preview refreshes once to match `makeImage` without the in-place overlay.
+        let scrolledUp = try #require(step(document.frame(at: 40, height: frameHeight, header: header)))
+        let afterLeaveTail = try #require(scrolledUp.preview)
+        #expect(afterLeaveTail !== inPlaceTail)
+        #expect(isClose(rows(of: afterLeaveTail), Array(rows(of: stitcher).suffix(25))))
+
+        // Further scrolls above the tail do not rebuild the preview.
+        #expect(step(document.frame(at: 10, height: frameHeight, header: header)) == nil)
+
+        // Lost keeps the exact preview instance until recovery.
+        let lost = try #require(step(document.frame(at: 200, height: frameHeight, header: header)))
+        #expect(lost.isLost)
+        #expect(lost.preview === afterLeaveTail)
+    }
+
+    @Test func progressTrackerUpdatesOnFirstFullAndSkipsRepeatedFull() throws {
+        let document = Document.noise(width: width, height: 400, seed: 34)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = ScrollStitcher(width: width, height: frameHeight, maximumHeight: 90)
+        var tracker = ScrollRecorder.ProgressTracker(previewTailRows: 25)
+
+        func step(_ slice: Document.Slice) -> ScrollRecorder.Progress? {
+            let outcome = stitcher.add(slice)
+            return tracker.update(after: outcome, stitcher: stitcher, colorSpace: colorSpace)
+        }
+
+        _ = step(document.frame(at: 0, height: frameHeight))
+        let atLimit = try #require(step(document.frame(at: 30, height: frameHeight)))
+        #expect(!atLimit.isFull)
+
+        var updated = document
+        updated.paint(columns: 0..<width, rows: 68..<76, value: 220)
+        let firstFull = try #require(step(updated.frame(at: 40, height: frameHeight)))
+        #expect(firstFull.isFull)
+        let fullTail = try #require(firstFull.preview)
+        #expect(fullTail !== atLimit.preview)
+        #expect(isClose(Array(rows(of: fullTail)[3..<11]), updated.rows(68..<76)))
+
+        #expect(step(updated.frame(at: 50, height: frameHeight)) == nil)
+    }
+
     // MARK: - Helpers
 
     private func makeStitcher(ignoringRightColumns: Int = 0) -> ScrollStitcher {

@@ -160,6 +160,7 @@ final class ScrollCaptureControlPanel: NSPanel {
 private final class TailPreviewView: NSView {
     private(set) var image: CGImage?
     private var scale: CGFloat = 1
+    private var isLost: Bool?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -167,15 +168,12 @@ private final class TailPreviewView: NSView {
         layer?.cornerRadius = 6
         layer?.masksToBounds = true
         layer?.backgroundColor = NSColor.black.withAlphaComponent(0.28).cgColor
-        setLost(false)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("TailPreviewView is created in code only")
     }
-
-    override var mouseDownCanMoveWindow: Bool { true }
 
     func show(_ image: CGImage, scale: CGFloat) {
         guard self.image !== image || self.scale != scale else { return }
@@ -185,6 +183,8 @@ private final class TailPreviewView: NSView {
     }
 
     func setLost(_ isLost: Bool) {
+        guard self.isLost != isLost else { return }
+        self.isLost = isLost
         layer?.borderWidth = isLost ? 1.5 : 1
         let color: NSColor = isLost
             ? .systemYellow.withAlphaComponent(0.8)

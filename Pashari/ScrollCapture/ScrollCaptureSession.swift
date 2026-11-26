@@ -1,4 +1,5 @@
 import AppKit
+import os
 import ScreenCaptureKit
 
 /// The second half of scroll capture, once the area is picked: records the
@@ -24,6 +25,9 @@ final class ScrollCaptureSession {
 
     private var ending: Ending?
     private var continuation: CheckedContinuation<Ending, Never>?
+    /// Coalesces rapid progress reports so at most one preview image waits for
+    /// the main actor at a time.
+    nonisolated private let pendingProgress = OSAllocatedUnfairLock<ScrollRecorder.Progress?>(initialState: nil)
 
     /// Returns the joined picture, or nil when the user cancelled.
     func run(_ selection: AreaSelection) async throws -> Screenshot? {
@@ -83,7 +87,7 @@ final class ScrollCaptureSession {
             filter: ScreenCapturer.recordingFilter(of: display, in: content),
             previewSize: controls?.previewSize ?? .zero,
             onProgress: { [weak self] progress in
-                Task { @MainActor in self?.update(progress) }
+                self?.enqueue(progress)
             },
             onFailure: { [weak self] error in
                 Task { @MainActor in self?.end(.failed(error)) }
@@ -92,6 +96,26 @@ final class ScrollCaptureSession {
         self.recorder = recorder
         try await recorder.start()
         return recorder
+    }
+
+    nonisolated private func enqueue(_ progress: ScrollRecorder.Progress) {
+        let needsDrain = pendingProgress.withLock { pending in
+            let wasEmpty = pending == nil
+            pending = progress
+            return wasEmpty
+        }
+        guard needsDrain else { return }
+        Task { @MainActor [weak self] in
+            self?.drainPendingProgress()
+        }
+    }
+
+    private func drainPendingProgress() {
+        guard let progress = pendingProgress.withLock({ pending in
+            defer { pending = nil }
+            return pending
+        }) else { return }
+        update(progress)
     }
 
     private func update(_ progress: ScrollRecorder.Progress) {
@@ -115,6 +139,7 @@ final class ScrollCaptureSession {
     private func end(_ ending: Ending) {
         guard self.ending == nil else { return }
         self.ending = ending
+        pendingProgress.withLock { $0 = nil }
         controls?.disableButtons()
         continuation?.resume(returning: ending)
         continuation = nil
