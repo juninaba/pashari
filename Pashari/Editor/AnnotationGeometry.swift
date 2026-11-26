@@ -252,7 +252,9 @@ extension Annotation {
     }
 
     /// Clamps dragged edges to `minimumResizeSide` instead of flipping the box
-    /// inside out, matching `RecordingFrameEditor.resized`.
+    /// inside out, matching `RecordingFrameEditor.resized`. When `square` is
+    /// true and a corner fixed outside `bounds` would snap the dragged corner
+    /// outside `bounds` too, falls back to unconstrained resizing.
     private static func resizedRect(
         _ rect: CGRect,
         dragging handle: Handle,

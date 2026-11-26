@@ -444,29 +444,55 @@ struct TextToolTests {
     }
 
     @Test func doubleClickingNearCropEdgeKeepsCaretInsideVisibleCrop() throws {
+        func caretImageX(in textView: NSTextView, textOriginX: CGFloat) throws -> CGFloat {
+            let layoutManager = try #require(textView.layoutManager)
+            let caret = textView.selectedRange().location
+            let length = (textView.string as NSString).length
+            let queryIndex = min(caret, length - 1)
+            let count = layoutManager.getLineFragmentInsertionPoints(
+                forCharacterAt: queryIndex,
+                alternatePositions: false,
+                inDisplayOrder: true,
+                positions: nil,
+                characterIndexes: nil
+            )
+            var positions = [CGFloat](repeating: 0, count: count)
+            var indexes = [Int](repeating: 0, count: count)
+            let actual = layoutManager.getLineFragmentInsertionPoints(
+                forCharacterAt: queryIndex,
+                alternatePositions: false,
+                inDisplayOrder: true,
+                positions: &positions,
+                characterIndexes: &indexes
+            )
+            let match = try #require((0..<actual).first { indexes[$0] == caret })
+            return textOriginX + positions[match]
+        }
+
+        // Left-to-right text with a glyph straddling the right crop edge at x = 33.
         let harness = CanvasHarness()
         harness.model.size = .medium
         harness.model.add(.text("Hello world", origin: CGPoint(x: 10, y: 15)))
-        // Crop tightly at x = 33 so a glyph straddles the right crop edge.
         harness.model.crop(to: CGRect(x: 0, y: 0, width: 33, height: 60))
         harness.model.tool = .select
 
-        // Double-click at x = 32, just inside the right crop edge.
         harness.doubleClick(at: CGPoint(x: 32, y: 22))
-        let textView = try #require(harness.textView)
-        let layoutManager = try #require(textView.layoutManager)
-        let caret = textView.selectedRange().location
-        let caretLocalX: CGFloat
-        if caret == 0 {
-            caretLocalX = 0
-        } else if caret < (textView.string as NSString).length {
-            caretLocalX = layoutManager.location(forGlyphAt: layoutManager.glyphIndexForCharacter(at: caret)).x
-        } else {
-            let lastGlyph = layoutManager.glyphIndexForCharacter(at: caret - 1)
-            caretLocalX = layoutManager.lineFragmentUsedRect(forGlyphAt: lastGlyph, effectiveRange: nil).maxX
-        }
-        let caretImageX = 10 + caretLocalX
-        #expect(caretImageX >= 0 && caretImageX <= 33)
+        let ltrTextView = try #require(harness.textView)
+        let ltrCaretX = try caretImageX(in: ltrTextView, textOriginX: 10)
+        #expect(ltrCaretX >= 0 && ltrCaretX <= 33)
+
+        // Bidirectional text cropped to x = 30...40: clicking x = 34 keeps the caret inside the crop.
+        let bidiHarness = CanvasHarness()
+        bidiHarness.model.size = .medium
+        bidiHarness.model.add(.text("a אבג z", origin: CGPoint(x: 10, y: 15)))
+        bidiHarness.model.crop(to: CGRect(x: 30, y: 0, width: 10, height: 60))
+        bidiHarness.model.tool = .select
+
+        // Canvas coordinates are relative to visibleRect (minX = 30), so x = 4 is image x = 34.
+        bidiHarness.doubleClick(at: CGPoint(x: 4, y: 22))
+        let bidiTextView = try #require(bidiHarness.textView)
+        let bidiCaretX = try caretImageX(in: bidiTextView, textOriginX: 10)
+        #expect(bidiCaretX >= 30 && bidiCaretX <= 40)
     }
 }
 
