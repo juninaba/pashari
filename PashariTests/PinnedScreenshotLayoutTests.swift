@@ -53,6 +53,22 @@ struct PinnedScreenshotLayoutTests {
         #expect(screen.contains(second.frame))
     }
 
+    @Test func aSecondPinOffsetsFromAnOriginRoundedByAppKit() {
+        let visibleFrame = CGRect(x: 0, y: 0, width: 1024, height: 799)
+        let imageSize = CGSize(width: 160, height: 100)
+        let first = PinnedScreenshotLayout.initialPlacement(
+            imageSize: imageSize, captureFrame: nil, visibleFrame: visibleFrame
+        )
+        var displayedFrame = first.frame
+        displayedFrame.origin.y.round()
+
+        let second = PinnedScreenshotLayout.initialPlacement(
+            imageSize: imageSize, captureFrame: nil, visibleFrame: visibleFrame, occupiedFrames: [displayedFrame]
+        )
+
+        #expect(abs(second.frame.minY - displayedFrame.minY) >= 1)
+    }
+
     @Test func zoomKeepsThePointUnderThePointerStill() {
         let capture = CGRect(x: -1100, y: 350, width: 300, height: 200)
         let placement = PinnedScreenshotLayout.initialPlacement(

@@ -52,8 +52,13 @@ enum PinnedScreenshotLayout {
             )
         }
 
+        func hasPin(at origin: CGPoint) -> Bool {
+            // AppKit can round the window's position when it is displayed.
+            occupiedFrames.contains { abs($0.minX - origin.x) < 1 && abs($0.minY - origin.y) < 1 }
+        }
+
         let frame = confined(CGRect(origin: location, size: cardSize), to: visibleFrame)
-        guard occupiedFrames.contains(where: { $0.origin == frame.origin }) else {
+        guard hasPin(at: frame.origin) else {
             return Placement(frame: frame, imageSize: size)
         }
         for step in 1...occupiedFrames.count {
@@ -62,7 +67,7 @@ enum PinnedScreenshotLayout {
                 let shifted = confined(
                     frame.offsetBy(dx: offset * direction, dy: -offset * direction), to: visibleFrame
                 )
-                if !occupiedFrames.contains(where: { $0.origin == shifted.origin }) {
+                if !hasPin(at: shifted.origin) {
                     return Placement(frame: shifted, imageSize: size)
                 }
             }
