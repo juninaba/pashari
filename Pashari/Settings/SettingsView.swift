@@ -125,6 +125,35 @@ struct SettingsView: View {
                 }
             }
 
+            section("Recording") {
+                Toggle(isOn: Binding(
+                    get: { model.recordingAudio.systemAudio },
+                    set: { setRecordSystemAudio($0) }
+                )) {
+                    Text("System audio")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .tint(EditorStyle.accent)
+                .padding(.vertical, SettingsRowStyle.verticalPadding)
+
+                Divider()
+
+                Toggle(isOn: Binding(
+                    get: { model.recordingAudio.microphone },
+                    set: { setRecordMicrophone($0) }
+                )) {
+                    Text("Microphone")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .tint(EditorStyle.accent)
+                .disabled(model.isRequestingMicrophonePermission)
+                .padding(.vertical, SettingsRowStyle.verticalPadding)
+            }
+
             section("Shortcuts") {
                 KeyboardShortcuts.Recorder("Capture Area", name: .captureArea)
                 Divider()
@@ -191,6 +220,27 @@ struct SettingsView: View {
         } catch {
             model.launchAtLoginError = error.localizedDescription
             model.launchAtLogin = LaunchAtLogin.isEnabled
+        }
+    }
+
+    private func setRecordSystemAudio(_ enabled: Bool) {
+        model.recordingAudio.systemAudio = enabled
+        Preferences.setRecordingAudio(model.recordingAudio)
+    }
+
+    private func setRecordMicrophone(_ enabled: Bool) {
+        guard !model.isRequestingMicrophonePermission else { return }
+        if !enabled {
+            model.recordingAudio.microphone = false
+            Preferences.setRecordingAudio(model.recordingAudio)
+            return
+        }
+        model.isRequestingMicrophonePermission = true
+        Task {
+            defer { model.isRequestingMicrophonePermission = false }
+            guard await MicrophonePermission.requestForToggle() else { return }
+            model.recordingAudio.microphone = true
+            Preferences.setRecordingAudio(model.recordingAudio)
         }
     }
 }

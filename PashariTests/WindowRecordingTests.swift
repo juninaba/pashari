@@ -46,6 +46,24 @@ struct WindowRecordingCursorAndModalTests {
         defer { page.close() }
         #expect(ScreenCapturer.windowExists(CGWindowID(page.window.windowNumber)))
     }
+    @Test func cancellingMicrophonePermissionBeforeWindowRecordingStartsAbortsCleanly() async throws {
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        var resolved = 0
+        let session = WindowRecordingSession(
+            storage: storage.storage,
+            chooseWindow: { nil },
+            audio: { RecordingAudio(systemAudio: false, microphone: true) },
+            resolveMicrophonePermission: {
+                resolved += 1
+                return .cancel
+            }
+        )
+
+        #expect(try await session.run() == nil)
+        // Permission is only resolved after a window is actually picked.
+        #expect(resolved == 0)
+    }
 }
 
 /// Real-screen window recording tests, which run only where Pashari has the

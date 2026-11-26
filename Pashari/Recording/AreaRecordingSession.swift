@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import ScreenCaptureKit
 
 /// The area to record: in points, with the origin at the top-left corner
@@ -27,6 +28,12 @@ final class AreaRecordingSession: RecordingSession {
 
     private let storage: CaptureStorage
     private let rememberArea: @MainActor (RecordingArea) -> Void
+    private var audio: RecordingAudio
+    private let rememberAudio: @MainActor (RecordingAudio) -> Void
+    private let microphoneAuthorizationStatus: @MainActor () -> AVAuthorizationStatus
+    private let requestMicrophoneAccess: @MainActor () async -> Bool
+    private let showMicrophoneDeniedAlert: @MainActor () -> Bool
+    private let resolveMicrophonePermission: @MainActor () async -> MicrophonePermission.RecordingDecision
     private let controls = RecordingControlPanel()
     private lazy var runner = RecordingRunner(controls: controls)
 
@@ -35,6 +42,7 @@ final class AreaRecordingSession: RecordingSession {
     private var overlays: [(panel: OverlayPanel, view: RecordingAreaView, screen: NSScreen)] = []
     private var choice: CheckedContinuation<RecordingArea?, Never>?
     private var spaceObserver: SpaceChangeObserver?
+    private var isRequestingMicrophonePermission = false
 
     /// `remembered` is the area recorded last; the frame starts there if
     /// that display is still connected and the area still fits on it.
@@ -46,10 +54,32 @@ final class AreaRecordingSession: RecordingSession {
             if let displayID = area.screen.displayID {
                 Preferences.setRecordingArea(area.rect, onDisplay: displayID)
             }
+        },
+        audio: RecordingAudio = Preferences.recordingAudio(),
+        rememberAudio: @escaping @MainActor (RecordingAudio) -> Void = {
+            Preferences.setRecordingAudio($0)
+        },
+        microphoneAuthorizationStatus: @escaping @MainActor () -> AVAuthorizationStatus = {
+            MicrophonePermission.authorizationStatus()
+        },
+        requestMicrophoneAccess: @escaping @MainActor () async -> Bool = {
+            await AVCaptureDevice.requestAccess(for: .audio)
+        },
+        showMicrophoneDeniedAlert: @escaping @MainActor () -> Bool = {
+            MicrophonePermission.showInstructions(cancelOverlays: false)
+        },
+        resolveMicrophonePermission: @escaping @MainActor () async -> MicrophonePermission.RecordingDecision = {
+            await MicrophonePermission.resolveForRecording()
         }
     ) {
         self.storage = storage
         self.rememberArea = rememberArea
+        self.audio = audio
+        self.rememberAudio = rememberAudio
+        self.microphoneAuthorizationStatus = microphoneAuthorizationStatus
+        self.requestMicrophoneAccess = requestMicrophoneAccess
+        self.showMicrophoneDeniedAlert = showMicrophoneDeniedAlert
+        self.resolveMicrophonePermission = resolveMicrophonePermission
         let screens = NSScreen.screens
         if
             let remembered,
@@ -67,8 +97,15 @@ final class AreaRecordingSession: RecordingSession {
     /// recording began, or nothing was recorded.
     func run() async throws -> Recording? {
         guard let area = await choose() else { return nil }
+        guard let resolvedAudio = await MicrophonePermission.resolveAudio(
+            audio,
+            using: resolveMicrophonePermission
+        ) else {
+            controls.orderOut(nil)
+            return nil
+        }
         rememberArea(area)
-        return try await record(area)
+        return try await record(area, audio: resolvedAudio)
     }
 
     /// The hotkey again: begins recording while the frame is adjusted, and
@@ -126,6 +163,9 @@ final class AreaRecordingSession: RecordingSession {
             overlays.append((panel, view, screen))
         }
 
+        controls.audio = audio
+        controls.onToggleSystemAudio = { [weak self] in self?.toggleSystemAudio() }
+        controls.onToggleMicrophone = { [weak self] in self?.toggleMicrophone() }
         controls.onRecord = { [weak self] in self?.confirm() }
         controls.onCancel = { [weak self] in self?.finishChoosing(with: nil) }
         showFrame()
@@ -133,10 +173,79 @@ final class AreaRecordingSession: RecordingSession {
         spaceObserver = SpaceChangeObserver { [weak self] in
             // The app on the new Space has taken the keyboard. Take it
             // back, so that Return and Escape still work.
-            guard let self, choice != nil else { return }
+            guard let self, choice != nil, !isRequestingMicrophonePermission else { return }
             OverlayPanel.focus(overlays.map(\.panel))
         }
         Log.selection.info("Recording area overlay shown on \(self.overlays.count) screen(s)")
+    }
+
+    private func toggleSystemAudio() {
+        guard choice != nil, !isRequestingMicrophonePermission else { return }
+        audio.systemAudio.toggle()
+        controls.audio = audio
+        rememberAudio(audio)
+    }
+
+    private func toggleMicrophone() {
+        guard choice != nil, !isRequestingMicrophonePermission else { return }
+        if audio.microphone {
+            audio.microphone = false
+            controls.audio = audio
+            rememberAudio(audio)
+            return
+        }
+        switch microphoneAuthorizationStatus() {
+        case .authorized:
+            audio.microphone = true
+            controls.audio = audio
+            rememberAudio(audio)
+        case .notDetermined:
+            isRequestingMicrophonePermission = true
+            // Step the full-screen `.screenSaver` overlays aside so macOS's
+            // permission prompt is visible and clickable.
+            temporarilyHideChoosingUI()
+            Task { [weak self] in
+                guard let self else { return }
+                let granted = await requestMicrophoneAccess()
+                isRequestingMicrophonePermission = false
+                guard choice != nil else { return }
+                if NSApp.modalWindow != nil {
+                    finishChoosing(with: nil)
+                    return
+                }
+                if granted {
+                    audio.microphone = true
+                    rememberAudio(audio)
+                }
+                restoreChoosingUI()
+            }
+        case .denied, .restricted:
+            isRequestingMicrophonePermission = true
+            temporarilyHideChoosingUI()
+            let openedSettings = showMicrophoneDeniedAlert()
+            isRequestingMicrophonePermission = false
+            guard choice != nil else { return }
+            if openedSettings || NSApp.modalWindow != nil {
+                finishChoosing(with: nil)
+            } else {
+                restoreChoosingUI()
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    private func temporarilyHideChoosingUI() {
+        overlays.forEach { $0.panel.orderOut(nil) }
+        controls.orderOut(nil)
+        NSCursor.arrow.set()
+    }
+
+    private func restoreChoosingUI() {
+        overlays.forEach { $0.panel.orderFrontRegardless() }
+        controls.audio = audio
+        showFrame()
+        OverlayPanel.focus(overlays.map(\.panel))
     }
 
     /// Draws the frame on its screen, and puts the bar next to it.
@@ -156,6 +265,7 @@ final class AreaRecordingSession: RecordingSession {
     private func confirm() {
         guard
             choice != nil,
+            !isRequestingMicrophonePermission,
             !editor.isDragging,
             let frame = editor.frame,
             RecordingFrameEditor.isLargeEnough(frame.rect)
@@ -184,7 +294,7 @@ final class AreaRecordingSession: RecordingSession {
 
     // MARK: - Recording
 
-    private func record(_ area: RecordingArea) async throws -> Recording? {
+    private func record(_ area: RecordingArea, audio: RecordingAudio) async throws -> Recording? {
         let screen = area.screen
         let overlay = OverlayPanel(screen: screen)
         // Every click and scroll goes through to the app underneath.
@@ -205,6 +315,7 @@ final class AreaRecordingSession: RecordingSession {
                     area: area.rect,
                     filter: filter,
                     url: url,
+                    audio: audio,
                     onStart: onStart,
                     onFailure: onFailure
                 )

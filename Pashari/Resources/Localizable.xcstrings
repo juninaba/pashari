@@ -331,6 +331,36 @@
         }
       }
     },
+    "Microphone" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイク"
+          }
+        }
+      }
+    },
+    "Microphone: Off" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイク：オフ"
+          }
+        }
+      }
+    },
+    "Microphone: On" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイク：オン"
+          }
+        }
+      }
+    },
     "None" : {
       "localizations" : {
         "ja" : {
@@ -397,6 +427,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pashariには画面収録の許可が必要です"
+          }
+        }
+      }
+    },
+    "Pashari needs permission to use the microphone" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pashariにはマイクの使用許可が必要です"
           }
         }
       }
@@ -497,6 +537,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "ウインドウを録画"
+          }
+        }
+      }
+    },
+    "Record Without Microphone" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイクなしで録画"
+          }
+        }
+      }
+    },
+    "Recording" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録画"
           }
         }
       }
@@ -687,6 +747,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "システム"
+          }
+        }
+      }
+    },
+    "System audio" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム音声"
+          }
+        }
+      }
+    },
+    "System audio: Off" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム音声：オフ"
+          }
+        }
+      }
+    },
+    "System audio: On" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム音声：オン"
           }
         }
       }
@@ -897,6 +987,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "トリミング中…"
+          }
+        }
+      }
+    },
+    "Turn on Pashari under Privacy & Security > Microphone in System Settings." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム設定の「プライバシーとセキュリティ」>「マイク」でPashariをオンにしてください。"
+          }
+        }
+      }
+    },
+    "Turn on Pashari under Privacy & Security > Microphone in System Settings, or continue recording without the microphone." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム設定の「プライバシーとセキュリティ」>「マイク」でPashariをオンにするか、マイクなしで録画を続けてください。"
           }
         }
       }

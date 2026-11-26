@@ -104,24 +104,49 @@ struct PreferencesTests {
         #expect(area.rect == CGRect(x: 10, y: 20, width: 300, height: 200))
     }
 
+    @Test func recordingAudioIsOffByDefault() {
+        let defaults = makeDefaults()
+
+        #expect(Preferences.recordingAudio(in: defaults) == .none)
+    }
+
+    @Test(arguments: [
+        RecordingAudio(systemAudio: false, microphone: false),
+        RecordingAudio(systemAudio: true, microphone: false),
+        RecordingAudio(systemAudio: false, microphone: true),
+        RecordingAudio(systemAudio: true, microphone: true),
+    ])
+    func chosenRecordingAudioIsRemembered(_ audio: RecordingAudio) {
+        let defaults = makeDefaults()
+
+        Preferences.setRecordingAudio(audio, in: defaults)
+
+        #expect(Preferences.recordingAudio(in: defaults) == audio)
+    }
+
     @Test func settingsShowWhatChangedWhileTheyWereClosed() {
         let system = FakeSettings()
         system.saveDirectory = URL(filePath: "/Volumes/External/Screenshots")
         system.launchAtLogin = true
+        system.recordingAudio = RecordingAudio(systemAudio: true, microphone: false)
         let model = SettingsModel(
             readLaunchAtLogin: { system.launchAtLogin },
-            readSaveDirectory: { system.saveDirectory }
+            readSaveDirectory: { system.saveDirectory },
+            readRecordingAudio: { system.recordingAudio }
         )
         model.launchAtLoginError = "An earlier attempt failed"
 
-        // The drive is unplugged, so saves fall back to the Desktop, and the
-        // login item is turned off in System Settings.
+        // The drive is unplugged, so saves fall back to the Desktop, the
+        // login item is turned off in System Settings, and recording audio was
+        // changed from the recording bar.
         system.saveDirectory = Preferences.desktopDirectory
         system.launchAtLogin = false
+        system.recordingAudio = RecordingAudio(systemAudio: true, microphone: true)
         model.reload()
 
         #expect(model.saveDirectory == Preferences.desktopDirectory)
         #expect(!model.launchAtLogin)
+        #expect(model.recordingAudio == RecordingAudio(systemAudio: true, microphone: true))
         #expect(model.launchAtLoginError == nil)
     }
 
@@ -130,6 +155,7 @@ struct PreferencesTests {
     private final class FakeSettings {
         var saveDirectory = Preferences.desktopDirectory
         var launchAtLogin = false
+        var recordingAudio = RecordingAudio.none
     }
 
     /// A settings store used by one test only, so nothing here touches the

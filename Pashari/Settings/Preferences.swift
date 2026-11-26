@@ -8,6 +8,29 @@ enum Preferences {
     private static let appearanceKey = "appearance"
     private static let shutterSoundKey = "shutterSound"
     private static let recordingAreaKey = "recordingArea"
+    private static let recordSystemAudioKey = "recordSystemAudio"
+    private static let recordMicrophoneKey = "recordMicrophone"
+
+    /// Posted when the app's standard recording audio preference changes so
+    /// an open Settings window stays in sync with the recording bar.
+    static let recordingAudioDidChangeNotification = Notification.Name("Pashari.recordingAudioDidChange")
+
+    /// Recordings are silent until the user turns system audio or the
+    /// microphone on, from the recording bar or Settings.
+    static func recordingAudio(in defaults: UserDefaults = .standard) -> RecordingAudio {
+        RecordingAudio(
+            systemAudio: defaults.bool(forKey: recordSystemAudioKey),
+            microphone: defaults.bool(forKey: recordMicrophoneKey)
+        )
+    }
+
+    static func setRecordingAudio(_ audio: RecordingAudio, in defaults: UserDefaults = .standard) {
+        defaults.set(audio.systemAudio, forKey: recordSystemAudioKey)
+        defaults.set(audio.microphone, forKey: recordMicrophoneKey)
+        if defaults === UserDefaults.standard {
+            NotificationCenter.default.post(name: recordingAudioDidChangeNotification, object: nil)
+        }
+    }
 
     /// The area recorded last, to start the next recording with: in points
     /// from the top-left corner of the display with `displayID`.

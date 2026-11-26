@@ -16,8 +16,9 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
   global hotkeys
 - Scroll capture: pick an area, scroll its content, and get one tall
   picture of everything that scrolled past
-- Record an area, a window or the full screen for up to five minutes, then
-  trim, copy, save or drag the video like a screenshot
+- Record an area, a window or the full screen (optionally with system audio
+  and the microphone) for up to five minutes, then trim, copy, save or drag
+  the video like a screenshot
 - A film camera's shutter sound for each screenshot, if you want it.
   Screenshots are silent until you pick it under Settings
 - A floating thumbnail after each capture, like an instant photo: copy,
@@ -113,12 +114,16 @@ To stop, click Stop on the bar, click the menu bar icon, which has
 turned into a stop button, or press the hotkey again. A recording stops
 by itself at five minutes.
 
+- Recordings are silent until you turn on system audio or the microphone,
+  either from the buttons on the Record Area bar or under Settings. Your
+  choice is remembered and applies to area, window and fullscreen
+  recordings. Turning the microphone on asks for the Microphone permission.
 - The pointer is in the video, with a ring around each click (macOS 15
-  and later). There is no sound. Pashari's bar, frame and thumbnails stay
-  out.
-- Recordings are MP4 (H.264) at the screen's full resolution, up to 4,096
-  pixels on the longer side. Larger recordings are scaled down to fit, and
-  a window recording keeps the size it started at if you resize the window.
+  and later). Pashari's bar, frame and thumbnails stay out.
+- Recordings are MP4 (H.264, with stereo AAC audio when sound is enabled)
+  at the screen's full resolution, up to 4,096 pixels on the longer side.
+  Larger recordings are scaled down to fit, and a window recording keeps
+  the size it started at if you resize the window.
 - The bar shows how long the recording is, and how large its file is so
   far.
 - In the thumbnail, Play opens the recording in a window where you can

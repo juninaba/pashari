@@ -4,6 +4,25 @@ import SwiftUI
 final class SettingsWindowController {
     private var window: NSWindow?
     private let model = SettingsModel()
+    nonisolated(unsafe) private var audioObserver: NSObjectProtocol?
+
+    init() {
+        audioObserver = NotificationCenter.default.addObserver(
+            forName: Preferences.recordingAudioDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.model.reloadRecordingAudio()
+            }
+        }
+    }
+
+    deinit {
+        if let audioObserver {
+            NotificationCenter.default.removeObserver(audioObserver)
+        }
+    }
 
     func show() {
         model.reload()

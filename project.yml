@@ -44,6 +44,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(APP_BUNDLE_IDENTIFIER)
         INFOPLIST_FILE: Pashari/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Pashari/Pashari.entitlements
         GENERATE_INFOPLIST_FILE: NO
   PashariTests:
     type: bundle.unit-test

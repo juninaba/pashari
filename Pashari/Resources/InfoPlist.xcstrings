@@ -1,0 +1,22 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSMicrophoneUsageDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pashari uses the microphone to record your voice during screen recordings."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pashariは画面録画中にマイクの音声を録音するためにマイクを使用します。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

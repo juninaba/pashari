@@ -20,6 +20,8 @@ final class WindowRecordingSession: RecordingSession {
     private let storage: CaptureStorage
     private let chooseWindow: @MainActor () async throws -> SCWindow?
     private let windowExists: @MainActor (CGWindowID) -> Bool
+    private let audio: @MainActor () -> RecordingAudio
+    private let resolveMicrophonePermission: @MainActor () async -> MicrophonePermission.RecordingDecision
     private let runner = RecordingRunner()
 
     init(
@@ -30,18 +32,30 @@ final class WindowRecordingSession: RecordingSession {
         },
         windowExists: @escaping @MainActor (CGWindowID) -> Bool = {
             ScreenCapturer.windowExists($0)
+        },
+        audio: @escaping @MainActor () -> RecordingAudio = {
+            Preferences.recordingAudio()
+        },
+        resolveMicrophonePermission: @escaping @MainActor () async -> MicrophonePermission.RecordingDecision = {
+            await MicrophonePermission.resolveForRecording()
         }
     ) {
         self.storage = storage
         self.chooseWindow = chooseWindow
         self.windowExists = windowExists
+        self.audio = audio
+        self.resolveMicrophonePermission = resolveMicrophonePermission
     }
 
     /// Returns the recording, or nil when the user cancelled before picking a
     /// window, or nothing was recorded.
     func run() async throws -> Recording? {
         guard let window = try await chooseWindow() else { return nil }
-        return try await record(window)
+        guard let resolvedAudio = await MicrophonePermission.resolveAudio(
+            audio(),
+            using: resolveMicrophonePermission
+        ) else { return nil }
+        return try await record(window, audio: resolvedAudio)
     }
 
     /// The hotkey again: stops once recording has begun.
@@ -55,7 +69,7 @@ final class WindowRecordingSession: RecordingSession {
         runner.stop()
     }
 
-    private func record(_ window: SCWindow) async throws -> Recording? {
+    private func record(_ window: SCWindow, audio: RecordingAudio) async throws -> Recording? {
         let windowID = window.windowID
         let windowFrame = ScreenGeometry.flipped(
             window.frame,
@@ -92,7 +106,7 @@ final class WindowRecordingSession: RecordingSession {
                 return true
             },
             makeRecorder: { url, onStart, onFailure in
-                try ScreenRecorder(window: window, url: url, onStart: onStart, onFailure: onFailure)
+                try ScreenRecorder(window: window, url: url, audio: audio, onStart: onStart, onFailure: onFailure)
             }
         )
     }

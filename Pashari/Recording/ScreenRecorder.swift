@@ -1,14 +1,15 @@
+import AVFoundation
 import CoreMedia
 import ScreenCaptureKit
 
 /// Records a display, an area, or a single window into an MP4 file: what
 /// happens there, the pointer and its clicks included, with Pashari's own
-/// panels left out.
+/// panels left out, and optionally system audio and microphone input.
 ///
-/// ScreenCaptureKit hands over the frames on `queue`, a thread of their own,
-/// and `writer` is only touched there, which is what makes it safe to share
-/// this object between threads (`@unchecked Sendable` tells Swift that this
-/// was checked by hand).
+/// ScreenCaptureKit (and AVFoundation's microphone fallback on macOS 14) hand
+/// over samples on `queue`, a thread of their own, and `writer` is only
+/// touched there, which is what makes it safe to share this object between
+/// threads (`@unchecked Sendable` tells Swift that this was checked by hand).
 nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     /// The longer side of a recording, in pixels: the most the Mac's H.264
     /// encoder takes. Larger captures are scaled to fit.
@@ -18,9 +19,12 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
     let pointSize: CGSize
     let width: Int
     let height: Int
+    let audio: RecordingAudio
 
     private let queue = DispatchQueue(label: "io.github.juninaba.pashari.screen-recorder", qos: .userInteractive)
+    private let microphoneDevice: AVCaptureDevice?
     private var stream: SCStream?
+    private var microphoneCapture: MicrophoneCapture?
     private let onStart: @Sendable () -> Void
     private let onFailure: @Sendable (Error) -> Void
 
@@ -42,13 +46,15 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         area: CGRect? = nil,
         filter: SCContentFilter,
         url: URL,
+        audio: RecordingAudio = .none,
         onStart: @escaping @Sendable () -> Void,
         onFailure: @escaping @Sendable (Error) -> Void
     ) throws {
+        let (effectiveAudio, microphoneDevice) = Self.resolveAudioDevice(for: audio)
         let scale = CGFloat(filter.pointPixelScale)
         let pointSize = area?.size ?? filter.contentRect.size
         let size = Self.pixelSize(of: pointSize, scale: scale)
-        let configuration = Self.makeConfiguration(width: size.width, height: size.height)
+        let configuration = Self.makeConfiguration(width: size.width, height: size.height, audio: effectiveAudio)
         if let area {
             configuration.sourceRect = Self.sourceRect(
                 of: area,
@@ -64,6 +70,8 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
             width: size.width,
             height: size.height,
             url: url,
+            audio: effectiveAudio,
+            microphoneDevice: microphoneDevice,
             onStart: onStart,
             onFailure: onFailure
         )
@@ -75,9 +83,11 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
     convenience init(
         window: SCWindow,
         url: URL,
+        audio: RecordingAudio = .none,
         onStart: @escaping @Sendable () -> Void,
         onFailure: @escaping @Sendable (Error) -> Void
     ) throws {
+        let (effectiveAudio, microphoneDevice) = Self.resolveAudioDevice(for: audio)
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let contentSize = filter.contentRect.size
         let scale = CGFloat(filter.pointPixelScale)
@@ -85,7 +95,7 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
             throw CaptureError.windowNotFound
         }
         let size = Self.pixelSize(of: contentSize, scale: scale)
-        let configuration = Self.makeConfiguration(width: size.width, height: size.height)
+        let configuration = Self.makeConfiguration(width: size.width, height: size.height, audio: effectiveAudio)
         configuration.ignoreShadowsSingleWindow = true
         // Keep recording the whole window even if the user drags part of it
         // past the edge of a display.
@@ -101,6 +111,8 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
             width: size.width,
             height: size.height,
             url: url,
+            audio: effectiveAudio,
+            microphoneDevice: microphoneDevice,
             onStart: onStart,
             onFailure: onFailure
         )
@@ -113,6 +125,8 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         width: Int,
         height: Int,
         url: URL,
+        audio: RecordingAudio,
+        microphoneDevice: AVCaptureDevice?,
         onStart: @escaping @Sendable () -> Void,
         onFailure: @escaping @Sendable (Error) -> Void
     ) throws {
@@ -120,14 +134,29 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         self.pointSize = pointSize
         self.width = width
         self.height = height
-        writer = try RecordingWriter(url: url, width: width, height: height)
+        self.audio = audio
+        self.microphoneDevice = microphoneDevice
+        writer = try RecordingWriter(url: url, width: width, height: height, audioSources: audio.sources)
         self.onStart = onStart
         self.onFailure = onFailure
         super.init()
         stream = SCStream(filter: filter, configuration: configuration, delegate: self)
     }
 
-    private static func makeConfiguration(width: Int, height: Int) -> SCStreamConfiguration {
+    private static func resolveAudioDevice(for audio: RecordingAudio) -> (RecordingAudio, AVCaptureDevice?) {
+        guard audio.microphone else { return (audio, nil) }
+        guard let device = AVCaptureDevice.default(for: .audio) else {
+            Log.capture.info("No microphone available; recording without microphone")
+            return (RecordingAudio(systemAudio: audio.systemAudio, microphone: false), nil)
+        }
+        return (audio, device)
+    }
+
+    private static func makeConfiguration(
+        width: Int,
+        height: Int,
+        audio: RecordingAudio
+    ) -> SCStreamConfiguration {
         let configuration = SCStreamConfiguration()
         configuration.width = width
         configuration.height = height
@@ -147,6 +176,17 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         // A few frames for the encoder to work on while new ones arrive.
         // Each frame of a large area takes tens of MB.
         configuration.queueDepth = 6
+        if audio.systemAudio {
+            configuration.capturesAudio = true
+            configuration.sampleRate = RecordingWriter.audioSampleRate
+            configuration.channelCount = RecordingWriter.audioChannelCount
+            configuration.excludesCurrentProcessAudio = true
+        }
+        if audio.microphone {
+            if #available(macOS 15.0, *) {
+                configuration.captureMicrophone = true
+            }
+        }
         return configuration
     }
 
@@ -195,8 +235,29 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         guard let stream else { return }
         do {
             try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+            if audio.systemAudio {
+                try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: queue)
+            }
+            if audio.microphone {
+                if #available(macOS 15.0, *) {
+                    try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: queue)
+                } else if let device = microphoneDevice {
+                    let capture = try MicrophoneCapture(
+                        device: device,
+                        sampleQueue: queue,
+                        targetClock: stream.synchronizationClock ?? CMClockGetHostTimeClock(),
+                        onSample: { [weak self] sampleBuffer, time in
+                            self?.handleAudio(sampleBuffer, from: .microphone, at: time)
+                        }
+                    )
+                    microphoneCapture = capture
+                    try await capture.start()
+                }
+            }
             try await stream.startCapture()
         } catch {
+            await microphoneCapture?.stop()
+            microphoneCapture = nil
             // The stream holds on to this object as its output.
             self.stream = nil
             queue.async { self.writer.cancel() }
@@ -220,8 +281,10 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         end()
         try? await stream?.stopCapture()
         stream = nil
-        // Frames that arrived before the stop may still wait on the queue.
-        // This runs after them.
+        await microphoneCapture?.stop()
+        microphoneCapture = nil
+        // Frames and audio buffers that arrived before the stop may still
+        // wait on the queue. This runs after them.
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 let end = self.endTime ?? CMClockGetTime(CMClockGetHostTimeClock())
@@ -237,8 +300,17 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of type: SCStreamOutputType
     ) {
+        if type == .screen {
+            handleVideo(sampleBuffer)
+        } else if type == .audio {
+            handleAudio(sampleBuffer, from: .system)
+        } else if #available(macOS 15.0, *), type == .microphone {
+            handleAudio(sampleBuffer, from: .microphone)
+        }
+    }
+
+    private func handleVideo(_ sampleBuffer: CMSampleBuffer) {
         guard
-            type == .screen,
             !hasFailed,
             sampleBuffer.hasNewScreenFrame,
             let pixelBuffer = sampleBuffer.imageBuffer,
@@ -256,6 +328,23 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         } catch {
             hasFailed = true
             Log.capture.error("Recording could not be written: \(error.localizedDescription, privacy: .public)")
+            onFailure(error)
+        }
+    }
+
+    private func handleAudio(
+        _ sampleBuffer: CMSampleBuffer,
+        from source: AudioMixer.Source,
+        at time: CMTime? = nil
+    ) {
+        guard !hasFailed else { return }
+        let pts = time ?? sampleBuffer.presentationTimeStamp
+        if let endTime, pts >= endTime { return }
+        do {
+            try writer.appendAudio(sampleBuffer, from: source, at: pts)
+        } catch {
+            hasFailed = true
+            Log.capture.error("Recording audio could not be written: \(error.localizedDescription, privacy: .public)")
             onFailure(error)
         }
     }
