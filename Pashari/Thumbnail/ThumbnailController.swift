@@ -154,7 +154,8 @@ final class ThumbnailController {
         switch capture.kind {
         case .screenshot:
             deliver(capture, errorTitle: String(localized: "The screenshot could not be copied")) { capture in
-                Clipboard.copy(pngData: try await capture.file().data, to: self.pasteboard)
+                let file = try await capture.file()
+                try Clipboard.copy(pngData: file.data, to: self.pasteboard)
             }
         case .recording:
             // The file itself goes on the clipboard, so it must stay until

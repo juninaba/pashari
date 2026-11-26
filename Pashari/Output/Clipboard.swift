@@ -3,10 +3,11 @@ import AppKit
 enum Clipboard {
     /// `pasteboard` is a parameter so tests can use a private pasteboard
     /// instead of the user's real clipboard.
-    @discardableResult
-    static func copy(pngData: Data, to pasteboard: NSPasteboard = .general) -> Bool {
+    static func copy(pngData: Data, to pasteboard: NSPasteboard = .general) throws {
         pasteboard.clearContents()
-        return pasteboard.setData(pngData, forType: .png)
+        guard pasteboard.setData(pngData, forType: .png) else {
+            throw CaptureError.cannotWriteClipboard
+        }
     }
 
     /// The file itself, as Finder copies it: apps such as Slack, Messages

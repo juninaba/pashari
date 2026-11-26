@@ -150,9 +150,7 @@ final class PinnedScreenshotController: NSObject {
     private func copy(_ pin: Pin) {
         perform(String(localized: "The screenshot could not be copied"), on: pin) {
             let file = try await pin.capture.file()
-            guard Clipboard.copy(pngData: file.data, to: self.pasteboard) else {
-                throw CaptureError.cannotWriteClipboard
-            }
+            try Clipboard.copy(pngData: file.data, to: self.pasteboard)
             self.markDelivered(pin)
         }
     }

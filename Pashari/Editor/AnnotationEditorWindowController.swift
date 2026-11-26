@@ -205,7 +205,8 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
 
     private func copyToClipboard() {
         deliver(errorTitle: String(localized: "The screenshot could not be copied")) { screenshot in
-            Clipboard.copy(pngData: try await ScreenshotWriter.pngData(for: screenshot))
+            let png = try await ScreenshotWriter.pngData(for: screenshot)
+            try Clipboard.copy(pngData: png)
         }
     }
 

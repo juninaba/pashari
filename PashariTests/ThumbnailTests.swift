@@ -1002,7 +1002,7 @@ struct PendingCaptureTests {
 
 @MainActor
 struct ClipboardTests {
-    @Test func copyReplacesThePasteboardContentsWithThePNG() {
+    @Test func copyReplacesThePasteboardContentsWithThePNG() throws {
         // A private pasteboard, so the test leaves the real clipboard alone.
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("pashari-tests-\(UUID().uuidString)"))
         defer { pasteboard.releaseGlobally() }
@@ -1010,7 +1010,7 @@ struct ClipboardTests {
         pasteboard.setString("old text", forType: .string)
         let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3])
 
-        Clipboard.copy(pngData: png, to: pasteboard)
+        try Clipboard.copy(pngData: png, to: pasteboard)
 
         #expect(pasteboard.data(forType: .png) == png)
         #expect(pasteboard.string(forType: .string) == nil)
