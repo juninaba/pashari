@@ -269,6 +269,32 @@ struct AudioMixerTests {
             let peak = samples.map(abs).max() ?? 0
             #expect(peak < 0.001, "post-maximumDuration samples leaked via jitter snapping (peak \(peak))")
         }
+
+        // Case D: non-nanosecond-aligned maximumDuration frame counts (1 frame and 1,489 frames
+        // at 48 kHz) on nanosecond host-clock timestamps must not lose frames to CMTime rounding.
+        for startSeconds in [0.0, 100_000.0] {
+            for exactFrames in [1, 1_489] {
+                let mixer = try AudioMixer(
+                    sources: [.system],
+                    maximumDuration: CMTime(value: Int64(exactFrames), timescale: 48_000)
+                )
+                let start = TestVideos.time(startSeconds) // nanosecond timescale (1_000_000_000)
+                var emitted: [CMSampleBuffer] = []
+
+                let buffer = try TestVideos.audioBuffer(frames: exactFrames + 10, at: startSeconds) { _, _ in 0.5 }
+                try mixer.append(buffer, from: .system, at: start, startTime: start) {
+                    emitted.append($0)
+                    return true
+                }
+                try mixer.flush(upTo: TestVideos.time(startSeconds + 1), startTime: start) {
+                    emitted.append($0)
+                    return true
+                }
+
+                let frames = extractFloats(from: emitted).count / 2
+                #expect(frames == exactFrames)
+            }
+        }
     }
 
     @Test func disjointBuffersUnderBackpressureDoNotAllocateSilenceAndRespectBufferLimit() throws {
