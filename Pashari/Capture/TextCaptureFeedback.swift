@@ -4,6 +4,7 @@ enum TextCaptureFeedback {
     case copied
     case noText
     case failed
+    case copyFailed
 
     private static var panel: NSPanel?
 
@@ -12,6 +13,7 @@ enum TextCaptureFeedback {
         case .copied: String(localized: "Text copied")
         case .noText: String(localized: "No text found")
         case .failed: String(localized: "Could not recognize text")
+        case .copyFailed: String(localized: "Could not copy text")
         }
     }
 

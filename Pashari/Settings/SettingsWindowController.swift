@@ -25,21 +25,34 @@ final class SettingsWindowController {
             // view out, so the window is still empty here. Size it first:
             // centering an empty window puts its corner in the middle of the
             // screen, and the settings then grow up and to the right of it.
-            window.setContentSize(hostingController.view.fittingSize)
+            fit(window, on: screen)
             if let screen {
                 window.center(on: screen)
             } else {
                 window.center()
             }
             self.window = window
-        } else if let window, let screen, !window.isVisible,
-                  !screen.frame.contains(CGPoint(x: window.frame.midX, y: window.frame.midY)) {
-            window.center(on: screen)
+        } else if let window {
+            let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
+            let movesToScreen = !window.isVisible && screen?.frame.contains(center) == false
+            fit(window, on: movesToScreen ? screen : window.screen ?? screen)
+            if movesToScreen, let screen {
+                window.center(on: screen)
+            }
         }
 
         // A menu bar app is not the active app, so its window would open
         // behind everything else without this.
         NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func fit(_ window: NSWindow, on screen: NSScreen?) {
+        guard let contentView = window.contentView else { return }
+        var size = contentView.fittingSize
+        if let screen {
+            size.height = min(size.height, window.contentRect(forFrameRect: screen.visibleFrame).height)
+        }
+        window.setContentSize(size)
     }
 }

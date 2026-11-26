@@ -7,20 +7,37 @@ enum TextRecognizer {
         let request = VNRecognizeTextRequest()
         request.revision = VNRecognizeTextRequestRevision3
         request.recognitionLevel = .accurate
-        request.recognitionLanguages = ["en-US", "ja-JP"]
-        request.automaticallyDetectsLanguage = true
+        // The Japanese model also recognizes Latin characters in mixed-script lines.
+        request.recognitionLanguages = ["ja-JP", "en-US"]
         try VNImageRequestHandler(cgImage: image).perform([request])
 
-        // Vision coordinates start at the bottom left.
-        let text = (request.results ?? [])
-            .sorted { first, second in
-                let a = first.boundingBox
-                let b = second.boundingBox
-                return a.midY == b.midY ? a.minX < b.minX : a.midY > b.midY
+        typealias Fragment = (text: String, bounds: CGRect)
+        let fragments = (request.results ?? [])
+            .compactMap { observation -> Fragment? in
+                guard let text = observation.topCandidates(1).first?.string
+                    .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty
+                else { return nil }
+                return (text, observation.boundingBox)
             }
-            .compactMap { $0.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
+            .sorted { $0.bounds.midY > $1.bounds.midY } // Vision's origin is at the bottom left.
+
+        var rows: [[Fragment]] = []
+        for fragment in fragments {
+            if let first = rows.last?.first, shareRow(first.bounds, fragment.bounds) {
+                rows[rows.count - 1].append(fragment)
+            } else {
+                rows.append([fragment])
+            }
+        }
+
+        let text = rows.map { row in
+            row.sorted { $0.bounds.minX < $1.bounds.minX }.map(\.text).joined(separator: " ")
+        }.joined(separator: "\n")
         return text.isEmpty ? nil : text
+    }
+
+    private nonisolated static func shareRow(_ first: CGRect, _ second: CGRect) -> Bool {
+        let overlap = min(first.maxY, second.maxY) - max(first.minY, second.minY)
+        return overlap > min(first.height, second.height) / 2
     }
 }

@@ -175,7 +175,7 @@ final class CaptureCoordinator {
     @discardableResult
     func runTextCapture(
         recognize: @escaping (CGImage) async throws -> String? = TextRecognizer.recognize,
-        pasteboard: NSPasteboard = .general,
+        copyText: @escaping (String) -> Bool = { Clipboard.copy(text: $0) },
         showFeedback: @escaping (TextCaptureFeedback) -> Void = { $0.show() },
         _ capture: @escaping () async throws -> Screenshot?
     ) -> Task<Void, Never>? {
@@ -185,8 +185,7 @@ final class CaptureCoordinator {
                 showFeedback(.noText)
                 return
             }
-            Clipboard.copy(text: text, to: pasteboard)
-            showFeedback(.copied)
+            showFeedback(copyText(text) ? .copied : .copyFailed)
         }
     }
 

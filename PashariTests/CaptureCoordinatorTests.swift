@@ -126,7 +126,7 @@ struct CaptureCoordinatorTests {
 
         let task = try #require(coordinator.runTextCapture(
             recognize: { _ in "Hello\nこんにちは" },
-            pasteboard: pasteboard,
+            copyText: { Clipboard.copy(text: $0, to: pasteboard) },
             showFeedback: { feedback.append($0) }
         ) { sampleScreenshot })
         await task.value
@@ -153,13 +153,26 @@ struct CaptureCoordinatorTests {
                 if outcome == .failed { throw CaptureError.displayNotFound }
                 return nil
             },
-            pasteboard: pasteboard,
+            copyText: { Clipboard.copy(text: $0, to: pasteboard) },
             showFeedback: { feedback.append($0) }
         ) { outcome == nil ? nil : sampleScreenshot })
         await task.value
 
         #expect(pasteboard.changeCount == originalChangeCount)
         #expect(feedback == (outcome.map { [$0] } ?? []))
+    }
+
+    @Test func textCaptureReportsACopyFailure() async throws {
+        let coordinator = CaptureCoordinator(thumbnailController: ThumbnailController(), ensurePermission: { true })
+        var feedback: [TextCaptureFeedback] = []
+        let task = try #require(coordinator.runTextCapture(
+            recognize: { _ in "Hello" },
+            copyText: { _ in false },
+            showFeedback: { feedback.append($0) }
+        ) { sampleScreenshot })
+        await task.value
+
+        #expect(feedback == [.copyFailed])
     }
 
     private var sampleScreenshot: Screenshot {

@@ -19,12 +19,18 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            settings
-                .padding(20)
-                .background(SettingsDesk())
+            ViewThatFits(in: .vertical) {
+                desk.fixedSize(horizontal: false, vertical: true)
+                ScrollView { desk }
+            }
         }
         .frame(width: 440)
-        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var desk: some View {
+        settings
+            .padding(20)
+            .background(SettingsDesk())
     }
 
     /// The app's icon and the window's title, on the colour of the editor's

@@ -181,6 +181,16 @@
         }
       }
     },
+    "Could not copy text" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストをコピーできませんでした"
+          }
+        }
+      }
+    },
     "Could not recognize text" : {
       "localizations" : {
         "ja" : {
