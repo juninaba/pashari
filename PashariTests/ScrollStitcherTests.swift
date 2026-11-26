@@ -518,10 +518,11 @@ struct ScrollStitcherTests {
         let document = Document.noise(width: width, height: 400, seed: 30)
         let header = Document.noise(width: width, height: 10, seed: 31)
         var stitcher = makeStitcher()
-        // Start mid-document so scrolling up can push the frame above canvasHeader.
+        // Start mid-document so scrolling up leaves frameEnd between tailStart (0)
+        // and canvasHeader (10), where the clipped content range is empty.
         _ = stitcher.add(document.frame(at: 120, height: frameHeight, header: header))
-        _ = stitcher.add(document.frame(at: 90, height: frameHeight, header: header))
-        _ = stitcher.add(document.frame(at: 60, height: frameHeight, header: header))
+        #expect(stitcher.add(document.frame(at: 90, height: frameHeight, header: header)) == .scrolled(-30))
+        #expect(stitcher.add(document.frame(at: 65, height: frameHeight, header: header)) == .scrolled(-25))
 
         #expect(!stitcher.lastFrameOverlapsTail(maximumRows: frameHeight))
     }
@@ -544,11 +545,17 @@ struct ScrollStitcherTests {
         // Idle `.unchanged` frames must not allocate a new preview or emit progress.
         #expect(step(document.frame(at: 0, height: frameHeight, header: header)) == nil)
 
-        // Grow the picture, then apply an in-place change in the tail.
+        // Grow the picture, then apply an in-place change above the tail:
+        // must not rebuild the preview even though the frame overlaps the tail.
         for offset in [40, 80] {
             _ = step(document.frame(at: offset, height: frameHeight, header: header))
         }
-        var loaded = document
+        var upperChange = document
+        upperChange.paint(columns: 0..<width, rows: 90..<100, value: 190)
+        #expect(step(upperChange.frame(at: 80, height: frameHeight, header: header)) == nil)
+
+        // An in-place change inside the tail updates the preview.
+        var loaded = upperChange
         loaded.paint(columns: 0..<width, rows: 120..<132, value: 215)
         let inPlace = try #require(step(loaded.frame(at: 80, height: frameHeight, header: header)))
         let inPlaceTail = try #require(inPlace.preview)
@@ -556,18 +563,53 @@ struct ScrollStitcherTests {
 
         // Jump upward past the tail: `lastFrame` no longer overlays the tail, so
         // the preview refreshes once to match `makeImage` without the in-place overlay.
-        let scrolledUp = try #require(step(document.frame(at: 40, height: frameHeight, header: header)))
+        let scrolledUp = try #require(step(loaded.frame(at: 40, height: frameHeight, header: header)))
+        #expect(!scrolledUp.isLost)
         let afterLeaveTail = try #require(scrolledUp.preview)
         #expect(afterLeaveTail !== inPlaceTail)
         #expect(isClose(rows(of: afterLeaveTail), Array(rows(of: stitcher).suffix(25))))
 
         // Further scrolls above the tail do not rebuild the preview.
-        #expect(step(document.frame(at: 10, height: frameHeight, header: header)) == nil)
+        #expect(step(loaded.frame(at: 10, height: frameHeight, header: header)) == nil)
 
         // Lost keeps the exact preview instance until recovery.
-        let lost = try #require(step(document.frame(at: 200, height: frameHeight, header: header)))
+        let lost = try #require(step(loaded.frame(at: 200, height: frameHeight, header: header)))
         #expect(lost.isLost)
         #expect(lost.preview === afterLeaveTail)
+    }
+
+    @Test func progressTrackerUpdatesPreviewWhenShrinkingFooterBackfillsTail() throws {
+        let document = Document.noise(width: width, height: 400, seed: 35)
+        let tallFooter = Document.noise(width: width, height: 20, seed: 36)
+        let shortFooter = Document.noise(width: width, height: 5, seed: 37)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+        var tracker = ScrollRecorder.ProgressTracker(previewTailRows: 25)
+
+        func step(_ slice: Document.Slice) -> ScrollRecorder.Progress? {
+            let outcome = stitcher.add(slice)
+            return tracker.update(after: outcome, stitcher: stitcher, colorSpace: colorSpace)
+        }
+
+        // Grow canvas to 110 rows (tail is 85..<110).
+        _ = step(document.frame(at: 0, height: frameHeight))
+        _ = step(document.frame(at: 50, height: frameHeight))
+
+        // Scroll back up with a tall footer so the placed frame ends at row 80
+        // (above tailStart 85). Replace rows 85..<95 in the source so backfilled
+        // rows are visibly distinct in the tail.
+        var refreshed = document
+        refreshed.paint(columns: 0..<width, rows: 85..<95, value: 225)
+        _ = step(refreshed.frame(at: 40, height: frameHeight, footer: tallFooter))
+        let beforeBackfill = try #require(tracker.progress.preview)
+
+        // Scroll further up while the footer shrinks 20 -> 5: rows 80..<95 of the
+        // previous frame are backfilled into canvas (overlapping tail 85..<110)
+        // even though both frames end at or above tailStart (85).
+        let backfilled = try #require(step(refreshed.frame(at: 25, height: frameHeight, footer: shortFooter)))
+        let afterBackfill = try #require(backfilled.preview)
+        #expect(afterBackfill !== beforeBackfill)
+        #expect(isClose(rows(of: afterBackfill), Array(rows(of: stitcher).prefix(stitcher.stitchedContentHeight).suffix(25))))
     }
 
     @Test func progressTrackerUpdatesOnFirstFullAndSkipsRepeatedFull() throws {

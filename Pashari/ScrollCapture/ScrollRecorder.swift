@@ -62,6 +62,9 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
             if previewTailRows > 0 {
                 switch outcome {
                 case .lost, .ignored, .unchanged:
+                    // `.unchanged` also arrives for unrelated display updates;
+                    // skip preview rebuilds while `makeImage()` still uses the
+                    // latest frame.
                     break
                 case .full where progress.isFull:
                     break
@@ -70,7 +73,10 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
                     let heightChanged = height != lastPreviewContentHeight
                     lastPreviewContentHeight = height
                     let overlapsTail = stitcher.lastFrameOverlapsTail(maximumRows: previewTailRows)
-                    if heightChanged || overlapsTail || lastFrameOverlappedTail {
+                    if heightChanged
+                        || overlapsTail
+                        || lastFrameOverlappedTail
+                        || stitcher.lastBackfillOverlapsTail(maximumRows: previewTailRows) {
                         if let preview = stitcher.makeTailImage(maximumRows: previewTailRows, colorSpace: colorSpace) {
                             newProgress.preview = preview
                         }
@@ -78,7 +84,7 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
                     lastFrameOverlappedTail = overlapsTail
                 case .changedInPlace:
                     let overlapsTail = stitcher.lastFrameOverlapsTail(maximumRows: previewTailRows)
-                    if overlapsTail {
+                    if stitcher.lastChangeOverlapsTail(maximumRows: previewTailRows) {
                         if let preview = stitcher.makeTailImage(maximumRows: previewTailRows, colorSpace: colorSpace) {
                             newProgress.preview = preview
                         }

@@ -92,6 +92,8 @@ nonisolated struct ScrollStitcher {
     private var footer: Int?
     private var lastFrame = Data()
     private var lastSignatures: Signatures?
+    private var lastChangedRows = 0..<0
+    private var lastBackfilledRows = 0..<0
     private var isFull = false
 
     private let rowLength: Int
@@ -135,11 +137,27 @@ nonisolated struct ScrollStitcher {
     /// Whether the last placed frame covers any of the bottom `maximumRows`
     /// rows of the stitched content.
     func lastFrameOverlapsTail(maximumRows: Int) -> Bool {
-        guard maximumRows > 0, stitchedContentHeight > 0 else { return false }
-        let tailStart = max(0, stitchedContentHeight - maximumRows)
         let frameStart = max(frameTop + (header ?? 0), canvasHeader ?? 0)
         let frameEnd = frameTop + height - (footer ?? 0)
-        return max(frameStart, tailStart) < min(frameEnd, stitchedContentHeight)
+        return overlapsTail(frameStart..<max(frameStart, frameEnd), maximumRows: maximumRows)
+    }
+
+    /// Whether the rows changed by the last `.changedInPlace` frame overlap the
+    /// bottom `maximumRows` rows of the stitched content.
+    func lastChangeOverlapsTail(maximumRows: Int) -> Bool {
+        overlapsTail(lastChangedRows, maximumRows: maximumRows)
+    }
+
+    /// Whether rows written back when a fixed footer shrank overlap the bottom
+    /// `maximumRows` rows of the stitched content.
+    func lastBackfillOverlapsTail(maximumRows: Int) -> Bool {
+        overlapsTail(lastBackfilledRows, maximumRows: maximumRows)
+    }
+
+    private func overlapsTail(_ rows: Range<Int>, maximumRows: Int) -> Bool {
+        guard maximumRows > 0, stitchedContentHeight > 0, !rows.isEmpty else { return false }
+        let tailStart = max(0, stitchedContentHeight - maximumRows)
+        return max(rows.lowerBound, tailStart) < min(rows.upperBound, stitchedContentHeight)
     }
 
     private var canvasHeight: Int {
@@ -198,11 +216,15 @@ nonisolated struct ScrollStitcher {
             // compared with the new look, and bring the changed rows along
             // once they scroll.
             keepLatestLook(frame, signatures)
+            let changedStart = max(frameTop + max(top, header ?? 0), canvasHeader ?? 0)
+            let changedEnd = frameTop + min(bottom, height - (footer ?? 0))
+            lastChangedRows = changedStart < changedEnd ? changedStart..<changedEnd : 0..<0
             return .changedInPlace
         }
 
         let fixed = Self.fixedRows(from: last, to: signatures, shift: shift)
             ?? (header: top, footer: height - bottom)
+        lastBackfilledRows = 0..<0
         if canvasHeader == nil {
             // The first scroll. Until now the whole first frame stood in for
             // the content, but its bottom rows are the footer, which goes in
@@ -218,6 +240,11 @@ nonisolated struct ScrollStitcher {
             last.withUnsafeBytes { bytes in
                 let frame = Frame(width: width, height: height, bytesPerRow: rowLength, pixels: bytes.baseAddress!)
                 write(rows: (height - footer)..<(height - fixed.footer), of: frame, middle: middle)
+            }
+            let backfillStart = max(frameTop + height - footer, canvasHeader ?? 0)
+            let backfillEnd = frameTop + height - fixed.footer
+            if backfillStart < backfillEnd {
+                lastBackfilledRows = backfillStart..<backfillEnd
             }
         }
         header = fixed.header
