@@ -295,6 +295,83 @@ struct AudioMixerTests {
                 #expect(frames == exactFrames)
             }
         }
+
+        // Case E: half-frame offsets before startTime (-1/96000 s) and past an integer
+        // stop frame (961/96000 s) must still exclude the sample starting exactly at endTime.
+        do {
+            let mixer = try AudioMixer(sources: [.system], maximumDuration: CMTime(value: 300, timescale: 1))
+            let start = CMTime(value: 0, timescale: 96_000)
+            let bufferStart = CMTime(value: -1, timescale: 96_000)
+            let stopAt = CMTime(value: 961, timescale: 96_000)
+            var emitted: [CMSampleBuffer] = []
+
+            // Sample index 481 starts at (-1/96000) + 481/48000 = 961/96000 == stopAt.
+            let buffer = try TestVideos.audioBuffer(frames: 960, at: 0) { frame, _ in
+                frame < 481 ? 0 : 0.9
+            }
+            try mixer.append(buffer, from: .system, at: bufferStart, startTime: start, upTo: stopAt) {
+                emitted.append($0)
+                return true
+            }
+            try mixer.flush(upTo: stopAt, startTime: start) { emitted.append($0); return true }
+
+            let samples = extractFloats(from: emitted)
+            let frames = samples.count / 2
+            let peak = samples.map(abs).max() ?? 0
+            #expect(frames == 480)
+            #expect(peak < 0.001, "sample at exact endTime leaked under half-frame offsets (peak \(peak))")
+        }
+
+        // Case F: 96 kHz input whose final frame fits before a 20 ms limit (1919/96000 -> 20 ms)
+        // must still be resampled and stitched even though its rounded 48 kHz start frame hits
+        // `limitFrame`, for both explicit `endTime` and `maximumDuration`-only clipping.
+        for useExplicitEndTime in [true, false] {
+            let limit = CMTime(value: 20, timescale: 1_000)
+            let mixer = try AudioMixer(
+                sources: [.microphone],
+                maximumDuration: useExplicitEndTime ? CMTime(value: 300, timescale: 1) : limit
+            )
+            let start = CMTime(value: 0, timescale: 96_000)
+            let endTime: CMTime? = useExplicitEndTime ? limit : nil
+
+            let prefix = try TestVideos.audioBuffer(
+                sampleRate: 96_000,
+                channels: 2,
+                frames: 1_919,
+                at: 0
+            ) { _, _ in 0.25 }
+            let tail = try TestVideos.audioBuffer(
+                sampleRate: 96_000,
+                channels: 2,
+                frames: 1,
+                at: 0
+            ) { _, _ in 0.25 }
+
+            var prefixEmitted: [CMSampleBuffer] = []
+            try mixer.append(prefix, from: .microphone, at: start, startTime: start, upTo: endTime) {
+                prefixEmitted.append($0)
+                return true
+            }
+            let framesBeforeTail = extractFloats(from: prefixEmitted).count / 2
+
+            var tailEmitted: [CMSampleBuffer] = []
+            try mixer.append(
+                tail,
+                from: .microphone,
+                at: CMTime(value: 1_919, timescale: 96_000),
+                startTime: start,
+                upTo: endTime
+            ) {
+                tailEmitted.append($0)
+                return true
+            }
+            try mixer.flush(upTo: limit, startTime: start) {
+                tailEmitted.append($0)
+                return true
+            }
+            let framesAfterTail = framesBeforeTail + extractFloats(from: tailEmitted).count / 2
+            #expect(framesAfterTail == framesBeforeTail + 1)
+        }
     }
 
     @Test func disjointBuffersUnderBackpressureDoNotAllocateSilenceAndRespectBufferLimit() throws {

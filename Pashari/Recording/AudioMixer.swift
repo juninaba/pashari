@@ -58,6 +58,7 @@ nonisolated final class AudioMixer {
     }
 
     private var expectedSources: Set<Source>
+    private let maximumDuration: CMTime
     private let maxFrames: Int64
     private let maximumBufferedFrames: Int?
     private let outputFormatDescription: CMAudioFormatDescription
@@ -88,6 +89,7 @@ nonisolated final class AudioMixer {
         maximumBufferedFrames: Int? = defaultMaximumBufferedFrames
     ) throws {
         self.expectedSources = sources
+        self.maximumDuration = maximumDuration
         self.maxFrames = max(
             0,
             CMTimeConvertScale(maximumDuration, timescale: Int32(Self.sampleRate), method: .roundHalfAwayFromZero).value
@@ -152,54 +154,63 @@ nonisolated final class AudioMixer {
         let limitFrame = frameLimit(upTo: endTime, startTime: startTime)
         guard limitFrame > 0 else { return }
 
-        let delta = CMTimeSubtract(presentationTime, startTime)
-        guard delta.isNumeric else { return }
         let maxSeconds = Double(limitFrame) / Double(Self.sampleRate)
+        let deltaSeconds = Self.exactSecondsDifference(presentationTime, startTime)
         // Guard against extreme out-of-range timestamps overflowing Int64 when
-        // scaled to 48 kHz.
-        if delta.seconds >= maxSeconds || delta.seconds < -600 { return }
+        // scaled to 48 kHz. Allow up to 1 s past `maxSeconds` here so
+        // high-rate inputs that still have `remainingSeconds > 0` can be
+        // resampled and stitched before the final `limitFrame` check.
+        guard deltaSeconds.isFinite, deltaSeconds >= -600, deltaSeconds <= maxSeconds + 1 else { return }
 
-        let rawStartFrame = CMTimeConvertScale(
-            delta,
-            timescale: Int32(Self.sampleRate),
-            method: .roundHalfAwayFromZero
-        ).value
-        let remainingCanonicalFrames = limitFrame - rawStartFrame
-        guard remainingCanonicalFrames > 0 else { return }
-
-        let remainingToMaxSeconds = Self.remainingToMaximumSeconds(
-            maxFrames: maxFrames,
+        // Apply the earlier of explicit `endTime`, `maximumDuration`, and
+        // `maxFrames` BEFORE copying or resampling input PCM so neither jitter
+        // snapping nor resampler lookahead can leak samples past the stop
+        // boundary. Computing the remaining duration directly from exact
+        // whole-second and fractional-tick differences avoids both
+        // `CMTimeAdd`/`CMTimeSubtract` LCM rounding and independent endpoint
+        // rounding errors.
+        var remainingSeconds = Self.remainingDurationSeconds(
+            limit: CMTime(value: maxFrames, timescale: Int32(Self.sampleRate)),
             presentationTime: presentationTime,
             startTime: startTime
         )
-        let remainingSeconds: Double
+        if maximumDuration.isNumeric, maximumDuration.timescale > 0 {
+            remainingSeconds = min(
+                remainingSeconds,
+                Self.remainingDurationSeconds(
+                    limit: maximumDuration,
+                    presentationTime: presentationTime,
+                    startTime: startTime
+                )
+            )
+        }
         if let endTime, endTime.isNumeric, endTime.timescale > 0 {
             remainingSeconds = min(
-                Self.exactSecondsDifference(endTime, presentationTime),
-                remainingToMaxSeconds
+                remainingSeconds,
+                Self.exactSecondsDifference(endTime, presentationTime)
             )
-        } else {
-            remainingSeconds = remainingToMaxSeconds
         }
         guard remainingSeconds > 0 else { return }
 
-        // Clip input PCM BEFORE copying or resampling so neither jitter
-        // snapping nor resampler lookahead can leak samples past `endTime` or
-        // `maximumDuration`, while keeping exact integer bounds at 48 kHz.
         let converter = converter(for: source)
         guard let converted = converter.convert(
             sampleBuffer,
-            remainingCanonicalFrames: remainingCanonicalFrames,
-            remainingSeconds: remainingSeconds
+            maximumInputSeconds: remainingSeconds
         ) else {
             return
         }
         let samples = converted.samples
         let frameCount = samples.count / Self.channelCount
         guard frameCount > 0 else { return }
-        if delta.seconds + Double(frameCount) / Double(Self.sampleRate) <= 0 { return }
+        if deltaSeconds + Double(frameCount) / Double(Self.sampleRate) <= 0 { return }
 
-        var startFrame = rawStartFrame
+        let delta = CMTimeSubtract(presentationTime, startTime)
+        guard delta.isNumeric else { return }
+        var startFrame = CMTimeConvertScale(
+            delta,
+            timescale: Int32(Self.sampleRate),
+            method: .roundHalfAwayFromZero
+        ).value
 
         let inputEndTime = CMTimeAdd(presentationTime, converted.inputDuration)
         let previousInputEnd = lastInputEndTimeBySource[source]
@@ -319,22 +330,22 @@ nonisolated final class AudioMixer {
         return wholeSeconds + remSeconds
     }
 
-    /// Computes `(maxFrames / sampleRate) - (presentationTime - startTime)` in
-    /// seconds without `CMTimeAdd` rounding or large-uptime cancellation.
-    private static func remainingToMaximumSeconds(
-        maxFrames: Int64,
+    /// Computes `limit - (presentationTime - startTime)` in seconds without
+    /// `CMTimeAdd` rounding or large-uptime `Double` cancellation.
+    private static func remainingDurationSeconds(
+        limit: CMTime,
         presentationTime: CMTime,
         startTime: CMTime
     ) -> Double {
-        let rate = Int64(Self.sampleRate)
+        let limitScale = Int64(limit.timescale)
         let presScale = Int64(presentationTime.timescale)
         let startScale = Int64(startTime.timescale)
-        let maxWhole = Double(maxFrames / rate)
-        let maxRem = Double(maxFrames % rate) / Double(rate)
+        let limitWhole = Double(limit.value / limitScale)
+        let limitRem = Double(limit.value % limitScale) / Double(limitScale)
         let deltaWhole = Double(presentationTime.value / presScale) - Double(startTime.value / startScale)
         let deltaRem = Double(presentationTime.value % presScale) / Double(presScale)
             - Double(startTime.value % startScale) / Double(startScale)
-        return (maxWhole - deltaWhole) + (maxRem - deltaRem)
+        return (limitWhole - deltaWhole) + (limitRem - deltaRem)
     }
 
     private func converter(for source: Source) -> SourceConverter {
@@ -565,8 +576,7 @@ nonisolated final class AudioMixer {
 
         func convert(
             _ sampleBuffer: CMSampleBuffer,
-            remainingCanonicalFrames: Int64,
-            remainingSeconds: Double
+            maximumInputSeconds: Double
         ) -> (samples: [Float], inputDuration: CMTime)? {
             guard CMSampleBufferIsValid(sampleBuffer), CMSampleBufferDataIsReady(sampleBuffer) else {
                 return nil
@@ -581,15 +591,9 @@ nonisolated final class AudioMixer {
             guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else { return nil }
 
             let inputRate = CMTimeScale(inputFormat.sampleRate.rounded())
-            let frameCount: Int
-            if inputFormat.sampleRate == Double(AudioMixer.sampleRate) {
-                guard remainingCanonicalFrames > 0 else { return nil }
-                frameCount = Int(min(remainingCanonicalFrames, Int64(rawFrameCount)))
-            } else {
-                let allowed = floor(remainingSeconds * inputFormat.sampleRate + 1e-9)
-                guard allowed >= 1 else { return nil }
-                frameCount = allowed >= Double(rawFrameCount) ? rawFrameCount : Int(allowed)
-            }
+            let allowed = floor(maximumInputSeconds * inputFormat.sampleRate + 1e-9)
+            guard allowed >= 1 else { return nil }
+            let frameCount = allowed >= Double(rawFrameCount) ? rawFrameCount : Int(allowed)
 
             guard let pcmBuffer = AVAudioPCMBuffer(
                 pcmFormat: inputFormat,
