@@ -179,13 +179,18 @@ final class CaptureCoordinator {
         showFeedback: @escaping (TextCaptureFeedback) -> Void = { $0.show() },
         _ capture: @escaping () async throws -> Screenshot?
     ) -> Task<Void, Never>? {
-        start(onError: { _ in showFeedback(.failed) }) {
+        start(onError: { _ in showFeedback(.captureFailed) }) {
             guard let screenshot = try await capture() else { return }
-            guard let text = try await recognize(screenshot.image) else {
-                showFeedback(.noText)
-                return
+            do {
+                guard let text = try await recognize(screenshot.image) else {
+                    showFeedback(.noText)
+                    return
+                }
+                showFeedback(copyText(text) ? .copied : .copyFailed)
+            } catch {
+                Log.capture.error("Text recognition failed: \(error.localizedDescription, privacy: .public)")
+                showFeedback(.recognitionFailed)
             }
-            showFeedback(copyText(text) ? .copied : .copyFailed)
         }
     }
 

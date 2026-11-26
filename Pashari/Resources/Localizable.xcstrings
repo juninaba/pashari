@@ -181,6 +181,16 @@
         }
       }
     },
+    "Could not capture the screen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面を取得できませんでした"
+          }
+        }
+      }
+    },
     "Could not copy text" : {
       "localizations" : {
         "ja" : {

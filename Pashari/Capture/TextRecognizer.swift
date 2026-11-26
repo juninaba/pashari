@@ -2,6 +2,8 @@ import Foundation
 import Vision
 
 enum TextRecognizer {
+    typealias Fragment = (text: String, bounds: CGRect)
+
     @concurrent
     static func recognize(_ image: CGImage) async throws -> String? {
         let request = VNRecognizeTextRequest()
@@ -11,18 +13,22 @@ enum TextRecognizer {
         request.recognitionLanguages = ["ja-JP", "en-US"]
         try VNImageRequestHandler(cgImage: image).perform([request])
 
-        typealias Fragment = (text: String, bounds: CGRect)
-        let fragments = (request.results ?? [])
-            .compactMap { observation -> Fragment? in
-                guard let text = observation.topCandidates(1).first?.string
-                    .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty
-                else { return nil }
-                return (text, observation.boundingBox)
+        let fragments = (request.results ?? []).compactMap { observation -> Fragment? in
+            observation.topCandidates(1).first.map { ($0.string, observation.boundingBox) }
+        }
+        return assemble(fragments)
+    }
+
+    nonisolated static func assemble(_ fragments: [Fragment]) -> String? {
+        let ordered = fragments
+            .compactMap { fragment -> Fragment? in
+                let text = fragment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return text.isEmpty ? nil : (text, fragment.bounds)
             }
             .sorted { $0.bounds.midY > $1.bounds.midY } // Vision's origin is at the bottom left.
 
         var rows: [[Fragment]] = []
-        for fragment in fragments {
+        for fragment in ordered {
             if let first = rows.last?.first, shareRow(first.bounds, fragment.bounds) {
                 rows[rows.count - 1].append(fragment)
             } else {

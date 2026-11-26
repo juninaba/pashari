@@ -138,7 +138,7 @@ struct CaptureCoordinatorTests {
         #expect(feedback == [.copied])
     }
 
-    @Test(arguments: [nil, .noText, .failed] as [TextCaptureFeedback?])
+    @Test(arguments: [nil, .noText, .captureFailed, .recognitionFailed] as [TextCaptureFeedback?])
     func textCapturePreservesClipboardWhenNoTextIsCopied(outcome: TextCaptureFeedback?) async throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
@@ -149,13 +149,16 @@ struct CaptureCoordinatorTests {
 
         let task = try #require(coordinator.runTextCapture(
             recognize: { _ in
-                #expect(outcome != nil)
-                if outcome == .failed { throw CaptureError.displayNotFound }
+                #expect(outcome == .noText || outcome == .recognitionFailed)
+                if outcome == .recognitionFailed { throw CaptureError.displayNotFound }
                 return nil
             },
             copyText: { Clipboard.copy(text: $0, to: pasteboard) },
             showFeedback: { feedback.append($0) }
-        ) { outcome == nil ? nil : sampleScreenshot })
+        ) {
+            if outcome == .captureFailed { throw CaptureError.displayNotFound }
+            return outcome == nil ? nil : sampleScreenshot
+        })
         await task.value
 
         #expect(pasteboard.changeCount == originalChangeCount)

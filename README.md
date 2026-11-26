@@ -58,8 +58,8 @@ Default hotkeys (change them under Settings):
 | Capture Window     | ⇧⌘3    |
 | Capture Fullscreen | ⇧⌘4    |
 
-Capture Scrolling Area, Record Area, Record Window and Record Fullscreen
-have no hotkey until you set one under Settings.
+Capture Scrolling Area, Capture Text, Record Area, Record Window and Record
+Fullscreen have no hotkey until you set one under Settings.
 
 macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
 System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that

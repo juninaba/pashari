@@ -50,3 +50,19 @@ struct TextRecognizerTests {
         return context.makeImage()!
     }
 }
+
+struct TextLayoutTests {
+    @Test func ordersRowsFromTopToBottomAndFragmentsFromLeftToRight() {
+        let text = TextRecognizer.assemble([
+            (" 下の行 ", CGRect(x: 0.2, y: 0.5, width: 0.3, height: 0.1)),
+            ("right", CGRect(x: 0.6, y: 0.81, width: 0.3, height: 0.1)),
+            ("left", CGRect(x: 0.1, y: 0.8, width: 0.3, height: 0.1)),
+        ])
+
+        #expect(text == "left right\n下の行")
+    }
+
+    @Test func whitespaceIsNotACopyableResult() {
+        #expect(TextRecognizer.assemble([(" \n ", .zero)]) == nil)
+    }
+}

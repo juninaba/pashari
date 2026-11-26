@@ -31,11 +31,24 @@ extension KeyboardShortcuts.Name {
 }
 
 enum Hotkeys {
+    private static let actions: [(name: KeyboardShortcuts.Name, run: (CaptureCoordinator) -> Void)] = [
+        (.captureArea, { $0.captureArea() }),
+        (.captureWindow, { $0.captureWindow() }),
+        (.captureFullscreen, { $0.captureFullscreen() }),
+        (.captureScrollingArea, { $0.captureScrollingArea() }),
+        (.captureText, { $0.captureText() }),
+        (.recordArea, { $0.recordArea() }),
+        (.recordWindow, { $0.recordWindow() }),
+        (.recordFullscreen, { $0.recordFullscreen() }),
+    ]
+
     static func validate(
-        _ shortcut: KeyboardShortcuts.Shortcut, for name: KeyboardShortcuts.Name
+        _ shortcut: KeyboardShortcuts.Shortcut,
+        for name: KeyboardShortcuts.Name,
+        shortcutFor: @MainActor (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut? = KeyboardShortcuts.getShortcut
     ) -> KeyboardShortcuts.ValidationResult {
-        let alreadyAssigned = KeyboardShortcuts.storedNames.contains {
-            $0.rawValue != name.rawValue && $0.shortcut == shortcut
+        let alreadyAssigned = actions.contains { action in
+            action.name != name && shortcutFor(action.name) == shortcut
         }
         if alreadyAssigned {
             return .disallow(reason: String(localized: "This shortcut is already assigned to another Pashari action."))
@@ -44,29 +57,10 @@ enum Hotkeys {
     }
 
     static func register(with captureCoordinator: CaptureCoordinator) {
-        KeyboardShortcuts.onKeyDown(for: .captureArea) {
-            captureCoordinator.captureArea()
-        }
-        KeyboardShortcuts.onKeyDown(for: .captureWindow) {
-            captureCoordinator.captureWindow()
-        }
-        KeyboardShortcuts.onKeyDown(for: .captureFullscreen) {
-            captureCoordinator.captureFullscreen()
-        }
-        KeyboardShortcuts.onKeyDown(for: .captureScrollingArea) {
-            captureCoordinator.captureScrollingArea()
-        }
-        KeyboardShortcuts.onKeyDown(for: .captureText) {
-            captureCoordinator.captureText()
-        }
-        KeyboardShortcuts.onKeyDown(for: .recordArea) {
-            captureCoordinator.recordArea()
-        }
-        KeyboardShortcuts.onKeyDown(for: .recordWindow) {
-            captureCoordinator.recordWindow()
-        }
-        KeyboardShortcuts.onKeyDown(for: .recordFullscreen) {
-            captureCoordinator.recordFullscreen()
+        for action in actions {
+            KeyboardShortcuts.onKeyDown(for: action.name) {
+                action.run(captureCoordinator)
+            }
         }
     }
 }

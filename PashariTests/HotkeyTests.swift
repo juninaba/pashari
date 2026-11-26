@@ -1,4 +1,3 @@
-import Foundation
 import KeyboardShortcuts
 import Testing
 
@@ -31,17 +30,23 @@ struct HotkeyTests {
         #expect(Set(defaults).count == defaults.count)
     }
 
-    @Test func anAssignedShortcutCanOnlyBeRecordedForItsCurrentAction() {
-        let action = KeyboardShortcuts.Name("testAction-\(UUID())")
-        let other = KeyboardShortcuts.Name("testOtherAction-\(UUID())")
-        let shortcut = KeyboardShortcuts.Shortcut(.f19, modifiers: [.command, .control, .option, .shift])
-        KeyboardShortcuts.setShortcut(shortcut, for: action)
-        defer { KeyboardShortcuts.setShortcut(nil, for: action) }
+    @Test func onlyCurrentActionsCanReserveAShortcut() throws {
+        let area = try #require(KeyboardShortcuts.Name.captureArea.initialShortcut)
+        let text = KeyboardShortcuts.Shortcut(.f19, modifiers: [.command, .control])
+        let retired = KeyboardShortcuts.Shortcut(.f18, modifiers: [.command, .control])
+        let assigned: [KeyboardShortcuts.Name: KeyboardShortcuts.Shortcut] = [
+            .captureArea: area,
+            .captureText: text,
+            .init("retiredAction"): retired,
+        ]
+        func shortcutFor(_ name: KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut? {
+            assigned[name]
+        }
 
-        #expect(Hotkeys.validate(shortcut, for: action) == .allow)
-        #expect(Hotkeys.validate(shortcut, for: other) != .allow)
-        #expect(action.shortcut == shortcut)
-        #expect(other.shortcut == nil)
+        #expect(Hotkeys.validate(area, for: .captureArea, shortcutFor: shortcutFor) == .allow)
+        #expect(Hotkeys.validate(area, for: .captureText, shortcutFor: shortcutFor) != .allow)
+        #expect(Hotkeys.validate(text, for: .captureArea, shortcutFor: shortcutFor) != .allow)
+        #expect(Hotkeys.validate(retired, for: .captureText, shortcutFor: shortcutFor) == .allow)
     }
 
     @Test func theDefaultsStayClearOfShortcutsOthersAlreadyUse() {

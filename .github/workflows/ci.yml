@@ -29,7 +29,7 @@ jobs:
         run: xcodegen generate
       - name: Build and test
         run: |
-          # Vision's accurate text recognition cannot load its Neural Engine models on this runner.
+          # Vision cannot load its Neural Engine models here. TextLayoutTests still runs.
           xcodebuild test \
             -scheme Pashari \
             -destination "platform=macOS,arch=$(uname -m)" \

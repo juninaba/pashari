@@ -3,7 +3,8 @@ import AppKit
 enum TextCaptureFeedback {
     case copied
     case noText
-    case failed
+    case captureFailed
+    case recognitionFailed
     case copyFailed
 
     private static var panel: NSPanel?
@@ -12,7 +13,8 @@ enum TextCaptureFeedback {
         switch self {
         case .copied: String(localized: "Text copied")
         case .noText: String(localized: "No text found")
-        case .failed: String(localized: "Could not recognize text")
+        case .captureFailed: String(localized: "Could not capture the screen")
+        case .recognitionFailed: String(localized: "Could not recognize text")
         case .copyFailed: String(localized: "Could not copy text")
         }
     }

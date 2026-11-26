@@ -1,9 +1,17 @@
 import AppKit
 import SwiftUI
 
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let model = SettingsModel()
+
+    override init() {
+        super.init()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidChangeScreen(_:)),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil
+        )
+    }
 
     func show() {
         model.reload()
@@ -25,17 +33,19 @@ final class SettingsWindowController {
             // view out, so the window is still empty here. Size it first:
             // centering an empty window puts its corner in the middle of the
             // screen, and the settings then grow up and to the right of it.
-            fit(window, on: screen)
+            Self.fit(window, in: screen?.visibleFrame)
             if let screen {
                 window.center(on: screen)
             } else {
                 window.center()
             }
             self.window = window
+            window.delegate = self
         } else if let window {
             let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
             let movesToScreen = !window.isVisible && screen?.frame.contains(center) == false
-            fit(window, on: movesToScreen ? screen : window.screen ?? screen)
+            let targetScreen = movesToScreen ? screen : window.screen ?? screen
+            Self.fit(window, in: targetScreen?.visibleFrame)
             if movesToScreen, let screen {
                 window.center(on: screen)
             }
@@ -47,12 +57,25 @@ final class SettingsWindowController {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    private func fit(_ window: NSWindow, on screen: NSScreen?) {
+    func windowDidChangeScreen(_ notification: Notification) {
+        guard let window, window.isVisible, let screen = window.screen else { return }
+        Self.fit(window, in: screen.visibleFrame)
+    }
+
+    static func fit(_ window: NSWindow, in visibleFrame: CGRect?) {
         guard let contentView = window.contentView else { return }
+        let originalFrame = window.frame
         var size = contentView.fittingSize
-        if let screen {
-            size.height = min(size.height, window.contentRect(forFrameRect: screen.visibleFrame).height)
+        if let visibleFrame {
+            size.height = min(size.height, window.contentRect(forFrameRect: visibleFrame).height)
         }
-        window.setContentSize(size)
+        var frame = window.frameRect(forContentRect: CGRect(origin: .zero, size: size))
+        frame.origin = CGPoint(x: originalFrame.minX, y: originalFrame.maxY - frame.height)
+        if let visibleFrame {
+            frame.origin.y = min(max(frame.minY, visibleFrame.minY), visibleFrame.maxY - frame.height)
+        }
+        if frame != window.frame {
+            window.setFrame(frame, display: window.isVisible)
+        }
     }
 }
