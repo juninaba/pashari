@@ -84,6 +84,21 @@ struct PinnedScreenshotLayoutTests {
         #expect(abs(second.imageSize.width / second.imageSize.height - imageSize.width / imageSize.height) < 0.001)
     }
 
+    @Test(arguments: [[856, 856, 854], Array(repeating: 856, count: 7)])
+    func aLargePinLeavesTheEarlierPinsReachable(heights: [Int]) {
+        var occupied: [CGRect] = []
+        for height in heights {
+            let pin = PinnedScreenshotLayout.initialPlacement(
+                imageSize: CGSize(width: 1424, height: CGFloat(height)), captureFrame: nil,
+                visibleFrame: screen, occupiedFrames: occupied
+            )
+
+            #expect(screen.contains(pin.frame))
+            #expect(!occupied.contains { pin.frame.contains($0) })
+            occupied.append(pin.frame)
+        }
+    }
+
     @Test func zoomKeepsThePointUnderThePointerStill() {
         let capture = CGRect(x: -1100, y: 350, width: 300, height: 200)
         let placement = PinnedScreenshotLayout.initialPlacement(
