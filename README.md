@@ -58,8 +58,8 @@ Default hotkeys (change them under Settings):
 | Capture Window     | ⇧⌘3    |
 | Capture Fullscreen | ⇧⌘4    |
 
-Capture Scrolling Area, Record Area, Record Window and Record Fullscreen
-have no hotkey until you set one under Settings.
+Capture Scrolling Area, Capture Text, Record Area, Record Window and Record
+Fullscreen have no hotkey until you set one under Settings.
 
 macOS uses ⇧⌘3 and ⇧⌘4 for its own screenshots. Turn those off under
 System Settings > Keyboard > Keyboard Shortcuts > Screenshots so that
@@ -72,6 +72,17 @@ Settings appears.
 <p align="center">
   <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area, Record Area, Record Window and Record Fullscreen have none yet.">
 </p>
+
+### 画面の文字をコピーする
+
+1. メニューバーの Pashari アイコンから「テキストをキャプチャ」（Capture Text）を選びます。
+2. コピーしたい文字をドラッグで囲みます。
+   マウスボタンを離すと、範囲内の文字がプレーンテキストとしてクリップボードにコピーされます。
+3. 貼り付け先で ⌘V を押します。
+
+英語と日本語を Mac 上で読み取ります。
+設定の「テキストをキャプチャ」でショートカットを割り当てられます。初期状態では未設定です。
+Esc キーまたは右クリックで範囲選択をキャンセルできます。
 
 ### Scroll capture
 

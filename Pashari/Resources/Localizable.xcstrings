@@ -111,6 +111,16 @@
         }
       }
     },
+    "Capture Text" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストをキャプチャ"
+          }
+        }
+      }
+    },
     "Capture Window" : {
       "localizations" : {
         "ja" : {
@@ -167,6 +177,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "コピー"
+          }
+        }
+      }
+    },
+    "Could not capture the screen" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "画面を取得できませんでした"
+          }
+        }
+      }
+    },
+    "Could not copy text" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストをコピーできませんでした"
+          }
+        }
+      }
+    },
+    "Could not recognize text" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストを読み取れませんでした"
           }
         }
       }
@@ -347,6 +387,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "番号"
+          }
+        }
+      }
+    },
+    "No text found" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストが見つかりませんでした"
           }
         }
       }
@@ -721,6 +771,16 @@
         }
       }
     },
+    "Text copied" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "テキストをコピーしました"
+          }
+        }
+      }
+    },
     "The recording could not be copied" : {
       "localizations" : {
         "ja" : {
@@ -877,6 +937,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "録画するウインドウが見つかりませんでした。"
+          }
+        }
+      }
+    },
+    "This shortcut is already assigned to another Pashari action." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このショートカットは Pashari の別の操作に割り当てられています。"
           }
         }
       }
