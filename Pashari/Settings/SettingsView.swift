@@ -6,8 +6,6 @@ import SwiftUI
 /// settings on its dotted desk, on cards of the same light paper as the
 /// prints, which stays light in Dark Mode too.
 struct SettingsView: View {
-    static let width: CGFloat = 440
-
     /// Deep enough to read on the paper (5.1:1). The system red reaches only
     /// 3.3:1 there.
     private static let errorRed = Color(red: 196 / 255, green: 52 / 255, blue: 40 / 255)
@@ -16,40 +14,23 @@ struct SettingsView: View {
     private static let quietText = Color.black.opacity(0.6)
 
     @Bindable var model: SettingsModel
-    var scrollsContent: Bool = true
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
-            if scrollsContent {
-                ScrollView(.vertical) {
-                    settings
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(20)
-                }
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(SettingsDesk())
-            } else {
-                settings
-                    .padding(20)
-                    .background(SettingsDesk())
+            ViewThatFits(in: .vertical) {
+                desk.fixedSize(horizontal: false, vertical: true)
+                ScrollView { desk }
             }
         }
-        .frame(width: Self.width)
+        .frame(width: 440)
     }
 
-    /// Measures the full unclipped layout size so the Settings window opens at
-    /// its natural height on tall displays and clamps to a scrollable height
-    /// only when a display is shorter.
-    static func naturalContentSize(for model: SettingsModel) -> CGSize {
-        let view = NSHostingView(
-            rootView: SettingsView(model: model, scrollsContent: false)
-                .fixedSize(horizontal: false, vertical: true)
-        )
-        let size = view.fittingSize
-        return CGSize(width: Self.width, height: ceil(size.height))
+    private var desk: some View {
+        settings
+            .padding(20)
+            .background(SettingsDesk())
     }
 
     /// The app's icon and the window's title, on the colour of the editor's
@@ -180,22 +161,29 @@ struct SettingsView: View {
             }
 
             section("Shortcuts") {
-                KeyboardShortcuts.Recorder("Capture Area", name: .captureArea)
+                shortcutRecorder("Capture Area", name: .captureArea)
                 Divider()
-                KeyboardShortcuts.Recorder("Capture Window", name: .captureWindow)
+                shortcutRecorder("Capture Window", name: .captureWindow)
                 Divider()
-                KeyboardShortcuts.Recorder("Capture Fullscreen", name: .captureFullscreen)
+                shortcutRecorder("Capture Fullscreen", name: .captureFullscreen)
                 Divider()
-                KeyboardShortcuts.Recorder("Capture Scrolling Area", name: .captureScrollingArea)
+                shortcutRecorder("Capture Scrolling Area", name: .captureScrollingArea)
                 Divider()
-                KeyboardShortcuts.Recorder("Record Area", name: .recordArea)
+                shortcutRecorder("Capture Text", name: .captureText)
                 Divider()
-                KeyboardShortcuts.Recorder("Record Window", name: .recordWindow)
+                shortcutRecorder("Record Area", name: .recordArea)
                 Divider()
-                KeyboardShortcuts.Recorder("Record Fullscreen", name: .recordFullscreen)
+                shortcutRecorder("Record Window", name: .recordWindow)
+                Divider()
+                shortcutRecorder("Record Fullscreen", name: .recordFullscreen)
             }
         }
         .labeledContentStyle(SettingsRowStyle())
+    }
+
+    private func shortcutRecorder(_ title: LocalizedStringKey, name: KeyboardShortcuts.Name) -> some View {
+        KeyboardShortcuts.Recorder(title, name: name)
+            .shortcutValidation { Hotkeys.validate($0, for: name) }
     }
 
     /// A heading on the desk, with its settings on a paper card below it.

@@ -92,6 +92,8 @@ nonisolated struct ScrollStitcher {
     private var footer: Int?
     private var lastFrame = Data()
     private var lastSignatures: Signatures?
+    private var lastChangedRows = 0..<0
+    private var lastBackfilledRows = 0..<0
     private var isFull = false
 
     private let rowLength: Int
@@ -128,6 +130,36 @@ nonisolated struct ScrollStitcher {
         canvasHeight + (footer ?? 0)
     }
 
+    /// How tall the stitched content is so far, in pixels, without the fixed
+    /// footer or blank spring-back space at the end.
+    private(set) var stitchedContentHeight = 0
+
+    /// Whether the last placed frame covers any of the bottom `maximumRows`
+    /// rows of the stitched content.
+    func lastFrameOverlapsTail(maximumRows: Int) -> Bool {
+        let frameStart = max(frameTop + (header ?? 0), canvasHeader ?? 0)
+        let frameEnd = frameTop + height - (footer ?? 0)
+        return overlapsTail(frameStart..<max(frameStart, frameEnd), maximumRows: maximumRows)
+    }
+
+    /// Whether the rows changed by the last `.changedInPlace` frame overlap the
+    /// bottom `maximumRows` rows of the stitched content.
+    func lastChangeOverlapsTail(maximumRows: Int) -> Bool {
+        overlapsTail(lastChangedRows, maximumRows: maximumRows)
+    }
+
+    /// Whether rows written back when a fixed footer shrank overlap the bottom
+    /// `maximumRows` rows of the stitched content.
+    func lastBackfillOverlapsTail(maximumRows: Int) -> Bool {
+        overlapsTail(lastBackfilledRows, maximumRows: maximumRows)
+    }
+
+    private func overlapsTail(_ rows: Range<Int>, maximumRows: Int) -> Bool {
+        guard maximumRows > 0, stitchedContentHeight > 0, !rows.isEmpty else { return false }
+        let tailStart = max(0, stitchedContentHeight - maximumRows)
+        return max(rows.lowerBound, tailStart) < min(rows.upperBound, stitchedContentHeight)
+    }
+
     private var canvasHeight: Int {
         canvas.count / rowLength
     }
@@ -144,6 +176,7 @@ nonisolated struct ScrollStitcher {
             canvas = lastFrame
             lastMiddle = height / 2
             canvasDistances = (0..<height).map { abs($0 - lastMiddle) }
+            stitchedContentHeight = height
             return .started
         }
 
@@ -183,11 +216,15 @@ nonisolated struct ScrollStitcher {
             // compared with the new look, and bring the changed rows along
             // once they scroll.
             keepLatestLook(frame, signatures)
+            let changedStart = max(frameTop + max(top, header ?? 0), canvasHeader ?? 0)
+            let changedEnd = frameTop + min(bottom, height - (footer ?? 0))
+            lastChangedRows = changedStart < changedEnd ? changedStart..<changedEnd : 0..<0
             return .changedInPlace
         }
 
         let fixed = Self.fixedRows(from: last, to: signatures, shift: shift)
             ?? (header: top, footer: height - bottom)
+        lastBackfilledRows = 0..<0
         if canvasHeader == nil {
             // The first scroll. Until now the whole first frame stood in for
             // the content, but its bottom rows are the footer, which goes in
@@ -204,6 +241,11 @@ nonisolated struct ScrollStitcher {
                 let frame = Frame(width: width, height: height, bytesPerRow: rowLength, pixels: bytes.baseAddress!)
                 write(rows: (height - footer)..<(height - fixed.footer), of: frame, middle: middle)
             }
+            let backfillStart = max(frameTop + height - footer, canvasHeader ?? 0)
+            let backfillEnd = frameTop + height - fixed.footer
+            if backfillStart < backfillEnd {
+                lastBackfilledRows = backfillStart..<backfillEnd
+            }
         }
         header = fixed.header
         footer = fixed.footer
@@ -211,6 +253,7 @@ nonisolated struct ScrollStitcher {
         lastMiddle = (fixed.header + height - fixed.footer) / 2
         write(rows: fixed.header..<(height - fixed.footer), of: frame, middle: lastMiddle)
         keep(frame, signatures)
+        stitchedContentHeight = pictureContentHeight
 
         return isFull ? .full : .scrolled(shift)
     }
@@ -612,14 +655,41 @@ nonisolated struct ScrollStitcher {
     /// The pixels are read as BGRA, the layout ScreenCaptureKit delivers.
     func makeImage(colorSpace: CGColorSpace) -> CGImage? {
         guard !canvas.isEmpty else { return nil }
-        let contentHeight = pictureContentHeight
+        let contentHeight = stitchedContentHeight
         let footerLength = (footer ?? 0) * rowLength
         // The picture may take a few hundred MB. Room for all of it at once
         // means each byte is copied only once, not again as it grows.
         var pixels = Data(capacity: contentHeight * rowLength + footerLength)
         pixels.append(canvas.prefix(contentHeight * rowLength))
-        showLatestLook(in: &pixels, above: contentHeight)
+        showLatestLook(in: &pixels, for: 0..<contentHeight)
         pixels.append(lastFrame.suffix(footerLength))
+        return makeCGImage(from: pixels, colorSpace: colorSpace, shouldInterpolate: false)
+    }
+
+    /// The bottom rows of the stitched content so far, at most `maximumRows`
+    /// tall, for previewing how far the picture reaches without copying the
+    /// whole canvas.
+    func makeTailImage(maximumRows: Int, colorSpace: CGColorSpace) -> CGImage? {
+        guard maximumRows > 0, stitchedContentHeight > 0 else { return nil }
+        let contentHeight = stitchedContentHeight
+        let rowCount = min(contentHeight, maximumRows)
+        let startRow = contentHeight - rowCount
+        let startByte = startRow * rowLength
+        let byteCount = rowCount * rowLength
+        // Copy only the tail rows into an independent buffer so the preview
+        // never retains the full canvas or forces copy-on-write on later rows.
+        var pixels = canvas.withUnsafeBytes { bytes in
+            Data(bytes: bytes.baseAddress! + startByte, count: byteCount)
+        }
+        showLatestLook(in: &pixels, for: startRow..<contentHeight)
+        return makeCGImage(from: pixels, colorSpace: colorSpace, shouldInterpolate: true)
+    }
+
+    private func makeCGImage(
+        from pixels: Data,
+        colorSpace: CGColorSpace,
+        shouldInterpolate: Bool
+    ) -> CGImage? {
         guard let provider = CGDataProvider(data: pixels as CFData) else { return nil }
         return CGImage(
             width: width,
@@ -633,31 +703,31 @@ nonisolated struct ScrollStitcher {
             ),
             provider: provider,
             decode: nil,
-            shouldInterpolate: false,
+            shouldInterpolate: shouldInterpolate,
             intent: .defaultIntent
         )
     }
 
     /// Since the content last moved, the area may have changed in place: an
     /// image finished loading, or the scroll bar faded. The rows of the
-    /// picture above `contentHeight` that the latest frame shows at least
-    /// as near the middle as their own look take the latest one, so that
-    /// the picture ends as the area looks now, like its footer. Rows seen
-    /// nearer the middle keep that look: by the edges, a bar may dim them.
-    private func showLatestLook(in pixels: inout Data, above contentHeight: Int) {
+    /// picture in `rows` that the latest frame shows at least as near the
+    /// middle as their own look take the latest one, so that the picture
+    /// ends as the area looks now, like its footer. Rows seen nearer the
+    /// middle keep that look: by the edges, a bar may dim them.
+    private func showLatestLook(in pixels: inout Data, for rows: Range<Int>) {
         let rowLength = rowLength
-        let firstRow = canvasHeader ?? 0
+        let firstRow = max(canvasHeader ?? 0, rows.lowerBound)
         let contentRows = (header ?? 0)..<(height - (footer ?? 0))
         lastFrame.withUnsafeBytes { latest in
             pixels.withUnsafeMutableBytes { pixels in
                 for y in contentRows {
                     let row = frameTop + y
                     guard
-                        row >= firstRow, row < contentHeight,
+                        row >= firstRow, row < rows.upperBound,
                         abs(y - lastMiddle) <= canvasDistances[row]
                     else { continue }
                     pixels.baseAddress!
-                        .advanced(by: row * rowLength)
+                        .advanced(by: (row - rows.lowerBound) * rowLength)
                         .copyMemory(from: latest.baseAddress! + y * rowLength, byteCount: rowLength)
                 }
             }
@@ -676,19 +746,34 @@ nonisolated struct ScrollStitcher {
         // Taller than a frame, it cannot be such a moment.
         guard tailHeight > 0, tailHeight <= height else { return canvasHeight }
 
-        let tail = canvas.withUnsafeBytes { bytes in
+        // Most scroll-backs land on real content rather than blank spring-back
+        // space, so checking the first row avoids summarizing the whole tail.
+        let first = canvas.withUnsafeBytes { bytes in
             summarizer.signatures(
                 of: Frame(
                     width: width,
-                    height: tailHeight,
+                    height: 1,
                     bytesPerRow: rowLength,
                     pixels: bytes.baseAddress! + lastContentEnd * rowLength
                 )
             )
         }
-        let firstRow = tail.values[0..<tail.length]
-        let isBlank = firstRow.max()! - firstRow.min()! <= Self.tolerance
-            && (0..<tailHeight).allSatisfy { tail.matches($0, tail, 0) }
+        guard first.values.max()! - first.values.min()! <= Self.tolerance else {
+            return canvasHeight
+        }
+        guard tailHeight > 1 else { return lastContentEnd }
+
+        let tail = canvas.withUnsafeBytes { bytes in
+            summarizer.signatures(
+                of: Frame(
+                    width: width,
+                    height: tailHeight - 1,
+                    bytesPerRow: rowLength,
+                    pixels: bytes.baseAddress! + (lastContentEnd + 1) * rowLength
+                )
+            )
+        }
+        let isBlank = (0..<(tailHeight - 1)).allSatisfy { tail.matches($0, first, 0) }
         return isBlank ? lastContentEnd : canvasHeight
     }
 }
