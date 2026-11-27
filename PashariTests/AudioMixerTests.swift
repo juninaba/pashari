@@ -63,21 +63,68 @@ struct AudioMixerTests {
         let start = TestVideos.time(0)
         var emitted: [CMSampleBuffer] = []
 
-        // Send 300 ms of microphone audio with zero system audio.
-        for chunk in 0..<15 {
+        // Send 1.3 s of microphone audio with zero system audio.
+        let chunks = 65
+        for chunk in 0..<chunks {
             let buffer = try TestVideos.audioBuffer(channels: 1, frames: 960, at: Double(chunk) * 0.02) { _, _ in 0.3 }
             try mixer.append(buffer, from: .microphone, at: buffer.presentationTimeStamp, startTime: start) {
                 emitted.append($0)
                 return true
             }
         }
-        // Beyond the 150 ms lead window, chunks should already have started streaming out.
+        // Beyond the lead window, chunks should already have started streaming out.
         let streamedFrames = extractFloats(from: emitted).count / 2
-        #expect(streamedFrames >= 7_200)
+        #expect(streamedFrames >= chunks * 960 - Int(AudioMixer.maximumLeadFrames))
+        #expect(streamedFrames > 0)
 
-        try mixer.flush(upTo: TestVideos.time(0.3), startTime: start) { emitted.append($0); return true }
+        try mixer.flush(upTo: TestVideos.time(Double(chunks) * 0.02), startTime: start) {
+            emitted.append($0)
+            return true
+        }
         let totalFrames = extractFloats(from: emitted).count / 2
-        #expect(totalFrames == 14_400)
+        #expect(totalFrames == chunks * 960)
+    }
+
+    @Test func aMicrophoneThatDeliversLateIsStillMixedIn() throws {
+        // Bluetooth microphones such as AirPods hand over their buffers a few
+        // hundred milliseconds after the time they carry, while system audio
+        // comes at once. None of the microphone may be left out of the mix.
+        let mixer = try AudioMixer(sources: [.system, .microphone], maximumDuration: CMTime(value: 10, timescale: 1))
+        let start = TestVideos.time(0)
+        var emitted: [CMSampleBuffer] = []
+        let chunks = 100 // 2 s in 20 ms buffers
+        let lag = 15 // the microphone arrives 300 ms late
+
+        func appendMicrophone(_ chunk: Int) throws {
+            let buffer = try TestVideos.audioBuffer(channels: 1, frames: 960, at: Double(chunk) * 0.02) { _, _ in 0.3 }
+            try mixer.append(buffer, from: .microphone, at: buffer.presentationTimeStamp, startTime: start) {
+                emitted.append($0)
+                return true
+            }
+        }
+        for chunk in 0..<chunks {
+            let system = try TestVideos.audioBuffer(frames: 960, at: Double(chunk) * 0.02) { _, _ in 0 }
+            try mixer.append(system, from: .system, at: system.presentationTimeStamp, startTime: start) {
+                emitted.append($0)
+                return true
+            }
+            if chunk >= lag {
+                try appendMicrophone(chunk - lag)
+            }
+        }
+        for chunk in (chunks - lag)..<chunks {
+            try appendMicrophone(chunk)
+        }
+        try mixer.flush(upTo: TestVideos.time(Double(chunks) * 0.02), startTime: start) {
+            emitted.append($0)
+            return true
+        }
+
+        let samples = extractFloats(from: emitted)
+        let frames = samples.count / 2
+        let heard = (0..<frames).filter { abs(samples[$0 * 2] - 0.3) < 0.001 }.count
+        #expect(frames == chunks * 960)
+        #expect(heard == frames, "only \(heard) of \(frames) frames carry the microphone")
     }
 
     @Test func lowSampleRateInt16MonoMicConvertsToCentered48kHzStereo() throws {

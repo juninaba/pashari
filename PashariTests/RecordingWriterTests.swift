@@ -301,7 +301,7 @@ struct RecordingWriterTests {
             Float(sin(2 * .pi * 440 * Double(index) / 48_000)) * 0.5
         }
         try writer.appendAudio(system, from: .system)
-        // With microphone disabled, system audio emits immediately rather than staying buffered for 150 ms.
+        // With microphone disabled, system audio emits immediately rather than waiting for the microphone.
         #expect(!writer.hasPendingAudio)
         _ = try await TestVideos.finish(writer, at: 0.1)
 

@@ -22,9 +22,12 @@ nonisolated final class AudioMixer {
     static let sampleRate: Int = 48_000
     static let channelCount: Int = 2
     /// Maximum time one source waits for the other before flushing ahead
-    /// (150 ms at 48 kHz), bounding latency and preventing stalls if one source
-    /// goes quiet or stops delivering buffers.
-    static let maximumLeadFrames: Int64 = 7_200
+    /// (1 s at 48 kHz), so that a source that goes quiet or stops delivering
+    /// buffers does not hold the mix back. Audio that arrives after the mix
+    /// has moved past its time is lost, and Bluetooth microphones such as
+    /// AirPods deliver a few hundred milliseconds late; a file has no need
+    /// for low latency, so the wait is generous.
+    static let maximumLeadFrames: Int64 = 48_000
     /// Consecutive buffers from the same source whose input timestamps match
     /// the previous buffer's end within 2 ms are stitched seamlessly to absorb
     /// clock rounding and resampler priming delay without swallowing real
