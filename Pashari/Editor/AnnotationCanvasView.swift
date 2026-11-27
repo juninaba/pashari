@@ -16,10 +16,27 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
     private var moveStart: CGPoint?
     private var moveOffset = CGSize.zero
 
-    /// The view the user is typing into with the text tool, and where the
-    /// text will go (in image points).
+    /// While one of the selected annotation's resize handles is being dragged.
+    private struct ResizeDrag {
+        let original: Annotation
+        let handle: Annotation.Handle
+        let handleOrigin: CGPoint
+        let pressPoint: CGPoint
+        var lastPoint: CGPoint
+        var didDrag = false
+        var current: Annotation
+    }
+    private var activeResize: ResizeDrag?
+
+    /// The view the user is typing into with the text tool (or while
+    /// re-editing an existing text mark), and where the text will go (in
+    /// image points).
     private var textView: NSTextView?
     private var textOrigin: CGPoint?
+    private weak var observedUndoManager: UndoManager?
+
+    private weak var observedClipView: NSClipView?
+    private var lastZoomScale: CGFloat = 1
 
     init(model: EditorModel) {
         self.model = model
@@ -38,16 +55,61 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
+    private var zoomScale: CGFloat {
+        max(enclosingScrollView?.magnification ?? 1, 0.01)
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        observeZoomChanges()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        observeZoomChanges()
+    }
+
     // MARK: - Keeping up with the model
 
     private func documentDidChange() {
         setFrameSize(model.visibleRect.size)
         needsDisplay = true
+        updateCursorForCurrentPointer()
     }
 
     private func toolDidChange() {
         commitText()
-        window?.invalidateCursorRects(for: self)
+        updateCursorForCurrentPointer()
+    }
+
+    private func observeZoomChanges() {
+        let clipView = enclosingScrollView?.contentView
+        guard clipView !== observedClipView else { return }
+        if let observedClipView {
+            NotificationCenter.default.removeObserver(
+                self,
+                name: NSView.boundsDidChangeNotification,
+                object: observedClipView
+            )
+        }
+        observedClipView = clipView
+        lastZoomScale = zoomScale
+        if let clipView {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(clipViewBoundsDidChange),
+                name: NSView.boundsDidChangeNotification,
+                object: clipView
+            )
+        }
+    }
+
+    @objc private func clipViewBoundsDidChange(_ notification: Notification) {
+        let scale = zoomScale
+        guard scale != lastZoomScale else { return }
+        lastZoomScale = scale
+        needsDisplay = true
+        updateCursorForCurrentPointer()
     }
 
     // MARK: - Drawing
@@ -65,8 +127,19 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         // would spill out around the canvas.
         context.clip(to: visible)
 
-        var annotations = model.document.annotations.map { annotation in
-            annotation.id == model.selectedID ? annotation.translated(by: moveOffset) : annotation
+        var annotations: [Annotation] = []
+        annotations.reserveCapacity(model.document.annotations.count + (draft == nil ? 0 : 1))
+        for annotation in model.document.annotations {
+            if annotation.id == model.editingTextID {
+                continue
+            }
+            if let activeResize, annotation.id == activeResize.original.id {
+                annotations.append(activeResize.current)
+            } else if annotation.id == model.selectedID, moveOffset != .zero {
+                annotations.append(annotation.translated(by: moveOffset))
+            } else {
+                annotations.append(annotation)
+            }
         }
         if let draft {
             annotations.append(draft)
@@ -78,8 +151,10 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
             in: context
         )
 
-        if let selected = annotations.first(where: { $0.id == model.selectedID }) {
-            drawSelectionOutline(around: selected.bounds, in: context)
+        if model.editingTextID == nil,
+           let selected = annotations.first(where: { $0.id == model.selectedID })
+        {
+            drawSelection(for: selected, in: context)
         }
 
         if let cropDraft {
@@ -88,23 +163,58 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
             context.addRect(cropDraft)
             context.fillPath(using: .evenOdd)
             context.setStrokeColor(NSColor.white.cgColor)
-            context.setLineWidth(1)
+            context.setLineWidth(1 / zoomScale)
             context.stroke(cropDraft)
         }
         context.restoreGState()
     }
 
+    private func drawSelection(for annotation: Annotation, in context: CGContext) {
+        let scale = zoomScale
+        switch annotation.shape {
+        case .rectangle(let rect), .ellipse(let rect), .blur(let rect):
+            drawSelectionOutline(frame: rect, scale: scale, in: context)
+        case .arrow, .line:
+            break
+        case .pen, .text, .counter:
+            drawSelectionOutline(frame: annotation.bounds.insetBy(dx: -4 / scale, dy: -4 / scale), scale: scale, in: context)
+        }
+
+        let handles = annotation.handles(magnification: scale)
+        if !handles.isEmpty {
+            drawHandles(handles.map(\.point), scale: scale, in: context)
+        }
+    }
+
     /// A dashed frame around the selected annotation. Drawn in white first
     /// and the accent colour on top, so it shows on any background.
-    private func drawSelectionOutline(around bounds: CGRect, in context: CGContext) {
-        let frame = bounds.insetBy(dx: -4, dy: -4)
+    private func drawSelectionOutline(frame: CGRect, scale: CGFloat, in context: CGContext) {
         context.saveGState()
-        context.setLineWidth(1.5)
+        context.setLineWidth(1.5 / scale)
         context.setStrokeColor(NSColor.white.cgColor)
         context.stroke(frame)
         context.setStrokeColor(NSColor.controlAccentColor.cgColor)
-        context.setLineDash(phase: 0, lengths: [5, 4])
+        context.setLineDash(phase: 0, lengths: [5 / scale, 4 / scale])
         context.stroke(frame)
+        context.restoreGState()
+    }
+
+    private func drawHandles(_ points: [CGPoint], scale: CGFloat, in context: CGContext) {
+        let diameter = Annotation.handleDiameter / scale
+        context.saveGState()
+        context.setLineWidth(1.5 / scale)
+        for point in points {
+            let circle = CGRect(
+                x: point.x - diameter / 2,
+                y: point.y - diameter / 2,
+                width: diameter,
+                height: diameter
+            )
+            context.setFillColor(NSColor.white.cgColor)
+            context.fillEllipse(in: circle)
+            context.setStrokeColor(NSColor.controlAccentColor.cgColor)
+            context.strokeEllipse(in: circle)
+        }
         context.restoreGState()
     }
 
@@ -121,8 +231,32 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         let point = imagePoint(of: event)
         switch model.tool {
         case .select:
+            let rawPoint = unclampedImagePoint(of: event)
+            if let selected = model.selectedAnnotation,
+               let handle = selected.handle(at: point, magnification: zoomScale),
+               let handleOrigin = selected.handles(magnification: zoomScale)
+                   .first(where: { $0.handle == handle })?.point
+            {
+                activeResize = ResizeDrag(
+                    original: selected,
+                    handle: handle,
+                    handleOrigin: handleOrigin,
+                    pressPoint: rawPoint,
+                    lastPoint: rawPoint,
+                    current: selected
+                )
+                updateCursor(at: point)
+                return
+            }
             if model.select(at: point) {
-                moveStart = point
+                if event.clickCount == 2,
+                   let selected = model.selectedAnnotation,
+                   case .text(let string, let origin) = selected.shape
+                {
+                    beginText(at: origin, initialText: string, editingID: selected.id, clickPoint: point)
+                } else {
+                    moveStart = point
+                }
             }
         case .text:
             beginText(at: point)
@@ -140,6 +274,9 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
 
         if case .pen(let points) = draft?.shape {
             draft?.shape = .pen(points + [point])
+        } else if activeResize != nil {
+            activeResize?.didDrag = true
+            updateResize(to: unclampedImagePoint(of: event), constrained: event.modifierFlags.contains(.shift))
         } else if let moveStart {
             moveOffset = CGSize(width: point.x - moveStart.x, height: point.y - moveStart.y)
         } else if let dragStart {
@@ -158,29 +295,70 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
     }
 
     override func mouseUp(with event: NSEvent) {
-        defer {
-            draft = nil
-            cropDraft = nil
-            dragStart = nil
-            moveStart = nil
-            moveOffset = .zero
-            needsDisplay = true
+        if let resize = activeResize, resize.didDrag {
+            updateResize(to: unclampedImagePoint(of: event), constrained: event.modifierFlags.contains(.shift))
+        }
+        let finishedResize = activeResize
+        let finishedMove = moveStart != nil ? moveOffset : nil
+        let finishedCrop = cropDraft
+        let finishedDraft = draft
+
+        draft = nil
+        cropDraft = nil
+        dragStart = nil
+        moveStart = nil
+        moveOffset = .zero
+        activeResize = nil
+
+        if let finishedResize, finishedResize.didDrag {
+            if Self.isLargeEnough(finishedResize.current.shape) {
+                model.updateSelectedShape(finishedResize.current.shape)
+            }
+        } else if let finishedMove {
+            model.moveSelected(by: finishedMove)
+        } else if let finishedCrop {
+            // Ignore a crop too small to be meant.
+            if finishedCrop.width >= 8, finishedCrop.height >= 8 {
+                model.crop(to: finishedCrop)
+            }
+        } else if let finishedDraft, Self.isLargeEnough(finishedDraft.shape) {
+            model.add(finishedDraft.shape)
         }
 
-        if moveStart != nil {
-            model.moveSelected(by: moveOffset)
-        } else if let cropDraft {
-            // Ignore a crop too small to be meant.
-            if cropDraft.width >= 8, cropDraft.height >= 8 {
-                model.crop(to: cropDraft)
-            }
-        } else if let draft, Self.isLargeEnough(draft.shape) {
-            model.add(draft.shape)
+        needsDisplay = true
+        let viewPoint = convert(event.locationInWindow, from: nil)
+        if visibleRect.contains(viewPoint) {
+            updateCursor(at: imagePoint(of: event))
+        } else if window?.isKeyWindow == true {
+            NSCursor.arrow.set()
         }
+    }
+
+    private func updateResize(to rawPoint: CGPoint, constrained: Bool) {
+        guard var resize = activeResize else { return }
+        resize.lastPoint = rawPoint
+        let target = CGPoint(
+            x: resize.handleOrigin.x + (rawPoint.x - resize.pressPoint.x),
+            y: resize.handleOrigin.y + (rawPoint.y - resize.pressPoint.y)
+        )
+        resize.current = resize.original.resized(
+            dragging: resize.handle,
+            to: target,
+            constrained: constrained,
+            within: model.visibleRect
+        )
+        activeResize = resize
     }
 
     private func makeDraft(_ shape: Annotation.Shape) -> Annotation {
         Annotation(shape: shape, color: model.color, size: model.size)
+    }
+
+    /// The event's position in image points, without clamping to the visible part.
+    private func unclampedImagePoint(of event: NSEvent) -> CGPoint {
+        let point = convert(event.locationInWindow, from: nil)
+        let visible = model.visibleRect
+        return CGPoint(x: point.x + visible.minX, y: point.y + visible.minY)
     }
 
     /// The event's position in image points, kept inside the visible part.
@@ -217,34 +395,71 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
 
     @objc func undo(_ sender: Any?) {
         if let typingUndo = textView?.undoManager {
-            if typingUndo.canUndo { typingUndo.undo() }
+            if typingUndo.canUndo {
+                typingUndo.undo()
+                applyTextStyle()
+            }
+            syncTypingUndoState()
         } else {
+            cancelDrag()
             model.undo()
         }
     }
 
     @objc func redo(_ sender: Any?) {
         if let typingUndo = textView?.undoManager {
-            if typingUndo.canRedo { typingUndo.redo() }
+            if typingUndo.canRedo {
+                typingUndo.redo()
+                applyTextStyle()
+            }
+            syncTypingUndoState()
         } else {
+            cancelDrag()
             model.redo()
         }
+    }
+
+    override func flagsChanged(with event: NSEvent) {
+        if let resize = activeResize, resize.didDrag {
+            updateResize(to: resize.lastPoint, constrained: event.modifierFlags.contains(.shift))
+            needsDisplay = true
+        }
+        super.flagsChanged(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
         switch Int(event.keyCode) {
         case kVK_Delete, kVK_ForwardDelete:
+            cancelDrag()
             model.deleteSelected()
         case kVK_Escape:
-            model.deselect()
+            if activeResize != nil || moveStart != nil {
+                cancelDrag()
+            } else {
+                model.deselect()
+            }
         default:
             super.keyDown(with: event)
         }
     }
 
+    private func cancelDrag() {
+        guard activeResize != nil || moveStart != nil else { return }
+        activeResize = nil
+        moveStart = nil
+        moveOffset = .zero
+        needsDisplay = true
+        updateCursorForCurrentPointer()
+    }
+
     // MARK: - Text tool
 
-    private func beginText(at point: CGPoint) {
+    private func beginText(
+        at point: CGPoint,
+        initialText: String = "",
+        editingID: UUID? = nil,
+        clickPoint: CGPoint? = nil
+    ) {
         let visible = model.visibleRect
 
         let textView = NSTextView(
@@ -277,17 +492,115 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
         textView.isHorizontallyResizable = false
         textView.isVerticallyResizable = false
 
+        if let editingID {
+            model.beginEditingText(id: editingID)
+        }
+
         addSubview(textView)
         self.textView = textView
         textOrigin = point
+        if !initialText.isEmpty {
+            textView.string = initialText
+        }
         applyTextStyle()
         window?.makeFirstResponder(textView)
+        if !initialText.isEmpty {
+            let caretIndex: Int
+            if let clickPoint {
+                let local = CGPoint(x: clickPoint.x - point.x, y: clickPoint.y - point.y)
+                caretIndex = visibleCaretIndex(in: textView, at: local, textOrigin: point)
+            } else {
+                caretIndex = (initialText as NSString).length
+            }
+            textView.setSelectedRange(NSRange(location: caretIndex, length: 0))
+        }
+        textView.undoManager?.removeAllActions()
+        observeTypingUndo(for: textView)
+        syncTypingUndoState()
+    }
+
+    /// Insertion index near `localPoint` whose caret stays within the visible
+    /// cropped canvas. When a character straddles a crop edge, AppKit can round
+    /// to the hidden side; snap back to the nearest visible grapheme boundary
+    /// on the same line.
+    ///
+    /// Visibility is judged with the layout manager's line-fragment insertion
+    /// points, which is where NSTextView draws its caret. `firstRect` is not:
+    /// inside a ligature (Arabic lam-alef) it reports the ligature's edge, and
+    /// at the end of a right-to-left line it reports the line's start.
+    private func visibleCaretIndex(
+        in textView: NSTextView,
+        at localPoint: CGPoint,
+        textOrigin: CGPoint
+    ) -> Int {
+        let initial = textView.characterIndexForInsertion(at: localPoint)
+        guard let layoutManager = textView.layoutManager else { return initial }
+        let string = textView.string as NSString
+        let length = string.length
+        guard length > 0 else { return initial }
+
+        func boundaryIndex(for index: Int) -> Int {
+            guard index < length else { return length }
+            return string.rangeOfComposedCharacterSequence(at: index).location
+        }
+
+        let fallback = boundaryIndex(for: initial)
+        let queryIndex = min(initial, length - 1)
+        let count = layoutManager.getLineFragmentInsertionPoints(
+            forCharacterAt: queryIndex,
+            alternatePositions: false,
+            inDisplayOrder: true,
+            positions: nil,
+            characterIndexes: nil
+        )
+        guard count > 0 else { return fallback }
+
+        var positions = [CGFloat](repeating: 0, count: count)
+        var indexes = [Int](repeating: 0, count: count)
+        let actual = layoutManager.getLineFragmentInsertionPoints(
+            forCharacterAt: queryIndex,
+            alternatePositions: false,
+            inDisplayOrder: true,
+            positions: &positions,
+            characterIndexes: &indexes
+        )
+        guard actual > 0 else { return fallback }
+
+        let visible = model.visibleRect
+        let visibleMinX = visible.minX - textOrigin.x
+        let visibleMaxX = visible.maxX - textOrigin.x
+
+        if fallback == initial,
+           (0..<actual).contains(where: {
+               indexes[$0] == initial && positions[$0] >= visibleMinX && positions[$0] <= visibleMaxX
+           })
+        {
+            return initial
+        }
+
+        var best: (index: Int, distance: CGFloat)?
+        for i in 0..<actual {
+            let index = indexes[i]
+            guard boundaryIndex(for: index) == index else { continue }
+            let x = positions[i]
+            guard x >= visibleMinX, x <= visibleMaxX else { continue }
+            let distance = abs(x - localPoint.x)
+            if best.map({ distance < $0.distance }) ?? true {
+                best = (index, distance)
+            }
+        }
+        // If no grapheme boundary falls inside a very narrow crop, fall back to
+        // the rounded cluster boundary (which may sit just outside the crop)
+        // rather than splitting a composed character.
+        return best?.index ?? fallback
     }
 
     private func applyTextStyle() {
         guard let textView else { return }
-        let attributes = AnnotationRenderer.textAttributes(color: model.color, size: model.size)
-        let font = attributes[.font] as? NSFont ?? .systemFont(ofSize: model.size.fontSize)
+        let colorChoice = model.displayedColor ?? model.color
+        let sizeChoice = model.displayedSize ?? model.size
+        let attributes = AnnotationRenderer.textAttributes(color: colorChoice, size: sizeChoice)
+        let font = attributes[.font] as? NSFont ?? .systemFont(ofSize: sizeChoice.fontSize)
         let color = attributes[.foregroundColor] as? NSColor ?? .red
 
         textView.font = font
@@ -307,21 +620,68 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
 
     private func commitText() {
         guard let textView, let origin = textOrigin else { return }
+        let editingID = model.editingTextID
         // Clear these first: removing the view ends its editing session,
         // which calls back into this method.
         self.textView = nil
         textOrigin = nil
+        stopObservingTypingUndo()
+        textView.undoManager?.removeAllActions()
+        model.clearTypingUndoState()
 
         let text = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         textView.removeFromSuperview()
-        if !text.isEmpty {
+        if let editingID {
+            model.finishEditingText(id: editingID, text: text)
+        } else if !text.isEmpty {
             model.add(.text(text, origin: origin))
         }
         window?.makeFirstResponder(self)
     }
 
+    private func observeTypingUndo(for textView: NSTextView) {
+        stopObservingTypingUndo()
+        guard let undoManager = textView.undoManager else { return }
+        observedUndoManager = undoManager
+        let center = NotificationCenter.default
+        for name: Notification.Name in [
+            .NSUndoManagerDidUndoChange,
+            .NSUndoManagerDidRedoChange,
+            .NSUndoManagerDidCloseUndoGroup,
+        ] {
+            center.addObserver(self, selector: #selector(typingUndoDidChange), name: name, object: undoManager)
+        }
+    }
+
+    private func stopObservingTypingUndo() {
+        guard let observedUndoManager else { return }
+        let center = NotificationCenter.default
+        for name: Notification.Name in [
+            .NSUndoManagerDidUndoChange,
+            .NSUndoManagerDidRedoChange,
+            .NSUndoManagerDidCloseUndoGroup,
+        ] {
+            center.removeObserver(self, name: name, object: observedUndoManager)
+        }
+        self.observedUndoManager = nil
+    }
+
+    @objc private func typingUndoDidChange(_ notification: Notification) {
+        syncTypingUndoState()
+    }
+
+    private func syncTypingUndoState() {
+        guard let textView else { return }
+        let undoManager = textView.undoManager
+        model.setTypingUndoState(
+            canUndo: undoManager?.canUndo ?? false,
+            canRedo: undoManager?.canRedo ?? false
+        )
+    }
+
     func textDidChange(_ notification: Notification) {
         fitTextViewToText()
+        syncTypingUndoState()
     }
 
     private func fitTextViewToText() {
@@ -375,12 +735,102 @@ final class AnnotationCanvasView: NSView, NSTextViewDelegate {
 
     // MARK: - Cursor
 
-    override func resetCursorRects() {
-        let cursor: NSCursor = switch model.tool {
-        case .select: .arrow
-        case .text: .iBeam
-        default: .crosshair
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero,
+                options: [.activeInKeyWindow, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved, .cursorUpdate],
+                owner: self
+            )
+        )
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        updateCursor(at: imagePoint(of: event))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        updateCursor(at: imagePoint(of: event))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if window?.isKeyWindow == true,
+           activeResize == nil, moveStart == nil, dragStart == nil, draft == nil
+        {
+            NSCursor.arrow.set()
         }
-        addCursorRect(bounds, cursor: cursor)
+        super.mouseExited(with: event)
+    }
+
+    private func updateCursorForCurrentPointer() {
+        guard let window, window.isKeyWindow else { return }
+        let viewPoint = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        guard visibleRect.contains(viewPoint) else { return }
+        let visible = model.visibleRect
+        let imagePoint = CGPoint(x: viewPoint.x + visible.minX, y: viewPoint.y + visible.minY)
+        updateCursor(at: imagePoint)
+    }
+
+    private func updateCursor(at point: CGPoint) {
+        guard window?.isKeyWindow == true else { return }
+        if let textView {
+            let visible = model.visibleRect
+            let viewPoint = CGPoint(x: point.x - visible.minX, y: point.y - visible.minY)
+            if textView.frame.contains(viewPoint) {
+                NSCursor.iBeam.set()
+                return
+            }
+        }
+        cursor(at: point).set()
+    }
+
+    private func cursor(at point: CGPoint) -> NSCursor {
+        if let activeResize {
+            return Self.cursor(for: activeResize.handle)
+        }
+        switch model.tool {
+        case .select:
+            if model.editingTextID == nil,
+               let selected = model.selectedAnnotation,
+               let handle = selected.handle(at: point, magnification: zoomScale)
+            {
+                return Self.cursor(for: handle)
+            }
+            return .arrow
+        case .text:
+            return .iBeam
+        default:
+            return .crosshair
+        }
+    }
+
+    private static func cursor(for handle: Annotation.Handle) -> NSCursor {
+        switch handle {
+        case .start, .end:
+            return .crosshair
+        case .topLeft, .top, .topRight, .right, .bottomRight, .bottom, .bottomLeft, .left:
+            if #available(macOS 15.0, *) {
+                let position: NSCursor.FrameResizePosition = switch handle {
+                case .topLeft: .topLeft
+                case .top: .top
+                case .topRight: .topRight
+                case .right: .right
+                case .bottomRight: .bottomRight
+                case .bottom: .bottom
+                case .bottomLeft: .bottomLeft
+                case .left: .left
+                case .start, .end: .topLeft
+                }
+                return .frameResize(position: position, directions: .all)
+            }
+            // macOS 14 has no diagonal frame-resize cursors; macOS 15+ uses `.frameResize` above.
+            switch handle {
+            case .left, .right: return .resizeLeftRight
+            case .top, .bottom: return .resizeUpDown
+            case .topLeft, .topRight, .bottomLeft, .bottomRight, .start, .end: return .crosshair
+            }
+        }
     }
 }
