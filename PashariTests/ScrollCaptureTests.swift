@@ -40,6 +40,30 @@ struct ScrollCaptureControlPanelTests {
         #expect(frame.minX == 12)
     }
 
+    @Test func theTallerScrollPanelGoesBesideATallAreaBeforeCoveringIt() {
+        let panelSize = ScrollCaptureControlPanel().frame.size
+        let wideScreen = CGRect(x: 0, y: 0, width: 1600, height: 900)
+
+        // Too little vertical margin above and below, room on the right.
+        let leftArea = CGRect(x: 60, y: 90, width: 500, height: 720)
+        let rightFrame = ControlBarPlacement.frame(ofSize: panelSize, nextTo: leftArea, in: wideScreen)
+        #expect(rightFrame.minX == leftArea.maxX + ControlBarPlacement.gap)
+        #expect(!rightFrame.intersects(leftArea))
+        #expect(wideScreen.contains(rightFrame))
+
+        // Too little vertical margin and no room on the right, room on the left.
+        let rightArea = CGRect(x: 1000, y: 90, width: 540, height: 720)
+        let leftFrame = ControlBarPlacement.frame(ofSize: panelSize, nextTo: rightArea, in: wideScreen)
+        #expect(leftFrame.maxX == rightArea.minX - ControlBarPlacement.gap)
+        #expect(!leftFrame.intersects(rightArea))
+        #expect(wideScreen.contains(leftFrame))
+
+        // No room on any side: falls back inside the bottom edge.
+        let fullFrame = ControlBarPlacement.frame(ofSize: panelSize, nextTo: wideScreen, in: wideScreen)
+        #expect(fullFrame.minY == ControlBarPlacement.gap)
+        #expect(wideScreen.contains(fullFrame))
+    }
+
     @Test func theBarAsksToWaitUntilRecordingHasBegun() {
         let controls = ScrollCaptureControlPanel()
         #expect(texts(in: controls.contentView).contains(String(localized: "Getting ready…")))
@@ -51,6 +75,88 @@ struct ScrollCaptureControlPanelTests {
     @Test func aWiderPictureMayBeLessTall() {
         #expect(ScrollRecorder.maximumHeight(forWidth: 1600) == 30_000)
         #expect(ScrollRecorder.maximumHeight(forWidth: 6000) == 10_000)
+    }
+
+    @Test func thePanelKeepsTheLastPreviewWhileLostAndUpdatesOnRecovery() {
+        let controls = ScrollCaptureControlPanel()
+        #expect(controls.previewImage == nil)
+        #expect(controls.previewSize.width > 0)
+        #expect(controls.previewSize.height == ScrollCaptureControlPanel.previewHeight)
+
+        let first = TestImages.make(width: 200, height: 80, background: .blue)
+        controls.show(size: CGSize(width: 200, height: 400), status: .recording, preview: first, scale: 1)
+        #expect(controls.previewImage === first)
+
+        controls.show(size: CGSize(width: 200, height: 400), status: .lost)
+        #expect(controls.previewImage === first)
+        #expect(texts(in: controls.contentView).contains(String(localized: "Scroll back a little, then more slowly")))
+
+        let second = TestImages.make(width: 200, height: 80, background: .red)
+        controls.show(size: CGSize(width: 200, height: 520), status: .recording, preview: second, scale: 1)
+        #expect(controls.previewImage === second)
+    }
+
+    @Test func previewImageRectFitsWideCapturesWithoutEnlargingNarrowOnes() {
+        let bounds = CGRect(x: 0, y: 0, width: 500, height: 108)
+
+        let narrow = ScrollCaptureControlPanel.previewImageRect(
+            pixelSize: CGSize(width: 400, height: 160),
+            scale: 2,
+            in: bounds
+        )
+        #expect(narrow == CGRect(x: 150, y: 0, width: 200, height: 80))
+
+        let wide = ScrollCaptureControlPanel.previewImageRect(
+            pixelSize: CGSize(width: 2000, height: 432),
+            scale: 2,
+            in: bounds
+        )
+        #expect(wide == CGRect(x: 0, y: 0, width: 500, height: 108))
+
+        let taller = ScrollCaptureControlPanel.previewImageRect(
+            pixelSize: CGSize(width: 200, height: 200),
+            scale: 1,
+            in: bounds
+        )
+        #expect(taller == CGRect(x: 150, y: 0, width: 200, height: 200))
+    }
+
+    @Test func previewDrawsTheBottomOfTheTailAtTheBottom() throws {
+        let controls = ScrollCaptureControlPanel()
+        let width = Int(controls.previewSize.width)
+        let height = Int(controls.previewSize.height)
+        // Twice as tall as the preview well: the top half is clipped out, and
+        // inside the visible bottom half the upper band is blue and the lower
+        // band is red.
+        let image = TestImages.make(
+            width: width,
+            height: height * 2,
+            background: .pageBlue,
+            patch: .pageRed,
+            patchRect: CGRect(x: 0, y: height + height / 2, width: width, height: height - height / 2)
+        )
+        controls.show(size: CGSize(width: width, height: height * 2), status: .recording, preview: image, scale: 1)
+
+        let previewView = try #require(
+            controls.contentView?.subviews.first { $0.frame.height == ScrollCaptureControlPanel.previewHeight }
+        )
+        let rep = try #require(previewView.bitmapImageRepForCachingDisplay(in: previewView.bounds))
+        previewView.cacheDisplay(in: previewView.bounds, to: rep)
+        let rendered = try #require(rep.cgImage)
+
+        let topPixel = TestImages.pixel(of: rendered, x: rendered.width / 2, y: rendered.height / 4)
+        let bottomPixel = TestImages.pixel(of: rendered, x: rendered.width / 2, y: rendered.height * 3 / 4)
+        #expect(topPixel.isClose(to: .pageBlue, within: 12))
+        #expect(bottomPixel.isClose(to: .pageRed, within: 12))
+    }
+
+    @Test func previewRowsScalesWithAreaWidthAndCapsVeryWideAreas() {
+        let previewSize = CGSize(width: 500, height: 108)
+
+        #expect(ScrollRecorder.previewRows(forAreaWidth: 300, scale: 2, previewSize: previewSize) == 216)
+        #expect(ScrollRecorder.previewRows(forAreaWidth: 1000, scale: 2, previewSize: previewSize) == 432)
+        #expect(ScrollRecorder.previewRows(forAreaWidth: 3000, scale: 2, previewSize: previewSize) == 648)
+        #expect(ScrollRecorder.previewRows(forAreaWidth: 300, scale: 2, previewSize: .zero) == 0)
     }
 }
 
@@ -96,12 +202,20 @@ struct ScrollRecorderTests {
         try await recorder.start()
         try await progress.wait { $0.pictureHeight > 0 }
         page.scroll(to: 40)
-        try await Task.sleep(for: .milliseconds(150))
+        let beforeJumpHeight = Int((page.area.height + 40) * recorder.scale)
+        try await progress.wait { $0.pictureHeight == beforeJumpHeight && !$0.isLost }
         // Further than the scrolling part is tall.
         page.scroll(to: 40 + ScrollingPage.visibleHeight + 100)
         try await progress.wait { $0.isLost }
+        let lostIndex = try #require(progress.reports.firstIndex { $0.isLost })
+        #expect(lostIndex > 0)
+        let lostPreview = try #require(progress.reports[lostIndex].preview)
+        #expect(lostPreview === progress.reports[lostIndex - 1].preview)
         page.scroll(to: 80)
-        try await progress.wait { !$0.isLost }
+        let afterRecoveryHeight = Int((page.area.height + 80) * recorder.scale)
+        try await progress.wait { $0.pictureHeight == afterRecoveryHeight && !$0.isLost }
+        let afterRecoveryPreview = try #require(progress.reports.last?.preview)
+        #expect(afterRecoveryPreview !== lostPreview)
         let image = try #require(await recorder.stop())
 
         #expect(image.height == Int((page.area.height + 80) * recorder.scale))
@@ -141,6 +255,10 @@ struct ScrollRecorderTests {
         // Once recording has begun, a dialog opens. Before it shows,
         // `ModalPresentation` ends the overlays, this one too.
         try await waitForTheBar(saying: String(localized: "Scroll to capture more"))
+        let bar = try #require(
+            NSApp.windows.compactMap { $0 as? ScrollCaptureControlPanel }.first { $0.isVisible }
+        )
+        #expect(bar.previewImage != nil)
         // This capture's own: a recording shows the same kind of overlay,
         // and one that has just ended may not be gone yet.
         let overlay = try #require(
@@ -258,6 +376,7 @@ private final class ScrollingPage {
             area: area,
             of: display,
             filter: ScreenCapturer.displayFilter(of: display, in: content),
+            previewSize: CGSize(width: 480, height: ScrollCaptureControlPanel.previewHeight),
             onProgress: { progress in
                 Task { @MainActor in log.reports.append(progress) }
             },

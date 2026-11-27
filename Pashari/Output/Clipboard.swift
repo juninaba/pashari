@@ -3,6 +3,11 @@ import AppKit
 enum Clipboard {
     /// `pasteboard` is a parameter so tests can use a private pasteboard
     /// instead of the user's real clipboard.
+    static func copy(text: String, to pasteboard: NSPasteboard = .general) -> Bool {
+        pasteboard.clearContents()
+        return pasteboard.setString(text, forType: .string)
+    }
+
     static func copy(pngData: Data, to pasteboard: NSPasteboard = .general) throws {
         pasteboard.clearContents()
         guard pasteboard.setData(pngData, forType: .png) else {

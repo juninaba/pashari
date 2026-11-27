@@ -26,6 +26,8 @@ struct EditorToolbarView: View {
                     sizeButton(size)
                 }
             }
+            .disabled(!model.canEditStyle)
+            .opacity(model.canEditStyle ? 1 : 0.35)
 
             Spacer(minLength: 12)
 
@@ -68,9 +70,9 @@ struct EditorToolbarView: View {
     }
 
     private func colorButton(_ color: AnnotationColor) -> some View {
-        let isSelected = model.color == color
+        let isSelected = model.displayedColor == color
         return Button {
-            model.color = color
+            model.chooseColor(color)
         } label: {
             Circle()
                 .fill(Color(cgColor: color.cgColor))
@@ -88,9 +90,9 @@ struct EditorToolbarView: View {
     }
 
     private func sizeButton(_ size: StrokeSize) -> some View {
-        let isSelected = model.size == size
+        let isSelected = model.displayedSize == size
         return Button {
-            model.size = size
+            model.chooseSize(size)
         } label: {
             Circle()
                 .fill(.primary)

@@ -1,3 +1,4 @@
+import Foundation
 import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
@@ -9,18 +10,19 @@ extension KeyboardShortcuts.Name {
     // does not change it for someone who already has Pashari.
     static let captureArea = Self(
         "captureArea",
-        default: .init(.two, modifiers: [.command, .shift])
+        initial: .init(.two, modifiers: [.command, .shift])
     )
     static let captureWindow = Self(
         "captureWindow",
-        default: .init(.three, modifiers: [.command, .shift])
+        initial: .init(.three, modifiers: [.command, .shift])
     )
     static let captureFullscreen = Self(
         "captureFullscreen",
-        default: .init(.four, modifiers: [.command, .shift])
+        initial: .init(.four, modifiers: [.command, .shift])
     )
-    // No shortcut until the user records one under Settings.
+    // No shortcuts until the user records them under Settings.
     static let captureScrollingArea = Self("captureScrollingArea")
+    static let captureText = Self("captureText")
     // None either. Pressed again, it starts the recording, and then stops it.
     static let recordArea = Self("recordArea")
     // None either. Pressed again while recording, it stops it.
@@ -29,27 +31,36 @@ extension KeyboardShortcuts.Name {
 }
 
 enum Hotkeys {
+    private static let actions: [(name: KeyboardShortcuts.Name, run: (CaptureCoordinator) -> Void)] = [
+        (.captureArea, { $0.captureArea() }),
+        (.captureWindow, { $0.captureWindow() }),
+        (.captureFullscreen, { $0.captureFullscreen() }),
+        (.captureScrollingArea, { $0.captureScrollingArea() }),
+        (.captureText, { $0.captureText() }),
+        (.recordArea, { $0.recordArea() }),
+        (.recordWindow, { $0.recordWindow() }),
+        (.recordFullscreen, { $0.recordFullscreen() }),
+    ]
+
+    static func validate(
+        _ shortcut: KeyboardShortcuts.Shortcut,
+        for name: KeyboardShortcuts.Name,
+        shortcutFor: @MainActor (KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut? = KeyboardShortcuts.getShortcut
+    ) -> KeyboardShortcuts.ValidationResult {
+        let alreadyAssigned = actions.contains { action in
+            action.name != name && shortcutFor(action.name) == shortcut
+        }
+        if alreadyAssigned {
+            return .disallow(reason: String(localized: "This shortcut is already assigned to another Pashari action."))
+        }
+        return .allow
+    }
+
     static func register(with captureCoordinator: CaptureCoordinator) {
-        KeyboardShortcuts.onKeyDown(for: .captureArea) {
-            captureCoordinator.captureArea()
-        }
-        KeyboardShortcuts.onKeyDown(for: .captureWindow) {
-            captureCoordinator.captureWindow()
-        }
-        KeyboardShortcuts.onKeyDown(for: .captureFullscreen) {
-            captureCoordinator.captureFullscreen()
-        }
-        KeyboardShortcuts.onKeyDown(for: .captureScrollingArea) {
-            captureCoordinator.captureScrollingArea()
-        }
-        KeyboardShortcuts.onKeyDown(for: .recordArea) {
-            captureCoordinator.recordArea()
-        }
-        KeyboardShortcuts.onKeyDown(for: .recordWindow) {
-            captureCoordinator.recordWindow()
-        }
-        KeyboardShortcuts.onKeyDown(for: .recordFullscreen) {
-            captureCoordinator.recordFullscreen()
+        for action in actions {
+            KeyboardShortcuts.onKeyDown(for: action.name) {
+                action.run(captureCoordinator)
+            }
         }
     }
 }

@@ -242,4 +242,32 @@ struct AnnotationRendererTests {
         #expect(TestImages.pixel(of: result.image, x: 98, y: 10) == .red)
         #expect(TestImages.pixel(of: result.image, x: 102, y: 10) == .blue)
     }
+
+    @Test func flattenReflectsResizedAndRestyledAnnotations() throws {
+        let model = EditorModel(
+            screenshot: Screenshot(
+                image: TestImages.make(width: 200, height: 120),
+                scale: 2,
+                capturedAt: Date()
+            )
+        )
+        model.color = .black
+        model.size = .small
+        model.add(.line(from: CGPoint(x: 10, y: 30), to: CGPoint(x: 40, y: 30)))
+        model.tool = .select
+        model.select(at: CGPoint(x: 25, y: 30))
+
+        // Resize the line further right and change its colour & thickness.
+        model.updateSelectedShape(.line(from: CGPoint(x: 10, y: 30), to: CGPoint(x: 90, y: 30)))
+        model.chooseColor(.white)
+        model.chooseSize(.large)
+
+        let result = try model.flattened()
+
+        let white = TestImages.RGBA(red: 255, green: 255, blue: 255, alpha: 255)
+        // x = 80 points (160 px) was beyond the original line, now covered in white.
+        #expect(TestImages.pixel(of: result.image, x: 160, y: 60) == white)
+        // Thickness is now large (7 pt -> reaches y = 30 + 3 pt = 66 px).
+        #expect(TestImages.pixel(of: result.image, x: 160, y: 66) == white)
+    }
 }

@@ -28,6 +28,7 @@ struct CaptureCoordinatorTests {
             try #require(NSApp.modalWindow === window)
 
             coordinator.captureArea()
+            coordinator.captureText()
             coordinator.captureWindow()
             coordinator.captureFullscreen()
             coordinator.recordArea()
@@ -108,6 +109,77 @@ struct CaptureCoordinatorTests {
         await taken.value
         #expect(thumbnails.pendingCount == 1)
         #expect(plays == 1)
+    }
+
+    @Test func textCaptureCopiesOnlyPlainTextWithoutCreatingAThumbnail() async throws {
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        try Clipboard.copy(pngData: Data([0]), to: pasteboard)
+        let thumbnails = ThumbnailController()
+        var plays = 0
+        var feedback: [TextCaptureFeedback] = []
+        let coordinator = CaptureCoordinator(
+            thumbnailController: thumbnails,
+            ensurePermission: { true },
+            playShutterSound: { plays += 1 }
+        )
+
+        let task = try #require(coordinator.runTextCapture(
+            recognize: { _ in "Hello\nこんにちは" },
+            copyText: { Clipboard.copy(text: $0, to: pasteboard) },
+            showFeedback: { feedback.append($0) }
+        ) { sampleScreenshot })
+        await task.value
+
+        #expect(pasteboard.pasteboardItems?.map(\.types) == [[.string]])
+        #expect(pasteboard.string(forType: .string) == "Hello\nこんにちは")
+        #expect(thumbnails.pendingCount == 0)
+        #expect(plays == 0)
+        #expect(feedback == [.copied])
+    }
+
+    @Test(arguments: [nil, .noText, .captureFailed, .recognitionFailed] as [TextCaptureFeedback?])
+    func textCapturePreservesClipboardWhenNoTextIsCopied(outcome: TextCaptureFeedback?) async throws {
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        try Clipboard.copy(pngData: Data([0]), to: pasteboard)
+        let originalChangeCount = pasteboard.changeCount
+        let coordinator = CaptureCoordinator(thumbnailController: ThumbnailController(), ensurePermission: { true })
+        var feedback: [TextCaptureFeedback] = []
+
+        let task = try #require(coordinator.runTextCapture(
+            recognize: { _ in
+                #expect(outcome == .noText || outcome == .recognitionFailed)
+                if outcome == .recognitionFailed { throw CaptureError.displayNotFound }
+                return nil
+            },
+            copyText: { Clipboard.copy(text: $0, to: pasteboard) },
+            showFeedback: { feedback.append($0) }
+        ) {
+            if outcome == .captureFailed { throw CaptureError.displayNotFound }
+            return outcome == nil ? nil : sampleScreenshot
+        })
+        await task.value
+
+        #expect(pasteboard.changeCount == originalChangeCount)
+        #expect(feedback == (outcome.map { [$0] } ?? []))
+    }
+
+    @Test func textCaptureReportsACopyFailure() async throws {
+        let coordinator = CaptureCoordinator(thumbnailController: ThumbnailController(), ensurePermission: { true })
+        var feedback: [TextCaptureFeedback] = []
+        let task = try #require(coordinator.runTextCapture(
+            recognize: { _ in "Hello" },
+            copyText: { _ in false },
+            showFeedback: { feedback.append($0) }
+        ) { sampleScreenshot })
+        await task.value
+
+        #expect(feedback == [.copyFailed])
+    }
+
+    private var sampleScreenshot: Screenshot {
+        Screenshot(image: TestImages.make(width: 20, height: 10), scale: 1, capturedAt: Date())
     }
 
     private final class AlertState {
