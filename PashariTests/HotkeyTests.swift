@@ -9,24 +9,44 @@ struct HotkeyTests {
         KeyboardShortcuts.Name.captureArea,
         .captureWindow,
         .captureFullscreen,
-    ].compactMap(\.defaultShortcut)
+    ].compactMap(\.initialShortcut)
 
     @Test func areaWindowAndFullscreenCaptureHaveADefault() {
         #expect(defaults.count == 3)
     }
 
-    @Test func scrollCaptureHasNoDefault() {
-        #expect(KeyboardShortcuts.Name.captureScrollingArea.defaultShortcut == nil)
+    @Test func scrollAndTextCaptureHaveNoDefault() {
+        #expect(KeyboardShortcuts.Name.captureScrollingArea.initialShortcut == nil)
+        #expect(KeyboardShortcuts.Name.captureText.initialShortcut == nil)
     }
 
     @Test func recordingHasNoDefault() {
-        #expect(KeyboardShortcuts.Name.recordArea.defaultShortcut == nil)
-        #expect(KeyboardShortcuts.Name.recordWindow.defaultShortcut == nil)
-        #expect(KeyboardShortcuts.Name.recordFullscreen.defaultShortcut == nil)
+        #expect(KeyboardShortcuts.Name.recordArea.initialShortcut == nil)
+        #expect(KeyboardShortcuts.Name.recordWindow.initialShortcut == nil)
+        #expect(KeyboardShortcuts.Name.recordFullscreen.initialShortcut == nil)
     }
 
     @Test func theDefaultsAreDifferentFromEachOther() {
         #expect(Set(defaults).count == defaults.count)
+    }
+
+    @Test func onlyCurrentActionsCanReserveAShortcut() throws {
+        let area = try #require(KeyboardShortcuts.Name.captureArea.initialShortcut)
+        let text = KeyboardShortcuts.Shortcut(.f19, modifiers: [.command, .control])
+        let retired = KeyboardShortcuts.Shortcut(.f18, modifiers: [.command, .control])
+        let assigned: [KeyboardShortcuts.Name: KeyboardShortcuts.Shortcut] = [
+            .captureArea: area,
+            .captureText: text,
+            .init("retiredAction"): retired,
+        ]
+        func shortcutFor(_ name: KeyboardShortcuts.Name) -> KeyboardShortcuts.Shortcut? {
+            assigned[name]
+        }
+
+        #expect(Hotkeys.validate(area, for: .captureArea, shortcutFor: shortcutFor) == .allow)
+        #expect(Hotkeys.validate(area, for: .captureText, shortcutFor: shortcutFor) != .allow)
+        #expect(Hotkeys.validate(text, for: .captureArea, shortcutFor: shortcutFor) != .allow)
+        #expect(Hotkeys.validate(retired, for: .captureText, shortcutFor: shortcutFor) == .allow)
     }
 
     @Test func theDefaultsStayClearOfShortcutsOthersAlreadyUse() {

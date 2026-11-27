@@ -67,6 +67,9 @@ final class StatusItemController: NSObject {
                 shortcut: .captureScrollingArea
             )
         )
+        menu.addItem(
+            makeItem(String(localized: "Capture Text"), #selector(captureText), shortcut: .captureText)
+        )
 
         menu.addItem(.separator())
 
@@ -118,6 +121,10 @@ final class StatusItemController: NSObject {
 
     @objc private func captureScrollingArea() {
         captureCoordinator.captureScrollingArea()
+    }
+
+    @objc private func captureText() {
+        captureCoordinator.captureText()
     }
 
     @objc private func recordArea() {

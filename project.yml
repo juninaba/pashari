@@ -30,7 +30,7 @@ settings:
 packages:
   KeyboardShortcuts:
     url: https://github.com/sindresorhus/KeyboardShortcuts
-    exactVersion: 2.4.0
+    exactVersion: 3.1.0
 
 targets:
   Pashari:

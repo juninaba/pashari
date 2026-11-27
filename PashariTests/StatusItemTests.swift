@@ -5,6 +5,29 @@ import Testing
 
 @MainActor
 struct StatusItemTests {
+    @Test func theMenuCanStartTextCapture() throws {
+        var permissionChecks = 0
+        let coordinator = CaptureCoordinator(
+            thumbnailController: ThumbnailController(),
+            ensurePermission: {
+                permissionChecks += 1
+                return false
+            }
+        )
+        let controller = StatusItemController(
+            captureCoordinator: coordinator,
+            settingsWindowController: SettingsWindowController()
+        )
+        let statusItem = try #require(Mirror(reflecting: controller).descendant("statusItem") as? NSStatusItem)
+        defer { NSStatusBar.system.removeStatusItem(statusItem) }
+        let menu = try #require(statusItem.menu)
+        let item = try #require(menu.item(withTitle: String(localized: "Capture Text")))
+
+        menu.performActionForItem(at: menu.index(of: item))
+
+        #expect(permissionChecks == 1)
+    }
+
     @Test func whileRecordingTheIconIsAStopButtonInsteadOfTheMenu() throws {
         let coordinator = CaptureCoordinator(thumbnailController: ThumbnailController(), ensurePermission: { false })
         let controller = StatusItemController(

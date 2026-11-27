@@ -18,6 +18,85 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
         var isLost = false
         /// True once the picture is as tall as it may get.
         var isFull = false
+        /// The bottom of the stitched content so far, kept across `.lost`
+        /// frames until the tail changes.
+        var preview: CGImage?
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.pictureHeight == rhs.pictureHeight
+                && lhs.isLost == rhs.isLost
+                && lhs.isFull == rhs.isFull
+                && lhs.preview === rhs.preview
+        }
+    }
+
+    struct ProgressTracker {
+        private(set) var progress = Progress(pictureHeight: 0)
+        private let previewTailRows: Int
+        private var lastPreviewContentHeight = 0
+        private var lastFrameOverlappedTail = false
+
+        init(previewTailRows: Int) {
+            self.previewTailRows = previewTailRows
+        }
+
+        mutating func update(
+            after outcome: ScrollStitcher.Outcome,
+            stitcher: ScrollStitcher,
+            colorSpace: CGColorSpace
+        ) -> Progress? {
+            var newProgress = progress
+            newProgress.pictureHeight = stitcher.pictureHeight
+            newProgress.isFull = outcome == .full
+            switch outcome {
+            case .lost:
+                // Told at once: frames come only when the screen changes, so
+                // after a jump that went too far there may be no second one.
+                newProgress.isLost = true
+            case .ignored:
+                break
+            case .started, .unchanged, .scrolled, .changedInPlace, .full:
+                newProgress.isLost = false
+            }
+
+            if previewTailRows > 0 {
+                switch outcome {
+                case .lost, .ignored, .unchanged:
+                    // `.unchanged` also arrives for unrelated display updates;
+                    // skip preview rebuilds while `makeImage()` still uses the
+                    // latest frame.
+                    break
+                case .full where progress.isFull:
+                    break
+                case .started, .scrolled, .full:
+                    let height = stitcher.stitchedContentHeight
+                    let heightChanged = height != lastPreviewContentHeight
+                    lastPreviewContentHeight = height
+                    let overlapsTail = stitcher.lastFrameOverlapsTail(maximumRows: previewTailRows)
+                    if heightChanged
+                        || overlapsTail
+                        || lastFrameOverlappedTail
+                        || stitcher.lastBackfillOverlapsTail(maximumRows: previewTailRows) {
+                        if let preview = stitcher.makeTailImage(maximumRows: previewTailRows, colorSpace: colorSpace) {
+                            newProgress.preview = preview
+                        }
+                    }
+                    lastFrameOverlappedTail = overlapsTail
+                case .changedInPlace:
+                    let overlapsTail = stitcher.lastFrameOverlapsTail(maximumRows: previewTailRows)
+                    if stitcher.lastChangeOverlapsTail(maximumRows: previewTailRows) {
+                        if let preview = stitcher.makeTailImage(maximumRows: previewTailRows, colorSpace: colorSpace) {
+                            newProgress.preview = preview
+                        }
+                    }
+                    lastFrameOverlappedTail = overlapsTail
+                }
+            }
+
+            guard newProgress != progress else { return nil }
+            progress = newProgress
+            return newProgress
+        }
     }
 
     /// How much of the area's right edge is left out when frames are
@@ -29,6 +108,23 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
     /// fill the memory: this allows about 240 MB.
     static func maximumHeight(forWidth width: Int) -> Int {
         min(30_000, 60_000_000 / max(width, 1))
+    }
+
+    /// How many rows from the bottom of the stitched content to copy for the
+    /// live preview, in pixels: enough to fill `previewSize` at the scale that
+    /// fits `areaWidth` without enlarging narrow areas, capped so very wide
+    /// areas stay cheap to copy.
+    static func previewRows(
+        forAreaWidth areaWidth: CGFloat,
+        scale: CGFloat,
+        previewSize: CGSize
+    ) -> Int {
+        guard areaWidth > 0, scale > 0, previewSize.width > 0, previewSize.height > 0 else {
+            return 0
+        }
+        let fitScale = min(1, previewSize.width / areaWidth)
+        let sourceHeight = min(previewSize.height / fitScale, previewSize.height * 3)
+        return Int((sourceHeight * scale).rounded(.up))
     }
 
     /// Pixels per point of the frames.
@@ -43,7 +139,7 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
     // On `queue`.
     private var stitcher: ScrollStitcher
     private var colorSpace: CGColorSpace?
-    private var progress: Progress
+    private var progressTracker: ProgressTracker
 
     /// `area` is in points, with the origin at the display's top-left
     /// corner, and must lie on whole points: ScreenCaptureKit would scale
@@ -54,6 +150,7 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
         area: CGRect,
         of display: SCDisplay,
         filter: SCContentFilter,
+        previewSize: CGSize,
         onProgress: @escaping @Sendable (Progress) -> Void,
         onFailure: @escaping @Sendable (Error) -> Void
     ) {
@@ -74,7 +171,8 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
             maximumHeight: Self.maximumHeight(forWidth: configuration.width),
             ignoringRightColumns: Int((Self.scrollBarWidth * scale).rounded())
         )
-        progress = Progress(pictureHeight: 0)
+        let previewTailRows = Self.previewRows(forAreaWidth: area.width, scale: scale, previewSize: previewSize)
+        progressTracker = ProgressTracker(previewTailRows: previewTailRows)
         fallbackColorSpace = CGDisplayCopyColorSpace(display.displayID)
         self.onProgress = onProgress
         self.onFailure = onFailure
@@ -158,26 +256,16 @@ nonisolated final class ScrollRecorder: NSObject, SCStreamOutput, SCStreamDelega
     // MARK: - Helpers
 
     private func report(_ outcome: ScrollStitcher.Outcome) {
-        var newProgress = progress
-        newProgress.pictureHeight = stitcher.pictureHeight
-        newProgress.isFull = outcome == .full
-        switch outcome {
-        case .lost:
-            // Told at once: frames come only when the screen changes, so
-            // after a jump that went too far there may be no second one.
-            newProgress.isLost = true
-        case .ignored:
-            break
-        case .started, .unchanged, .scrolled, .changedInPlace, .full:
-            newProgress.isLost = false
-        }
-
-        guard newProgress != progress else { return }
-        if newProgress.isLost != progress.isLost {
+        let wasLost = progressTracker.progress.isLost
+        guard let newProgress = progressTracker.update(
+            after: outcome,
+            stitcher: stitcher,
+            colorSpace: colorSpace ?? fallbackColorSpace
+        ) else { return }
+        if newProgress.isLost != wasLost {
             let change = newProgress.isLost ? "lost track of" : "found"
             Log.capture.info("Scroll recording \(change, privacy: .public) the content")
         }
-        progress = newProgress
         onProgress(newProgress)
     }
 
