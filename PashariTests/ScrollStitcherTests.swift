@@ -374,6 +374,270 @@ struct ScrollStitcherTests {
         #expect(isClose(rows(of: stitcher), document.rows(0..<(17 + frameHeight))))
     }
 
+    @Test func tailImageReturnsOnlyTheBottomRowsOfTheStitchedContent() throws {
+        let document = Document.noise(width: width, height: 400, seed: 20)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+
+        #expect(stitcher.makeTailImage(maximumRows: 25, colorSpace: colorSpace) == nil)
+
+        _ = stitcher.add(document.frame(at: 0, height: frameHeight))
+        #expect(stitcher.makeTailImage(maximumRows: 0, colorSpace: colorSpace) == nil)
+        let wholeFirst = try #require(stitcher.makeTailImage(maximumRows: 100, colorSpace: colorSpace))
+        #expect(isClose(rows(of: wholeFirst), document.rows(0..<frameHeight)))
+
+        _ = stitcher.add(document.frame(at: 20, height: frameHeight))
+        let firstTail = try #require(stitcher.makeTailImage(maximumRows: 25, colorSpace: colorSpace))
+        let expectedFirstTail = document.rows((20 + frameHeight - 25)..<(20 + frameHeight))
+        #expect(isClose(rows(of: firstTail), expectedFirstTail))
+
+        // Appending more frames leaves an earlier tail image untouched.
+        _ = stitcher.add(document.frame(at: 50, height: frameHeight))
+        #expect(isClose(rows(of: firstTail), expectedFirstTail))
+        let nextTail = try #require(stitcher.makeTailImage(maximumRows: 25, colorSpace: colorSpace))
+        #expect(isClose(rows(of: nextTail), document.rows((50 + frameHeight - 25)..<(50 + frameHeight))))
+    }
+
+    @Test func tailImageLeavesOutAFixedFooterOnceScrollingBegins() throws {
+        let document = Document.noise(width: width, height: 400, seed: 21)
+        let header = Document.noise(width: width, height: 8, seed: 22)
+        let footer = Document.noise(width: width, height: 5, seed: 23)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+
+        for offset in [0, 20, 45] {
+            _ = stitcher.add(document.frame(at: offset, height: frameHeight, header: header, footer: footer))
+        }
+
+        let contentEnd = 45 + frameHeight - 5
+        let tail = try #require(stitcher.makeTailImage(maximumRows: 25, colorSpace: colorSpace))
+        #expect(isClose(rows(of: tail), document.rows((contentEnd - 25)..<contentEnd)))
+    }
+
+    @Test func tailImageLeavesOutBlankSpringBackSpace() throws {
+        let document = Document.noise(width: width, height: 200, seed: 24)
+        let end = 200 - frameHeight
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+
+        for offset in [0, 50, 100, end] {
+            _ = stitcher.add(document.frame(at: offset, height: frameHeight))
+        }
+        for overshoot in [10, 20] {
+            var frame = document.slice(at: end + overshoot, height: frameHeight - overshoot)
+            frame.rows += Array(repeating: [UInt8](repeating: 236, count: width * 4), count: overshoot)
+            _ = stitcher.add(frame)
+        }
+        _ = stitcher.add(document.frame(at: end, height: frameHeight))
+
+        let tail = try #require(stitcher.makeTailImage(maximumRows: 25, colorSpace: colorSpace))
+        #expect(isClose(rows(of: tail), document.rows(175..<200)))
+    }
+
+    @Test func tailImageKeepsTheLastStitchedEndWhileLostAndUpdatesOnRecovery() throws {
+        let document = Document.noise(width: width, height: 400, seed: 25)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+        _ = stitcher.add(document.frame(at: 0, height: frameHeight))
+        _ = stitcher.add(document.frame(at: 20, height: frameHeight))
+
+        #expect(stitcher.add(document.frame(at: 120, height: frameHeight)) == .lost)
+        let lostTail = try #require(stitcher.makeTailImage(maximumRows: 25, colorSpace: colorSpace))
+        #expect(isClose(rows(of: lostTail), document.rows((20 + frameHeight - 25)..<(20 + frameHeight))))
+
+        #expect(stitcher.add(document.frame(at: 60, height: frameHeight)) == .scrolled(40))
+        let resumedTail = try #require(stitcher.makeTailImage(maximumRows: 25, colorSpace: colorSpace))
+        #expect(isClose(rows(of: resumedTail), document.rows((60 + frameHeight - 25)..<(60 + frameHeight))))
+    }
+
+    @Test func tailImageShowsInPlaceChangesInTheLatestFrame() throws {
+        let document = Document.noise(width: width, height: 400, seed: 26)
+        let header = Document.noise(width: width, height: 4, seed: 27)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+        _ = stitcher.add(document.frame(at: 0, height: frameHeight, header: header))
+        _ = stitcher.add(document.frame(at: 30, height: frameHeight, header: header))
+
+        var loaded = document
+        loaded.paint(columns: 0..<width, rows: 70..<85, value: 200)
+        #expect(stitcher.add(loaded.frame(at: 30, height: frameHeight, header: header)) == .changedInPlace)
+        #expect(stitcher.lastFrameOverlapsTail(maximumRows: 25))
+
+        let tail = try #require(stitcher.makeTailImage(maximumRows: 25, colorSpace: colorSpace))
+        #expect(isClose(Array(rows(of: tail)[5..<20]), loaded.rows(70..<85)))
+    }
+
+    @Test func tailImageClearsAFadingScrollBarOnAnUnchangedFrame() throws {
+        let document = Document.noise(width: width, height: 400, seed: 29)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher(ignoringRightColumns: 4)
+        _ = stitcher.add(document.frame(at: 0, height: frameHeight))
+
+        for (offset, thumbTop) in [(20, 40), (40, 42)] {
+            var frame = document.slice(at: offset, height: frameHeight)
+            frame.paint(columns: (width - 3)..<width, rows: thumbTop..<(thumbTop + 14), value: 40)
+            _ = stitcher.add(frame)
+        }
+        #expect(stitcher.add(document.frame(at: 40, height: frameHeight)) == .unchanged)
+        #expect(stitcher.lastFrameOverlapsTail(maximumRows: 25))
+
+        let tail = try #require(stitcher.makeTailImage(maximumRows: 25, colorSpace: colorSpace))
+        #expect(isClose(rows(of: tail), document.rows((40 + frameHeight - 25)..<(40 + frameHeight))))
+    }
+
+    @Test func lastFrameOverlapsTailDetectsRecoveryScrollsAtSameHeight() throws {
+        let document = Document.noise(width: width, height: 400, seed: 28)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+        _ = stitcher.add(document.frame(at: 0, height: frameHeight))
+        _ = stitcher.add(document.frame(at: 30, height: frameHeight))
+
+        #expect(stitcher.add(document.frame(at: 150, height: frameHeight)) == .lost)
+
+        // Scrolling slightly back up to recover leaves pictureHeight at 90,
+        // while overlapping the tail rows and updating pixels nearer the middle.
+        var updated = document
+        updated.paint(columns: 0..<width, rows: 48..<55, value: 210)
+        #expect(stitcher.add(updated.frame(at: 20, height: frameHeight)) == .scrolled(-10))
+        #expect(stitcher.pictureHeight == 90)
+        #expect(stitcher.lastFrameOverlapsTail(maximumRows: 45))
+
+        let tail = try #require(stitcher.makeTailImage(maximumRows: 45, colorSpace: colorSpace))
+        #expect(isClose(Array(rows(of: tail)[3..<10]), updated.rows(48..<55)))
+
+        // Scrolling far above the tail does not overlap it.
+        _ = stitcher.add(document.frame(at: 60, height: frameHeight))
+        _ = stitcher.add(document.frame(at: 100, height: frameHeight))
+        _ = stitcher.add(document.frame(at: 70, height: frameHeight))
+        _ = stitcher.add(document.frame(at: 40, height: frameHeight))
+        _ = stitcher.add(document.frame(at: 0, height: frameHeight))
+        #expect(!stitcher.lastFrameOverlapsTail(maximumRows: 45))
+    }
+
+    @Test func lastFrameOverlapsTailIsFalseWhenScrolledAboveTheHeader() {
+        let document = Document.noise(width: width, height: 400, seed: 30)
+        let header = Document.noise(width: width, height: 10, seed: 31)
+        var stitcher = makeStitcher()
+        // Start mid-document so scrolling up leaves frameEnd between tailStart (0)
+        // and canvasHeader (10), where the clipped content range is empty.
+        _ = stitcher.add(document.frame(at: 120, height: frameHeight, header: header))
+        #expect(stitcher.add(document.frame(at: 90, height: frameHeight, header: header)) == .scrolled(-30))
+        #expect(stitcher.add(document.frame(at: 65, height: frameHeight, header: header)) == .scrolled(-25))
+
+        #expect(!stitcher.lastFrameOverlapsTail(maximumRows: frameHeight))
+    }
+
+    @Test func progressTrackerCoalescesIdleFramesAndKeepsTailAlignedWithMakeImage() throws {
+        let document = Document.noise(width: width, height: 400, seed: 32)
+        let header = Document.noise(width: width, height: 4, seed: 33)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+        var tracker = ScrollRecorder.ProgressTracker(previewTailRows: 25)
+
+        func step(_ slice: Document.Slice) -> ScrollRecorder.Progress? {
+            let outcome = stitcher.add(slice)
+            return tracker.update(after: outcome, stitcher: stitcher, colorSpace: colorSpace)
+        }
+
+        let started = try #require(step(document.frame(at: 0, height: frameHeight, header: header)))
+        #expect(started.preview != nil)
+
+        // Idle `.unchanged` frames must not allocate a new preview or emit progress.
+        #expect(step(document.frame(at: 0, height: frameHeight, header: header)) == nil)
+
+        // Grow the picture, then apply an in-place change above the tail:
+        // must not rebuild the preview even though the frame overlaps the tail.
+        for offset in [40, 80] {
+            _ = step(document.frame(at: offset, height: frameHeight, header: header))
+        }
+        var upperChange = document
+        upperChange.paint(columns: 0..<width, rows: 90..<100, value: 190)
+        #expect(step(upperChange.frame(at: 80, height: frameHeight, header: header)) == nil)
+
+        // An in-place change inside the tail updates the preview.
+        var loaded = upperChange
+        loaded.paint(columns: 0..<width, rows: 120..<132, value: 215)
+        let inPlace = try #require(step(loaded.frame(at: 80, height: frameHeight, header: header)))
+        let inPlaceTail = try #require(inPlace.preview)
+        #expect(isClose(Array(rows(of: inPlaceTail)[5..<17]), loaded.rows(120..<132)))
+
+        // Jump upward past the tail: `lastFrame` no longer overlays the tail, so
+        // the preview refreshes once to match `makeImage` without the in-place overlay.
+        let scrolledUp = try #require(step(loaded.frame(at: 40, height: frameHeight, header: header)))
+        #expect(!scrolledUp.isLost)
+        let afterLeaveTail = try #require(scrolledUp.preview)
+        #expect(afterLeaveTail !== inPlaceTail)
+        #expect(isClose(rows(of: afterLeaveTail), Array(rows(of: stitcher).suffix(25))))
+
+        // Further scrolls above the tail do not rebuild the preview.
+        #expect(step(loaded.frame(at: 10, height: frameHeight, header: header)) == nil)
+
+        // Lost keeps the exact preview instance until recovery.
+        let lost = try #require(step(loaded.frame(at: 200, height: frameHeight, header: header)))
+        #expect(lost.isLost)
+        #expect(lost.preview === afterLeaveTail)
+    }
+
+    @Test func progressTrackerUpdatesPreviewWhenShrinkingFooterBackfillsTail() throws {
+        let document = Document.noise(width: width, height: 400, seed: 35)
+        let tallFooter = Document.noise(width: width, height: 20, seed: 36)
+        let shortFooter = Document.noise(width: width, height: 5, seed: 37)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = makeStitcher()
+        var tracker = ScrollRecorder.ProgressTracker(previewTailRows: 25)
+
+        func step(_ slice: Document.Slice) -> ScrollRecorder.Progress? {
+            let outcome = stitcher.add(slice)
+            return tracker.update(after: outcome, stitcher: stitcher, colorSpace: colorSpace)
+        }
+
+        // Grow canvas to 110 rows (tail is 85..<110).
+        _ = step(document.frame(at: 0, height: frameHeight))
+        _ = step(document.frame(at: 50, height: frameHeight))
+
+        // Scroll back up with a tall footer so the placed frame ends at row 80
+        // (above tailStart 85). Replace rows 85..<95 in the source so backfilled
+        // rows are visibly distinct in the tail.
+        var refreshed = document
+        refreshed.paint(columns: 0..<width, rows: 85..<95, value: 225)
+        _ = step(refreshed.frame(at: 40, height: frameHeight, footer: tallFooter))
+        let beforeBackfill = try #require(tracker.progress.preview)
+
+        // Scroll further up while the footer shrinks 20 -> 5: rows 80..<95 of the
+        // previous frame are backfilled into canvas (overlapping tail 85..<110)
+        // even though both frames end at or above tailStart (85).
+        let backfilled = try #require(step(refreshed.frame(at: 25, height: frameHeight, footer: shortFooter)))
+        let afterBackfill = try #require(backfilled.preview)
+        #expect(afterBackfill !== beforeBackfill)
+        #expect(isClose(rows(of: afterBackfill), Array(rows(of: stitcher).prefix(stitcher.stitchedContentHeight).suffix(25))))
+    }
+
+    @Test func progressTrackerUpdatesOnFirstFullAndSkipsRepeatedFull() throws {
+        let document = Document.noise(width: width, height: 400, seed: 34)
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+        var stitcher = ScrollStitcher(width: width, height: frameHeight, maximumHeight: 90)
+        var tracker = ScrollRecorder.ProgressTracker(previewTailRows: 25)
+
+        func step(_ slice: Document.Slice) -> ScrollRecorder.Progress? {
+            let outcome = stitcher.add(slice)
+            return tracker.update(after: outcome, stitcher: stitcher, colorSpace: colorSpace)
+        }
+
+        _ = step(document.frame(at: 0, height: frameHeight))
+        let atLimit = try #require(step(document.frame(at: 30, height: frameHeight)))
+        #expect(!atLimit.isFull)
+
+        var updated = document
+        updated.paint(columns: 0..<width, rows: 68..<76, value: 220)
+        let firstFull = try #require(step(updated.frame(at: 40, height: frameHeight)))
+        #expect(firstFull.isFull)
+        let fullTail = try #require(firstFull.preview)
+        #expect(fullTail !== atLimit.preview)
+        #expect(isClose(Array(rows(of: fullTail)[3..<11]), updated.rows(68..<76)))
+
+        #expect(step(updated.frame(at: 50, height: frameHeight)) == nil)
+    }
+
     // MARK: - Helpers
 
     private func makeStitcher(ignoringRightColumns: Int = 0) -> ScrollStitcher {
@@ -396,6 +660,10 @@ struct ScrollStitcherTests {
     /// The picture's rows, each as its bytes.
     private func rows(of stitcher: ScrollStitcher) -> [[UInt8]] {
         guard let image = stitcher.makeImage(colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!) else { return [] }
+        return rows(of: image)
+    }
+
+    private func rows(of image: CGImage) -> [[UInt8]] {
         let data: Data = image.dataProvider!.data! as Data
         let rowLength = image.width * 4
         return (0..<image.height).map { y in
