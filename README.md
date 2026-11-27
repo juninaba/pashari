@@ -72,7 +72,7 @@ behind the notch, open Pashari again from Spotlight or the Finder and
 Settings appears.
 
 <p align="center">
-  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, system audio turned on and the microphone off for recordings, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area, Record Area, Record Window and Record Fullscreen have none yet.">
+  <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, system audio turned on and the microphone off for recordings, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area, Capture Text, Record Area, Record Window and Record Fullscreen have none yet.">
 </p>
 
 ### 画面の文字をコピーする
@@ -132,7 +132,7 @@ by itself at five minutes.
   app audio) and fullscreen recordings. Turning the microphone on asks for
   the Microphone permission.
 - The pointer is in the video, with a ring around each click (macOS 15
-  and later). Pashari's bar, frame and thumbnails stay out.
+  and later). Pashari's bar, frame, thumbnails and sounds stay out.
 - Recordings are MP4 (H.264, with stereo AAC audio when sound is enabled)
   at the screen's full resolution, up to 4,096 pixels on the longer side.
   Larger recordings are scaled down to fit, and a window recording keeps
