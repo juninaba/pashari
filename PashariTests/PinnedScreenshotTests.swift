@@ -214,6 +214,25 @@ struct PinnedScreenshotTests {
         #expect(existing.isVisible && addedDuringRecording.isVisible)
     }
 
+    @Test func pickingAWindowHidesPinsUntilItEnds() async throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let capture = fixture.makeCapture()
+        _ = try await capture.fileURL()
+        let panel = try fixture.show(capture)
+        #expect(panel.isVisible)
+
+        // With no windows to pick, the selection waits until it is cancelled.
+        let selection = Task { await WindowSelectionSession().run(with: []) == nil }
+        try await waitFor { WindowSelectionSession.isActive }
+        #expect(!panel.isVisible)
+
+        OverlayPanel.cancelSelection()
+        #expect(await selection.value)
+        #expect(!WindowSelectionSession.isActive)
+        #expect(panel.isVisible)
+    }
+
     @Test func anInterruptedPinCanBeRecoveredAsAThumbnail() async throws {
         let fixture = try Fixture()
         defer { fixture.cleanUp() }

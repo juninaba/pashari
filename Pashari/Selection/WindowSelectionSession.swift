@@ -45,7 +45,19 @@ final class WindowSelectionSession {
         }
     }
 
+    /// Posted when a window selection comes on screen and when it goes.
+    static let activityDidChangeNotification = Notification.Name("PashariWindowSelectionActivityDidChange")
+
+    /// True while a window selection is on screen. Pins hide meanwhile: they
+    /// cannot be picked, and area selection does not show them either.
+    static var isActive: Bool { activeSessions > 0 }
+
+    private static var activeSessions = 0 {
+        didSet { NotificationCenter.default.post(name: activityDidChangeNotification, object: nil) }
+    }
+
     private func show() {
+        Self.activeSessions += 1
         for screen in NSScreen.screens {
             let panel = OverlayPanel(screen: screen)
             let view = WindowSelectionView(frame: CGRect(origin: .zero, size: screen.frame.size), cursor: cursor)
@@ -126,6 +138,7 @@ final class WindowSelectionSession {
         panels.forEach { $0.orderOut(nil) }
         panels.removeAll()
         views.removeAll()
+        Self.activeSessions -= 1
         NSCursor.arrow.set()
         continuation.resume(returning: result)
     }

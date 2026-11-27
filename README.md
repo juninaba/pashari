@@ -61,10 +61,10 @@ copied, saved or dropped. Annotate takes the pin into the editor. Closing
 that editor returns the edited image to the thumbnails.
 
 Pashari leaves pins out of screenshots, scroll captures and recordings.
-Pins are also excluded from window selection. During a scroll capture,
-overlapping pins hide temporarily so you can scroll the selected area.
-Pins also hide during screen recording so you can operate the apps beneath
-them.
+Pins are also excluded from window selection, and hide while you pick a
+window. During a scroll capture, overlapping pins hide temporarily so you
+can scroll the selected area. Pins also hide during screen recording so
+you can operate the apps beneath them.
 Quitting asks for confirmation while unsaved work remains in thumbnails,
 pins, editors or players.
 

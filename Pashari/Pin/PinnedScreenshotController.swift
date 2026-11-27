@@ -52,6 +52,10 @@ final class PinnedScreenshotController: NSObject {
             self, selector: #selector(screensDidChange),
             name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowSelectionDidChange),
+            name: WindowSelectionSession.activityDidChangeNotification, object: nil
+        )
     }
 
     /// From the editor, finish writing the new PNG before taking over.
@@ -119,7 +123,12 @@ final class PinnedScreenshotController: NSObject {
     }
 
     private func shouldHide(_ pin: Pin) -> Bool {
-        isRecording || scrollCaptureArea?.intersects(pin.panel.frame) == true
+        isRecording || WindowSelectionSession.isActive
+            || scrollCaptureArea?.intersects(pin.panel.frame) == true
+    }
+
+    @objc private func windowSelectionDidChange() {
+        pins.forEach(updateVisibility(of:))
     }
 
     private func updateVisibility(of pin: Pin) {
