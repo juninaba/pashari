@@ -72,6 +72,24 @@ struct RecordingControlPanelTests {
         #expect(bar.frame.size == size)
     }
 
+    @Test func recordHasItsTitleInLineWithCancelAndItsDotOnTheTitle() throws {
+        let bar = RecordingControlPanel()
+        bar.show(.adjusting(CGSize(width: 1280, height: 720)))
+        let cancel = try #require(button(titled: String(localized: "Cancel"), in: bar.contentView))
+        let record = try #require(button(titled: String(localized: "Record"), in: bar.contentView))
+        let recordCell = try #require(record.cell)
+
+        let cancelTitle = try middleOfInk(of: cancel, inColumnsOf: try #require(cancel.cell).titleRect(forBounds: cancel.bounds))
+        let recordTitle = try middleOfInk(of: record, inColumnsOf: recordCell.titleRect(forBounds: record.bounds))
+        let recordDot = try middleOfInk(of: record, inColumnsOf: recordCell.imageRect(forBounds: record.bounds))
+
+        // Left to AppKit, the title sits 2 points lower than Cancel's, next
+        // to a symbol smaller than the text. At 1x, a row of ink more or
+        // less at one edge moves its middle by half a point.
+        #expect(abs(recordTitle - cancelTitle) <= 0.75)
+        #expect(abs(recordDot - recordTitle) <= 0.75)
+    }
+
     @Test func theBarNeverTakesTheKeyboard() {
         #expect(!RecordingControlPanel().canBecomeKey)
     }
@@ -576,6 +594,40 @@ private func visibleButtons(in view: NSView?) -> [String] {
     guard let view, !view.isHidden else { return [] }
     let own = (view as? NSButton).flatMap { $0.title.isEmpty ? nil : [$0.title] } ?? []
     return own + view.subviews.flatMap { visibleButtons(in: $0) }
+}
+
+@MainActor
+private func button(titled title: String, in view: NSView?) -> NSButton? {
+    guard let view else { return nil }
+    if let button = view as? NSButton, button.title == title { return button }
+    return view.subviews.lazy.compactMap { button(titled: title, in: $0) }.first
+}
+
+/// The middle, in points from the top of the bar, of the rows in which
+/// `button` draws over its bezel, in the columns of `part` (a rect in the
+/// button). The bar is drawn offscreen.
+@MainActor
+private func middleOfInk(of button: NSButton, inColumnsOf part: CGRect) throws -> CGFloat {
+    let content = try #require(button.window?.contentView)
+    let rep = try #require(content.bitmapImageRepForCachingDisplay(in: content.bounds))
+    content.cacheDisplay(in: content.bounds, to: rep)
+    let scale = CGFloat(rep.pixelsWide) / content.bounds.width
+    let frame = button.convert(button.bounds, to: content)
+    let columns = button.convert(part, to: content)
+    func color(_ x: Int, _ y: Int) -> NSColor? { rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) }
+    // The bitmap's rows count from the top; the bar's points from the bottom.
+    let rows = Int((content.bounds.height - frame.maxY) * scale)..<Int((content.bounds.height - frame.minY) * scale)
+    let bezel = try #require(color(Int((frame.minX + 4) * scale), (rows.lowerBound + rows.upperBound) / 2))
+    let inked = rows.filter { y in
+        (Int(columns.minX * scale)..<Int(columns.maxX * scale)).contains { x in
+            guard let pixel = color(x, y) else { return false }
+            return abs(pixel.redComponent - bezel.redComponent) + abs(pixel.greenComponent - bezel.greenComponent)
+                + abs(pixel.blueComponent - bezel.blueComponent) > 0.5
+        }
+    }
+    let top = try #require(inked.first)
+    let bottom = try #require(inked.last) + 1
+    return CGFloat(top + bottom) / 2 / scale
 }
 
 @MainActor
