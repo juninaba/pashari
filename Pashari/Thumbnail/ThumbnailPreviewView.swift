@@ -1,7 +1,8 @@
 import AppKit
 
-/// The part of a card that the picture can be dragged out of. It draws
-/// nothing itself: the card shows the picture (see `ThumbnailCardView`).
+/// The part of a card that the picture can be dragged out of, or
+/// double-clicked to open. It draws nothing itself: the card shows the
+/// picture (see `ThumbnailCardView`).
 final class ThumbnailPreviewView: NSView, NSDraggingSource {
     /// Asked when a drag starts. Returns nil while the file is not ready yet,
     /// in which case the drag does not begin.
@@ -12,6 +13,9 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
 
     /// Called when a drag ends, dropped or not.
     var onDragEnd: (() -> Void)?
+
+    /// Called on the second click of a double-click on the picture.
+    var onDoubleClick: (() -> Void)?
 
     /// The picture, for the image that follows the pointer while dragging.
     private var image: CGImage?
@@ -35,9 +39,16 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    // MARK: - Starting a drag
+    // MARK: - Opening and starting a drag
 
     override func mouseDown(with event: NSEvent) {
+        // AppKit sends the second click to the view that took the first,
+        // even if the cards have moved since: a first click that spread
+        // the pile out cannot open a card that came under the pointer.
+        if event.clickCount == 2 {
+            onDoubleClick?()
+            return
+        }
         mouseDownEvent = event
     }
 

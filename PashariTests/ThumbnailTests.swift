@@ -719,6 +719,88 @@ struct ThumbnailControllerTests {
         _ = NSApp.nextEvent(matching: .leftMouseUp, until: Date(), inMode: .default, dequeue: true)
     }
 
+    @Test func doubleClickingAScreenshotsPictureOpensItInTheEditor() async throws {
+        let controller = ThumbnailController(showError: { error, _ in Issue.record(error) })
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        let screenshot = makeScreenshot()
+        controller.show(screenshot)
+        let card = try #require(controller.cards.first)
+        let panel = try #require(card.window)
+        card.paper.removeAllAnimations()
+        CATransaction.flush()
+        var opened: Screenshot?
+        controller.onAnnotate = { opened = $0 }
+        let picture = card.previewView.convert(card.previewView.bounds, to: nil)
+        let point = CGPoint(x: picture.midX, y: picture.midY)
+
+        try sendClick(at: point, to: panel, count: 1)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(opened == nil)
+        #expect(controller.cards.first === card)
+
+        try sendClick(at: point, to: panel, count: 2)
+        for _ in 0..<100 where opened == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(opened?.capturedAt == screenshot.capturedAt)
+        #expect(!controller.hasPendingCaptures)
+    }
+
+    @Test func aDoubleClickOnThePileOpensNoCardThatGlidesUnderThePointer() async throws {
+        let controller = ThumbnailController(showError: { error, _ in Issue.record(error) })
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        let older = makeScreenshot()
+        controller.show(older)
+        controller.show(makeScreenshot())
+        let cards = controller.cards
+        let stack = try #require(cards[0].superview as? ThumbnailStackView)
+        let panel = try #require(stack.window)
+        stack.pointerLocation = { CGPoint(x: -10_000, y: -10_000) }
+        var opened: Screenshot?
+        controller.onAnnotate = { opened = $0 }
+        cards.forEach { $0.paper.removeAllAnimations() }
+        CALayer.withoutAnimation { cards[1].paper.transform = CATransform3DIdentity }
+        CATransaction.flush()
+        // The top of the older card, where it sticks out above the newest.
+        let edge = CGPoint(x: cards[0].frame.midX, y: cards[0].frame.maxY + 4)
+        try #require(cards[1].frame.contains(edge))
+        let point = stack.convert(edge, to: nil)
+
+        // The first click spreads the pile out.
+        try sendClick(at: point, to: panel, count: 1)
+        #expect(stack.isSpread)
+        // The older card glides up into the column. Hold it where its
+        // picture shows under the pointer for the second click.
+        cards[1].paper.removeAllAnimations()
+        let pictureMiddle = cards[1].frame.minY + cards[1].previewView.frame.midY
+        CALayer.withoutAnimation {
+            cards[1].paper.transform = CATransform3DMakeTranslation(0, edge.y - pictureMiddle, 0)
+        }
+        CATransaction.flush()
+        let target = try #require(stack.superview).convert(point, from: nil)
+        try #require(stack.hitTest(target) === cards[1].previewView)
+
+        // The second click goes to the pile, as the first did.
+        try sendClick(at: point, to: panel, count: 2)
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(opened == nil)
+        #expect(controller.pendingCount == 2)
+
+        // Spread out, the older card opens with a double-click of its own.
+        try sendClick(at: point, to: panel, count: 1)
+        try sendClick(at: point, to: panel, count: 2)
+        for _ in 0..<100 where opened == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(opened?.capturedAt == older.capturedAt)
+        #expect(controller.pendingCount == 1)
+        #expect(controller.cards.first === cards[0])
+    }
+
     @Test func aDragThatEndsWithoutADropPilesTheCardsUpOnceThePointerIsAway() async throws {
         let controller = ThumbnailController()
         defer {
@@ -809,6 +891,25 @@ struct ThumbnailControllerTests {
 
     private func close(_ card: ThumbnailCardView) {
         card.onClose?()
+    }
+}
+
+/// Clicks `point`, in `window`, down and up, as the `count`th click in a
+/// row: the second click of a double-click comes with a count of 2.
+@MainActor
+func sendClick(at point: CGPoint, to window: NSWindow, count: Int) throws {
+    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+        window.sendEvent(try #require(NSEvent.mouseEvent(
+            with: type,
+            location: point,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: count,
+            pressure: type == .leftMouseDown ? 1 : 0
+        )))
     }
 }
 

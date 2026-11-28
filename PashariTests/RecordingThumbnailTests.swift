@@ -97,6 +97,33 @@ struct RecordingThumbnailTests {
         #expect(FileManager.default.fileExists(atPath: sample.recording.url.path))
     }
 
+    @Test func doubleClickingARecordingsPicturePlaysIt() async throws {
+        let sample = try await SampleRecording()
+        defer { sample.remove() }
+        let controller = ThumbnailController(storage: sample.storage, showError: { error, _ in
+            Issue.record(error)
+        })
+        // Before its file goes, should the card still be there.
+        defer { controller.cards.first?.onClose?() }
+        var played: Recording?
+        controller.onPlay = { played = $0 }
+        controller.onAnnotate = { _ in Issue.record("A recording went to the editor") }
+        controller.show(sample.recording)
+        let card = try #require(controller.cards.first)
+        let panel = try #require(card.window)
+        card.paper.removeAllAnimations()
+        CATransaction.flush()
+        let picture = card.previewView.convert(card.previewView.bounds, to: nil)
+        let point = CGPoint(x: picture.midX, y: picture.midY)
+
+        try sendClick(at: point, to: panel, count: 1)
+        #expect(played == nil)
+        try sendClick(at: point, to: panel, count: 2)
+
+        #expect(played?.url == sample.recording.url)
+        #expect(!controller.hasPendingCaptures)
+    }
+
     @Test func closingARecordingsCardDeletesItsFile() async throws {
         let sample = try await SampleRecording()
         defer { sample.remove() }

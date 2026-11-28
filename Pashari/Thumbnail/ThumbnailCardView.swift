@@ -57,6 +57,7 @@ final class ThumbnailCardView: NSView {
         addSubview(previewView)
         addSubview(toolbar)
         makeButtons()
+        previewView.onDoubleClick = { [weak self] in self?.open() }
     }
 
     @available(*, unavailable)
@@ -75,6 +76,16 @@ final class ThumbnailCardView: NSView {
     }
 
     var hasPicture: Bool { picture.contents != nil }
+
+    /// What a double-click on the picture does: Annotate for a screenshot,
+    /// Play for a recording.
+    private func open() {
+        if duration == nil {
+            onAnnotate?()
+        } else {
+            onPlay?()
+        }
+    }
 
     func setActionsEnabled(_ enabled: Bool) {
         actionButtons.forEach { $0.isEnabled = enabled }

@@ -25,7 +25,8 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
   Screenshots are silent until you pick it under Settings
 - A floating thumbnail after each screenshot or recording, like an
   instant photo: copy, save, annotate, pin or play, drag it into another
-  app, or close it. Captures pile up in the corner; rest the pointer on
+  app, or close it. Double-click its picture to annotate a screenshot or
+  play a recording. Captures pile up in the corner; rest the pointer on
   the pile to spread them out
 - Pin screenshots above other apps while you work, including in full-screen
   Spaces. Keep several pins open and move or resize them independently
