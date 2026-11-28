@@ -52,7 +52,7 @@ final class PanelButton: NSButton {
                 let capMiddle = titleFrame.midY + (font.ascender + font.descender - font.capHeight) / 2
                 let middleFromTop = (image.size.height - image.alignmentRect.midY) / image.size.height
                 frame.origin.y = capMiddle - frame.height * middleFromTop
-                frame = controlView.backingAlignedRect(frame, options: .alignAllEdgesNearest)
+                frame.origin.y = controlView.backingAlignedRect(frame, options: .alignAllEdgesNearest).minY
             }
             super.drawImage(image, withFrame: frame, in: controlView)
         }
