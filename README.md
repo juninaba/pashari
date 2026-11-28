@@ -7,7 +7,7 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
 > **Status:** early development.
 
 <p align="center">
-  <img src="docs/images/thumbnails.png" width="640" alt="Four captures piled up like instant photos in the bottom-left corner of the screen. The newest lies on top, with buttons to copy, save, annotate or close it, and a badge that counts four.">
+  <img src="docs/images/thumbnails.png" width="640" alt="Four captures piled up like instant photos in the bottom-left corner of the screen. The newest lies on top, with buttons to copy, save, annotate, pin or close it, and a badge that counts four.">
 </p>
 
 ## Features
@@ -16,14 +16,17 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
   global hotkeys
 - Scroll capture: pick an area, scroll its content, and get one tall
   picture of everything that scrolled past
+- Text capture: drag over English or Japanese text on screen, and
+  Pashari reads it on your Mac and copies it as plain text
 - Record an area, a window or the full screen (optionally with system audio
   and the microphone) for up to five minutes, then trim, copy, save or drag
   the video like a screenshot
 - A film camera's shutter sound for each screenshot, if you want it.
   Screenshots are silent until you pick it under Settings
-- A floating thumbnail after each capture, like an instant photo: copy,
-  save, annotate or play, drag it into another app, or close it. Captures
-  pile up in the corner; rest the pointer on the pile to spread them out
+- A floating thumbnail after each screenshot or recording, like an
+  instant photo: copy, save, annotate, pin or play, drag it into another
+  app, or close it. Captures pile up in the corner; rest the pointer on
+  the pile to spread them out
 - Pin screenshots above other apps while you work, including in full-screen
   Spaces. Keep several pins open and move or resize them independently
 - An annotation editor: arrow, rectangle, ellipse, line, pen, multi-line
@@ -40,7 +43,7 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
   order taken
 
 <p align="center">
-  <img src="docs/images/editor.png" width="800" alt="The annotation editor. A screenshot of a web page lies like a print on a dotted desk, with numbered badges, a blurred email address, a box, an arrow and a label drawn on it. The tools, colours and sizes run along the top, next to Undo, Redo, Copy and Save.">
+  <img src="docs/images/editor.png" width="800" alt="The annotation editor. A screenshot of a web page lies like a print on a dotted desk, with numbered badges, a blurred email address, a box, an arrow and a label drawn on it. The tools, colours and sizes run along the top, next to Undo, Redo, Pin to Screen, Copy and Save.">
 </p>
 
 Up to five thumbnails lie on the pile, as many as fit on screen when
@@ -66,6 +69,7 @@ Pins are also excluded from window selection, and hide while you pick a
 window. During a scroll capture, overlapping pins hide temporarily so you
 can scroll the selected area. Pins also hide during screen recording so
 you can operate the apps beneath them.
+
 Quitting asks for confirmation while unsaved work remains in thumbnails,
 pins, editors or players.
 
@@ -98,25 +102,25 @@ Settings appears.
   <img src="docs/images/settings.png" width="480" alt="Pashari Settings: launch at login, the folder captures are saved to, the shutter sound set to Film camera, the appearance, system audio turned on and the microphone off for recordings, and the hotkeys for capturing an area, a window and the full screen. Capture Scrolling Area, Capture Text, Record Area, Record Window and Record Fullscreen have none yet.">
 </p>
 
-### 画面の文字をコピーする
+### Text capture
 
-1. メニューバーの Pashari アイコンから「テキストをキャプチャ」（Capture Text）を選びます。
-2. コピーしたい文字をドラッグで囲みます。
-   マウスボタンを離すと、範囲内の文字がプレーンテキストとしてクリップボードにコピーされます。
-3. 貼り付け先で ⌘V を押します。
+Choose Capture Text from the menu bar icon, or press its hotkey, and drag
+over the text you want. When you let go, Pashari reads the text in the
+area and copies it to the clipboard as plain text, ready to paste with ⌘V.
+A message at the top of the screen says whether text was copied. Escape
+or a right click cancels.
 
-英語と日本語を Mac 上で読み取ります。
-設定の「テキストをキャプチャ」でショートカットを割り当てられます。初期状態では未設定です。
-Esc キーまたは右クリックで範囲選択をキャンセルできます。
+Pashari reads English and Japanese, on your Mac.
 
 ### Scroll capture
 
 Select the part of a window that scrolls, wait until the bar next to it
 prompts you to scroll, then scroll it as usual.
 Pashari records the area and adds whatever scrolls into view to the bottom
-of the picture. Click Done or press Return to finish; Escape cancels. After
-a click in another app, Return and Escape go to that app until you click
-Pashari's bar again.
+of the picture. The bar shows the picture's size so far in points, and a
+preview of the part added last. Click Done or press Return to finish;
+Escape cancels. After a click in another app, Return and Escape go to that
+app until you click Pashari's bar again.
 
 - A fixed header or footer inside the area, such as a toolbar, appears
   once, at the top or bottom of the picture.
