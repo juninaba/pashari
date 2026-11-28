@@ -84,7 +84,8 @@ struct RecordingControlPanelTests {
         let recordDot = try middleOfInk(of: record, inColumnsOf: recordCell.imageRect(forBounds: record.bounds))
 
         // Left to AppKit, the title sits 2 points lower than Cancel's, next
-        // to a symbol smaller than the text. This allows a pixel at 1x.
+        // to a symbol smaller than the text. At 1x, a row of ink more or
+        // less at one edge moves its middle by half a point.
         #expect(abs(recordTitle - cancelTitle) <= 0.75)
         #expect(abs(recordDot - recordTitle) <= 0.75)
     }

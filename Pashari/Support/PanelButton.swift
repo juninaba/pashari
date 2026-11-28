@@ -30,16 +30,17 @@ final class PanelButton: NSButton {
     }
 
     /// Keeps an image beside the title on one line through the middle of the
-    /// button. Next to a symbol smaller than the text, AppKit draws the title
-    /// lower than in a button without an image, below the middle of the
-    /// button, and the symbol above the middle of the title. This draws the
-    /// title where a button without an image has it, and the image on the
-    /// middle of the title's capitals.
+    /// button. On macOS 26, next to a symbol smaller than the text, AppKit
+    /// draws the title lower than in a button without an image, below the
+    /// middle of the button, and the symbol above the middle of the title.
+    /// This draws the title where a button without an image has it, and the
+    /// image on the middle of the title's capitals.
     private final class Cell: NSButtonCell {
         override func drawTitle(_ title: NSAttributedString, withFrame frame: NSRect, in controlView: NSView) -> NSRect {
             var frame = frame
             if let titleFrame = titleFrameWithoutImage(in: controlView) {
                 frame.origin.y = titleFrame.minY
+                frame.size.height = titleFrame.height
             }
             return super.drawTitle(title, withFrame: frame, in: controlView)
         }
