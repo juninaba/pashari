@@ -16,17 +16,17 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
   global hotkeys
 - Scroll capture: pick an area, scroll its content, and get one tall
   picture of everything that scrolled past
-- Text capture: drag over English or Japanese text anywhere on screen,
-  and Pashari reads it on your Mac and copies it as plain text
+- Text capture: drag over English or Japanese text on screen, and
+  Pashari reads it on your Mac and copies it as plain text
 - Record an area, a window or the full screen (optionally with system audio
   and the microphone) for up to five minutes, then trim, copy, save or drag
   the video like a screenshot
 - A film camera's shutter sound for each screenshot, if you want it.
   Screenshots are silent until you pick it under Settings
-- A floating thumbnail after each capture, like an instant photo: copy,
-  save, annotate, pin or play, drag it into another app, or close it.
-  Captures pile up in the corner; rest the pointer on the pile to spread
-  them out
+- A floating thumbnail after each screenshot or recording, like an
+  instant photo: copy, save, annotate, pin or play, drag it into another
+  app, or close it. Captures pile up in the corner; rest the pointer on
+  the pile to spread them out
 - Pin screenshots above other apps while you work, including in full-screen
   Spaces. Keep several pins open and move or resize them independently
 - An annotation editor: arrow, rectangle, ellipse, line, pen, multi-line
@@ -117,10 +117,10 @@ Pashari reads English and Japanese, on your Mac.
 Select the part of a window that scrolls, wait until the bar next to it
 prompts you to scroll, then scroll it as usual.
 Pashari records the area and adds whatever scrolls into view to the bottom
-of the picture. The bar shows the picture's size so far, with a preview of
-its bottom. Click Done or press Return to finish; Escape cancels. After
-a click in another app, Return and Escape go to that app until you click
-Pashari's bar again.
+of the picture. The bar shows the picture's size so far in points, and a
+preview of the part added last. Click Done or press Return to finish;
+Escape cancels. After a click in another app, Return and Escape go to that
+app until you click Pashari's bar again.
 
 - A fixed header or footer inside the area, such as a toolbar, appears
   once, at the top or bottom of the picture.
