@@ -168,7 +168,8 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         configuration.width = width
         configuration.height = height
         configuration.captureResolution = .best
-        // RGB frames. The encoder turns them into video colours itself.
+        // RGB frames, which the encoder turns into video colours itself.
+        // Only these, in sRGB (below), were checked against screenshots.
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         // In the display's own colours, which the encoder would take for
         // video colours: red came out orange and green yellowish. In sRGB,
