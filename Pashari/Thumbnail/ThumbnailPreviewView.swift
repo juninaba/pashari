@@ -14,8 +14,13 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
     /// Called when a drag ends, dropped or not.
     var onDragEnd: (() -> Void)?
 
-    /// Called on the second click of a double-click on the picture.
+    /// Called when the second click of a double-click on the picture ends
+    /// where it began. A second click that moves off drags the picture.
     var onDoubleClick: (() -> Void)?
+
+    /// How far the pointer moves with the button down before it drags the
+    /// picture.
+    private static let dragDistance: CGFloat = 4
 
     /// The picture, for the image that follows the pointer while dragging.
     private var image: CGImage?
@@ -42,18 +47,22 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
     // MARK: - Opening and starting a drag
 
     override func mouseDown(with event: NSEvent) {
-        // AppKit sends the second click to the view that took the first,
-        // even if the cards have moved since: a first click that spread
-        // the pile out cannot open a card that came under the pointer.
-        if event.clickCount == 2 {
-            onDoubleClick?()
-            return
-        }
         mouseDownEvent = event
     }
 
     override func mouseUp(with event: NSEvent) {
-        mouseDownEvent = nil
+        defer { mouseDownEvent = nil }
+        // AppKit sends the second click to the view that took the first,
+        // even if the cards have moved since: a first click that spread
+        // the pile out cannot open a card that came under the pointer.
+        guard
+            event.clickCount == 2,
+            let mouseDownEvent,
+            Self.distance(mouseDownEvent.locationInWindow, event.locationInWindow) < Self.dragDistance
+        else {
+            return
+        }
+        onDoubleClick?()
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -61,7 +70,7 @@ final class ThumbnailPreviewView: NSView, NSDraggingSource {
         // shaky click is not mistaken for a drag.
         guard
             let mouseDownEvent,
-            Self.distance(mouseDownEvent.locationInWindow, event.locationInWindow) >= 4,
+            Self.distance(mouseDownEvent.locationInWindow, event.locationInWindow) >= Self.dragDistance,
             let url = fileURL?(),
             let image
         else {

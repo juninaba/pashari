@@ -748,6 +748,37 @@ struct ThumbnailControllerTests {
         #expect(!controller.hasPendingCaptures)
     }
 
+    @Test func pressingThePictureAgainToDragItOutOpensNothing() async throws {
+        let controller = ThumbnailController(showError: { error, _ in Issue.record(error) })
+        defer {
+            while let card = controller.cards.first { close(card) }
+        }
+        controller.show(makeScreenshot())
+        let card = try #require(controller.cards.first)
+        let panel = try #require(card.window)
+        card.paper.removeAllAnimations()
+        CATransaction.flush()
+        controller.onAnnotate = { _ in Issue.record("The editor opened") }
+        // With no file to drag, no drag starts: only the asking shows.
+        var fileAsked = 0
+        card.previewView.fileURL = {
+            fileAsked += 1
+            return nil
+        }
+        let picture = card.previewView.convert(card.previewView.bounds, to: nil)
+        let point = CGPoint(x: picture.midX, y: picture.midY)
+        let away = CGPoint(x: point.x + 10, y: point.y)
+
+        try sendClick(at: point, to: panel, count: 1)
+        try sendMouse(.leftMouseDown, at: point, to: panel, count: 2)
+        try sendMouse(.leftMouseDragged, at: away, to: panel, count: 2)
+        try sendMouse(.leftMouseUp, at: away, to: panel, count: 2)
+        try await Task.sleep(for: .milliseconds(100))
+
+        #expect(fileAsked == 1)
+        #expect(controller.pendingCount == 1)
+    }
+
     @Test func aDoubleClickOnThePileOpensNoCardThatGlidesUnderThePointer() async throws {
         let controller = ThumbnailController(showError: { error, _ in Issue.record(error) })
         defer {
@@ -894,23 +925,29 @@ struct ThumbnailControllerTests {
     }
 }
 
+/// Sends a left mouse event at `point`, in `window`, of the `count`th click
+/// in a row: the second click of a double-click comes with a count of 2.
+@MainActor
+func sendMouse(_ type: NSEvent.EventType, at point: CGPoint, to window: NSWindow, count: Int) throws {
+    window.sendEvent(try #require(NSEvent.mouseEvent(
+        with: type,
+        location: point,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: window.windowNumber,
+        context: nil,
+        eventNumber: 0,
+        clickCount: count,
+        pressure: type == .leftMouseUp ? 0 : 1
+    )))
+}
+
 /// Clicks `point`, in `window`, down and up, as the `count`th click in a
-/// row: the second click of a double-click comes with a count of 2.
+/// row.
 @MainActor
 func sendClick(at point: CGPoint, to window: NSWindow, count: Int) throws {
-    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-        window.sendEvent(try #require(NSEvent.mouseEvent(
-            with: type,
-            location: point,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 0,
-            clickCount: count,
-            pressure: type == .leftMouseDown ? 1 : 0
-        )))
-    }
+    try sendMouse(.leftMouseDown, at: point, to: window, count: count)
+    try sendMouse(.leftMouseUp, at: point, to: window, count: count)
 }
 
 @MainActor
