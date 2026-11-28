@@ -50,6 +50,32 @@ struct ScreenshotTests {
         #expect(cropped.image.height == 20)
     }
 
+    @Test func croppingAPreviouslyResizedPinKeepsItsLocationOnTheDisplay() throws {
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 400, height: 200), scale: 2, capturedAt: Date(),
+            screenFrame: CGRect(x: 1300, y: 100, width: 100, height: 50)
+        )
+
+        let cropped = try #require(screenshot.cropped(to: CGRect(x: 120, y: 20, width: 80, height: 60)))
+
+        #expect(cropped.screenFrame == CGRect(x: 1360, y: 110, width: 40, height: 30))
+    }
+
+    @Test func cropKeepsItsLocationOnTheDisplayAfterClippingAndRounding() throws {
+        let screenshot = Screenshot(
+            image: TestImages.make(width: 200, height: 120),
+            scale: 2,
+            capturedAt: Date(),
+            screenFrame: CGRect(x: -300, y: 700, width: 100, height: 60)
+        )
+
+        let cropped = try #require(
+            screenshot.cropped(to: CGRect(x: -5, y: 10.2, width: 20.6, height: 90))
+        )
+
+        #expect(cropped.screenFrame == CGRect(x: -300, y: 700, width: 15.5, height: 50))
+    }
+
     @Test func cropOutsideTheImageIsNil() {
         let screenshot = makeScreenshot(width: 200, height: 120, scale: 2)
 

@@ -8,9 +8,11 @@ enum Clipboard {
         return pasteboard.setString(text, forType: .string)
     }
 
-    static func copy(pngData: Data, to pasteboard: NSPasteboard = .general) {
+    static func copy(pngData: Data, to pasteboard: NSPasteboard = .general) throws {
         pasteboard.clearContents()
-        pasteboard.setData(pngData, forType: .png)
+        guard pasteboard.setData(pngData, forType: .png) else {
+            throw CaptureError.cannotWriteClipboard
+        }
     }
 
     /// The file itself, as Finder copies it: apps such as Slack, Messages

@@ -114,7 +114,7 @@ struct CaptureCoordinatorTests {
     @Test func textCaptureCopiesOnlyPlainTextWithoutCreatingAThumbnail() async throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        Clipboard.copy(pngData: Data([0]), to: pasteboard)
+        try Clipboard.copy(pngData: Data([0]), to: pasteboard)
         let thumbnails = ThumbnailController()
         var plays = 0
         var feedback: [TextCaptureFeedback] = []
@@ -142,7 +142,7 @@ struct CaptureCoordinatorTests {
     func textCapturePreservesClipboardWhenNoTextIsCopied(outcome: TextCaptureFeedback?) async throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        Clipboard.copy(pngData: Data([0]), to: pasteboard)
+        try Clipboard.copy(pngData: Data([0]), to: pasteboard)
         let originalChangeCount = pasteboard.changeCount
         let coordinator = CaptureCoordinator(thumbnailController: ThumbnailController(), ensurePermission: { true })
         var feedback: [TextCaptureFeedback] = []

@@ -22,12 +22,17 @@ final class ScrollCaptureSession {
     private var spaceObserver: SpaceChangeObserver?
     private var recorder: ScrollRecorder?
     private var areaSize = CGSize.zero
+    private weak var pinController: PinnedScreenshotController?
 
     private var ending: Ending?
     private var continuation: CheckedContinuation<Ending, Never>?
     /// Coalesces rapid progress reports so at most one preview image waits for
     /// the main actor at a time.
     nonisolated private let pendingProgress = OSAllocatedUnfairLock<ScrollRecorder.Progress?>(initialState: nil)
+
+    init(pinController: PinnedScreenshotController? = nil) {
+        self.pinController = pinController
+    }
 
     /// Returns the joined picture, or nil when the user cancelled.
     func run(_ selection: AreaSelection) async throws -> Screenshot? {
@@ -38,15 +43,26 @@ final class ScrollCaptureSession {
         guard area.width >= 1, area.height >= 1 else { return nil }
         areaSize = area.size
         let startedAt = Date()
+        let areaOnScreen = CGRect(
+            x: screen.frame.minX + area.minX,
+            y: screen.frame.maxY - area.maxY,
+            width: area.width,
+            height: area.height
+        )
 
-        show(area, on: screen)
-        defer { hide() }
+        pinController?.showPins(avoiding: areaOnScreen)
+        show(area, on: screen, areaOnScreen: areaOnScreen)
+        defer {
+            hide()
+            pinController?.showPins(avoiding: nil)
+        }
 
         let recorder = try await startRecording(area, on: screen)
         Log.capture.info("Scroll recording started")
         let ending = await waitForEnding()
         self.recorder = nil
 
+        let image: CGImage
         switch ending {
         case .cancelled:
             // Not `stop()`, which would make the picture only for it to be
@@ -55,18 +71,27 @@ final class ScrollCaptureSession {
             return nil
         case .interrupted:
             // The user did not ask to throw away what was recorded.
-            guard let image = await recorder.stop() else { return nil }
-            return Screenshot(image: image, scale: recorder.scale, capturedAt: startedAt)
+            guard let result = await recorder.stop() else { return nil }
+            image = result
         case .failed(let error):
             // Keep what was recorded until then, if anything.
-            guard let image = await recorder.stop() else { throw error }
-            return Screenshot(image: image, scale: recorder.scale, capturedAt: startedAt)
+            guard let result = await recorder.stop() else { throw error }
+            image = result
         case .done:
             // Without a single frame, the area as it was when picked is the
             // next best thing.
-            guard let image = await recorder.stop() else { return selection.screenshot }
-            return Screenshot(image: image, scale: recorder.scale, capturedAt: startedAt)
+            guard let result = await recorder.stop() else { return selection.screenshot }
+            image = result
         }
+        let width = CGFloat(image.width) / recorder.scale
+        let height = CGFloat(image.height) / recorder.scale
+        let screenFrame = CGRect(
+            x: areaOnScreen.minX,
+            y: areaOnScreen.maxY - height,
+            width: width,
+            height: height
+        )
+        return Screenshot(image: image, scale: recorder.scale, capturedAt: startedAt, screenFrame: screenFrame)
     }
 
     // MARK: - Recording
@@ -84,7 +109,7 @@ final class ScrollCaptureSession {
         let recorder = ScrollRecorder(
             area: area,
             of: display,
-            filter: ScreenCapturer.recordingFilter(of: display, in: content),
+            filter: ScreenCapturer.displayFilter(of: display, in: content),
             previewSize: controls?.previewSize ?? .zero,
             onProgress: { [weak self] progress in
                 self?.enqueue(progress)
@@ -155,7 +180,7 @@ final class ScrollCaptureSession {
 
     // MARK: - Panels
 
-    private func show(_ area: CGRect, on screen: NSScreen) {
+    private func show(_ area: CGRect, on screen: NSScreen, areaOnScreen: CGRect) {
         let overlay = OverlayPanel(screen: screen)
         // Every click and scroll goes through to the app underneath.
         overlay.ignoresMouseEvents = true
@@ -173,12 +198,6 @@ final class ScrollCaptureSession {
         controls.onDone = { [weak self] in self?.end(.done) }
         controls.onCancel = { [weak self] in self?.end(.cancelled) }
         controls.show(size: area.size, status: .preparing)
-        let areaOnScreen = CGRect(
-            x: screen.frame.minX + area.minX,
-            y: screen.frame.maxY - area.maxY,
-            width: area.width,
-            height: area.height
-        )
         let controlsFrame = ControlBarPlacement.frame(
             ofSize: controls.frame.size,
             nextTo: areaOnScreen,

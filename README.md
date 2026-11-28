@@ -24,6 +24,8 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
 - A floating thumbnail after each capture, like an instant photo: copy,
   save, annotate or play, drag it into another app, or close it. Captures
   pile up in the corner; rest the pointer on the pile to spread them out
+- Pin screenshots above other apps while you work, including in full-screen
+  Spaces. Keep several pins open and move or resize them independently
 - An annotation editor: arrow, rectangle, ellipse, line, pen, multi-line
   text, numbered badges, blur, crop, with undo and redo
   - Select a mark to move, resize, restyle or delete it, or double-click
@@ -43,8 +45,29 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
 
 Up to five thumbnails lie on the pile, as many as fit on screen when
 spread out. Older captures wait until space is available: copy, save, or
-close thumbnails to reveal them. Quitting asks for confirmation while
-screenshots or recordings remain in thumbnails, editors or players.
+close thumbnails to reveal them.
+
+Choose **Pin to Screen** on a screenshot thumbnail or in the annotation
+editor. The editor includes your annotations and crop in the pin. A pin
+opens at its original point size and uses the capture location when it fits.
+Larger images, including long scroll captures, shrink to fit the display.
+Drag the image to move it, scroll or pinch to resize it, and hold Option
+while scrolling to change its opacity. These interactions leave keyboard
+focus in the app you are using.
+
+Hover over the pin to copy, save, annotate, drag the PNG to another app,
+or unpin. Copy, Save and a completed drop leave the image on screen for
+reference. Unpin returns a screenshot to the thumbnails until it has been
+copied, saved or dropped. Annotate takes the pin into the editor. Closing
+that editor returns the edited image to the thumbnails.
+
+Pashari leaves pins out of screenshots, scroll captures and recordings.
+Pins are also excluded from window selection, and hide while you pick a
+window. During a scroll capture, overlapping pins hide temporarily so you
+can scroll the selected area. Pins also hide during screen recording so
+you can operate the apps beneath them.
+Quitting asks for confirmation while unsaved work remains in thumbnails,
+pins, editors or players.
 
 Working files live under
 `~/Library/Application Support/Pashari/PendingCaptures`, which is excluded

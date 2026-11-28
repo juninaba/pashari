@@ -1,23 +1,27 @@
 import AppKit
 
 final class AnnotationEditorController {
-    /// Called with the result of an editor that was closed without Copy or
-    /// Save, so that it can go back to a floating thumbnail.
+    /// Returns an edited screenshot to the thumbnail stack when the editor
+    /// closes without exporting it.
     var onFinish: ((Screenshot) -> Void)?
+    var onPin: ((Screenshot) async throws -> Void)?
 
     private var editors: [AnnotationEditorWindowController] = []
 
     var hasOpenEditors: Bool { !editors.isEmpty }
 
-    func open(_ screenshot: Screenshot) {
+    func open(_ screenshot: Screenshot, onClose: ((Screenshot?) -> Void)? = nil) {
         let editor = AnnotationEditorWindowController(screenshot: screenshot)
-        keep(editor)
+        keep(editor, onClose: onClose)
         editor.show()
     }
 
-    func keep(_ editor: AnnotationEditorWindowController) {
+    func keep(_ editor: AnnotationEditorWindowController, onClose: ((Screenshot?) -> Void)? = nil) {
+        editor.onPin = onPin
         editor.onClose = { [weak self, weak editor] result in
-            if let result {
+            if let onClose {
+                onClose(result)
+            } else if let result {
                 self?.onFinish?(result)
             }
             // Let go of the editor a moment later, not right now: this runs

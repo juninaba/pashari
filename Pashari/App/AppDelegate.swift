@@ -3,6 +3,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let thumbnailController: ThumbnailController
     private let editorController: AnnotationEditorController
+    private let pinController: PinnedScreenshotController
     private(set) lazy var playerController = RecordingPlayerController(storage: thumbnailController.storage)
     private let settingsWindowController = SettingsWindowController()
     private let makeCaptureCoordinator: @MainActor (ThumbnailController) -> CaptureCoordinator
@@ -16,12 +17,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     init(
         thumbnailController: ThumbnailController = ThumbnailController(),
         editorController: AnnotationEditorController = AnnotationEditorController(),
+        pinController: PinnedScreenshotController? = nil,
         makeCaptureCoordinator: @escaping @MainActor (ThumbnailController) -> CaptureCoordinator = {
             CaptureCoordinator(thumbnailController: $0)
         }
     ) {
         self.thumbnailController = thumbnailController
         self.editorController = editorController
+        self.pinController = pinController ?? PinnedScreenshotController(storage: thumbnailController.storage)
         self.makeCaptureCoordinator = makeCaptureCoordinator
         super.init()
     }
@@ -38,12 +41,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         editorController.onFinish = { [thumbnailController] screenshot in
             thumbnailController.show(screenshot)
         }
+        thumbnailController.onPin = { [weak self] capture, displayID in
+            guard let self else { return }
+            if !pinController.show(capture, onDisplay: displayID) {
+                thumbnailController.show(capture, onDisplay: displayID)
+            }
+        }
+        pinController.onUnpin = { [thumbnailController] capture, displayID in
+            thumbnailController.show(capture, onDisplay: displayID)
+        }
+        pinController.onAnnotate = { [editorController] screenshot, onClose in
+            editorController.open(screenshot, onClose: onClose)
+        }
+        editorController.onPin = { [weak pinController] screenshot in
+            guard let pinController else { throw CaptureError.displayNotFound }
+            try await pinController.show(screenshot)
+        }
         thumbnailController.onPlay = { [playerController] recording in
             playerController.open(recording)
         }
         playerController.onFinish = { [thumbnailController] recording in
             thumbnailController.show(recording)
         }
+        captureCoordinator.pinController = pinController
 
         statusItemController = StatusItemController(
             captureCoordinator: captureCoordinator,
@@ -81,12 +101,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func shouldQuit() -> Bool {
         guard
             thumbnailController.hasPendingCaptures
+                || pinController.hasPendingCaptures
                 || editorController.hasOpenEditors
                 || playerController.hasOpenPlayers
         else {
             return true
         }
         guard confirmQuit() else {
+            pinController.showPendingPins()
             editorController.showEditors()
             playerController.showPlayers()
             return false
@@ -148,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .warning
         alert.messageText = String(localized: "Quit Pashari?")
         alert.informativeText = String(
-            localized: "Screenshots and recordings in thumbnails, the editor or the player have not been copied or saved, and will be lost."
+            localized: "Unsaved work in thumbnails, pins, editors or players will be lost."
         )
         // Return keeps the work; quitting requires an explicit choice.
         alert.addButton(withTitle: String(localized: "Cancel"))

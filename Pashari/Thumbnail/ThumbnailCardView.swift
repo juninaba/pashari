@@ -13,6 +13,7 @@ final class ThumbnailCardView: NSView {
     var onCopy: (() -> Void)?
     var onSave: (() -> Void)?
     var onAnnotate: (() -> Void)?
+    var onPin: (() -> Void)?
     /// A recording's card has Play where a screenshot's has Annotate.
     var onPlay: (() -> Void)?
     var onClose: (() -> Void)?
@@ -356,7 +357,7 @@ final class ThumbnailCardView: NSView {
     // MARK: - Buttons
 
     private func makeButtons() {
-        let buttons = [
+        var buttons = [
             ThumbnailButton(
                 symbolName: "doc.on.doc",
                 label: String(localized: "Copy"),
@@ -378,12 +379,19 @@ final class ThumbnailCardView: NSView {
                     label: String(localized: "Play"),
                     action: { [weak self] in self?.onPlay?() }
                 ),
-            ThumbnailButton(
-                symbolName: "xmark",
-                label: String(localized: "Close"),
-                action: { [weak self] in self?.onClose?() }
-            ),
         ]
+        if duration == nil {
+            buttons.append(ThumbnailButton(
+                symbolName: "pin",
+                label: String(localized: "Pin to Screen"),
+                action: { [weak self] in self?.onPin?() }
+            ))
+        }
+        buttons.append(ThumbnailButton(
+            symbolName: "xmark",
+            label: String(localized: "Close"),
+            action: { [weak self] in self?.onClose?() }
+        ))
 
         actionButtons = buttons
         let buttonWidth = bounds.width / CGFloat(buttons.count)

@@ -23,6 +23,7 @@ final class PendingCapture {
     let kind: Kind
     let pointSize: CGSize
     let capturedAt: Date
+    var screenFrame: CGRect?
     private let scale: CGFloat
     private var original: Screenshot?
 
@@ -43,6 +44,7 @@ final class PendingCapture {
         kind = .screenshot
         pointSize = screenshot.pointSize
         capturedAt = screenshot.capturedAt
+        screenFrame = screenshot.screenFrame
         scale = screenshot.scale
         original = screenshot
         // Each capture gets a folder of its own, so the file inside can
@@ -139,9 +141,13 @@ final class PendingCapture {
     }
 
     func screenshot() async throws -> Screenshot {
-        if let original { return original }
-        let image = try await Self.readImage(from: fileURL())
-        return Screenshot(image: image, scale: scale, capturedAt: capturedAt)
+        let image: CGImage
+        if let original {
+            image = original.image
+        } else {
+            image = try await Self.readImage(from: fileURL())
+        }
+        return Screenshot(image: image, scale: scale, capturedAt: capturedAt, screenFrame: screenFrame)
     }
 
     /// A standalone small bitmap, so a preview never retains a full frame,

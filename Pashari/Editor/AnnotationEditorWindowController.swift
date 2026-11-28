@@ -4,13 +4,15 @@ import SwiftUI
 final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
     /// Called once when the window closes. The argument is the edited
     /// screenshot when it still needs a home (the window was simply closed),
-    /// or nil when it was copied, saved or discarded.
+    /// or nil when it was pinned, copied, saved or discarded.
     var onClose: ((Screenshot?) -> Void)?
+    var onPin: ((Screenshot) async throws -> Void)?
 
     let model: EditorModel
     let window: Window
     let canvas: AnnotationCanvasView
     private let printView: EditorPrintView
+    private let showError: @MainActor (Error, String) -> Void
     private let scrollView = NSScrollView()
     private lazy var toolbar = NSHostingView(
         rootView: EditorToolbarView(
@@ -21,6 +23,7 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
             // undone. (Clicking a toolbar button does not end the typing.)
             onUndo: { [weak self] in self?.canvas.undo(nil) },
             onRedo: { [weak self] in self?.canvas.redo(nil) },
+            onPin: { [weak self] in self?.pinToScreen() },
             onCopy: { [weak self] in self?.copyToClipboard() },
             onSave: { [weak self] in self?.saveToDisk() }
         )
@@ -38,8 +41,9 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         self.init(model: EditorModel(screenshot: screenshot))
     }
 
-    init(model: EditorModel) {
+    init(model: EditorModel, showError: @escaping @MainActor (Error, String) -> Void = ErrorAlert.show(_:title:)) {
         self.model = model
+        self.showError = showError
         canvas = AnnotationCanvasView(model: model)
         printView = EditorPrintView(canvas: canvas)
         let screen = NSScreen.underMouse ?? NSScreen.main
@@ -193,9 +197,16 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
 
     // MARK: - Actions
 
+    @discardableResult
+    func pinToScreen() -> Task<Void, Never>? {
+        guard let onPin else { return nil }
+        return deliver(errorTitle: String(localized: "The screenshot could not be pinned"), to: onPin)
+    }
+
     private func copyToClipboard() {
         deliver(errorTitle: String(localized: "The screenshot could not be copied")) { screenshot in
-            Clipboard.copy(pngData: try await ScreenshotWriter.pngData(for: screenshot))
+            let png = try await ScreenshotWriter.pngData(for: screenshot)
+            try Clipboard.copy(pngData: png)
         }
     }
 
@@ -205,30 +216,31 @@ final class AnnotationEditorWindowController: NSObject, NSWindowDelegate {
         }
     }
 
+    @discardableResult
     private func deliver(
         errorTitle: String,
         to output: @escaping (Screenshot) async throws -> Void
-    ) {
+    ) -> Task<Void, Never>? {
         // Encoding a large screenshot takes a moment. A second click on Save
         // (or a held-down ⌘S) in that time would save it twice.
-        guard !model.isExporting, window.attachedSheet == nil else { return }
+        guard !model.isExporting, window.attachedSheet == nil else { return nil }
         canvas.finishEditing()
         let screenshot: Screenshot
         do {
             screenshot = try model.flattened()
         } catch {
-            ErrorAlert.show(error, title: errorTitle)
-            return
+            showError(error, errorTitle)
+            return nil
         }
 
         model.isExporting = true
-        Task {
+        return Task {
             do {
                 try await output(screenshot)
                 window.closeNow()
             } catch {
                 model.isExporting = false
-                ErrorAlert.show(error, title: errorTitle)
+                showError(error, errorTitle)
             }
         }
     }

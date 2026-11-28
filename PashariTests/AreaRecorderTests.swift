@@ -186,7 +186,7 @@ private extension ColorPage {
         let display = try #require(content.displays.first { $0.displayID == displayID })
         return try ScreenRecorder(
             area: area,
-            filter: ScreenCapturer.recordingFilter(of: display, in: content),
+            filter: ScreenCapturer.displayFilter(of: display, in: content),
             url: url,
             onStart: { Task { @MainActor in events.hasStarted = true } },
             onFailure: { error in Task { @MainActor in events.failure = error } }

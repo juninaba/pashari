@@ -78,11 +78,12 @@ final class CaptureStorage {
         removeEmptyCaptureDirectory(capture)
     }
 
-    /// A drop receiver may still be using the original URL after we exit.
-    func recordDrop(of file: URL) {
+    /// A delivered capture can stay on disk without coming back as unsaved
+    /// work. Keep the existing marker name for files left by older builds.
+    func recordDelivery(of file: URL) {
         let marker = dropMarker(in: file.deletingLastPathComponent())
         if !FileManager.default.createFile(atPath: marker.path, contents: Data(file.lastPathComponent.utf8)) {
-            Log.thumbnail.error("Could not record a completed drop")
+            Log.thumbnail.error("Could not mark a working file as delivered")
         }
     }
 

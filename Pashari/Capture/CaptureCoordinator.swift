@@ -4,6 +4,7 @@ final class CaptureCoordinator {
     /// Called with true when a recording begins, and with false when it
     /// ends. The menu bar icon turns into a stop button meanwhile.
     var onRecordingChange: ((Bool) -> Void)?
+    weak var pinController: PinnedScreenshotController?
 
     private let thumbnailController: ThumbnailController
     private let ensurePermission: @MainActor () -> Bool
@@ -59,11 +60,11 @@ final class CaptureCoordinator {
     /// Area selection first, then the area is recorded while the user
     /// scrolls it, and the frames are joined into one tall picture.
     func captureScrollingArea() {
-        run {
+        run { [weak self] in
             guard let selection = try await Self.selectArea() else {
                 return nil
             }
-            return try await ScrollCaptureSession().run(selection)
+            return try await ScrollCaptureSession(pinController: self?.pinController).run(selection)
         }
     }
 
@@ -122,6 +123,7 @@ final class CaptureCoordinator {
         }) { [self] in
             let session = makeSession(thumbnailController.storage)
             session.onRecordingChange = { [weak self] isRecording in
+                self?.pinController?.isRecording = isRecording
                 self?.onRecordingChange?(isRecording)
             }
             recordingSession = session

@@ -168,7 +168,7 @@ final class RecordingPlayerWindowController: NSObject, NSWindowDelegate, NSMenuI
             Clipboard.copy(fileURL: recording.url, to: pasteboard)
             // On the clipboard, the file must stay until it is pasted:
             // until Pashari quits, as after a drop.
-            storage.recordDrop(of: recording.url)
+            storage.recordDelivery(of: recording.url)
         }
     }
 

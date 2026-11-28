@@ -113,7 +113,7 @@ struct CaptureStorageTests {
         let screenshot = makeScreenshot()
         let live = CaptureStorage(rootDirectory: root)
         let liveDrop = try await PendingCapture(screenshot: screenshot, storage: live).fileURL()
-        live.recordDrop(of: liveDrop)
+        live.recordDelivery(of: liveDrop)
 
         let alreadyRunning = CaptureStorage(rootDirectory: root)
         let oldDrop: PendingCapture.File
@@ -122,7 +122,7 @@ struct CaptureStorageTests {
         do {
             let interrupted = CaptureStorage(rootDirectory: root)
             oldDrop = try await PendingCapture(screenshot: screenshot, storage: interrupted).file()
-            interrupted.recordDrop(of: oldDrop.url)
+            interrupted.recordDelivery(of: oldDrop.url)
             olderDrop = try await PendingCapture(screenshot: screenshot, storage: interrupted).fileURL()
             try Data().write(to: olderDrop.deletingLastPathComponent().appending(path: ".dropped"))
             oldPending = try await PendingCapture(screenshot: screenshot, storage: interrupted).fileURL()
@@ -169,7 +169,7 @@ struct CaptureStorageTests {
             let run = CaptureStorage(rootDirectory: root)
             good = try await PendingCapture(screenshot: screenshot, storage: run).file()
             confirmedDrop = try await PendingCapture(screenshot: screenshot, storage: run).fileURL()
-            run.recordDrop(of: confirmedDrop)
+            run.recordDelivery(of: confirmedDrop)
         }
         let capture = good.url.deletingLastPathComponent()
         let badName = ScreenshotWriter.fileName(capturedAt: screenshot.capturedAt + 1)
@@ -202,7 +202,7 @@ struct CaptureStorageTests {
         do {
             let run = CaptureStorage(rootDirectory: root)
             file = try await PendingCapture(screenshot: makeScreenshot(), storage: run).file()
-            run.recordDrop(of: file.url)
+            run.recordDelivery(of: file.url)
         }
         let next = CaptureStorage(rootDirectory: root)
         try next.withInterruptedFiles(includeLegacy: { true }) { #expect($0.isEmpty) }

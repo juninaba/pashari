@@ -9,8 +9,32 @@ struct Screenshot {
 
     let capturedAt: Date
 
+    /// Where the screenshot was taken or last pinned, in AppKit screen coordinates.
+    let screenFrame: CGRect?
+
+    init(image: CGImage, scale: CGFloat, capturedAt: Date, screenFrame: CGRect? = nil) {
+        self.image = image
+        self.scale = scale
+        self.capturedAt = capturedAt
+        self.screenFrame = screenFrame
+    }
+
     var pointSize: CGSize {
         CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+    }
+
+    /// Projects a rectangle from image points (top-left origin) onto the screen.
+    func screenFrame(forImageRect rect: CGRect) -> CGRect? {
+        screenFrame.map { frame in
+            let xScale = frame.width / pointSize.width
+            let yScale = frame.height / pointSize.height
+            return CGRect(
+                x: frame.minX + rect.minX * xScale,
+                y: frame.maxY - rect.maxY * yScale,
+                width: rect.width * xScale,
+                height: rect.height * yScale
+            )
+        }
     }
 
     /// `rect` is in points with the origin at the top-left corner, the same
@@ -27,6 +51,8 @@ struct Screenshot {
 
         let pixelRect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
         guard let croppedImage = image.cropping(to: pixelRect) else { return nil }
-        return Screenshot(image: croppedImage, scale: scale, capturedAt: capturedAt)
+        let pointRect = pixelRect.applying(CGAffineTransform(scaleX: 1 / scale, y: 1 / scale))
+        let croppedFrame = screenFrame(forImageRect: pointRect)
+        return Screenshot(image: croppedImage, scale: scale, capturedAt: capturedAt, screenFrame: croppedFrame)
     }
 }
