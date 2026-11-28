@@ -1,8 +1,8 @@
 import AppKit
 
 /// The small bar next to the area or window of a recording. While the frame is
-/// adjusted it shows the frame's size, Cancel and Record; while recording,
-/// how long and how large the recording is so far, and Stop.
+/// adjusted it shows the frame's size, audio toggles, Cancel and Record; while
+/// recording, how long and how large the recording is so far, and Stop.
 ///
 /// It never takes the keyboard: while the frame is adjusted the overlay
 /// has it, for Return and Escape, and while recording the app being
@@ -20,13 +20,35 @@ final class RecordingControlPanel: NSPanel {
     var onRecord: (() -> Void)?
     var onCancel: (() -> Void)?
     var onStop: (() -> Void)?
+    var onToggleSystemAudio: (() -> Void)?
+    var onToggleMicrophone: (() -> Void)?
     /// Ends the recording when a modal dialog opens (see `ModalPresentation`).
     var onInterrupt: (() -> Void)?
+
+    var audio: RecordingAudio = .none {
+        didSet { updateAudioButtons() }
+    }
 
     private(set) var status: Status = .preparing
     private let dot = NSView()
     /// The frame's size, while it is adjusted.
     private let sizeLabel = NSTextField(labelWithString: "")
+    let systemAudioButton = AudioToggleButton(
+        onSymbol: "speaker.wave.2.fill",
+        offSymbol: "speaker.slash",
+        label: String(localized: "System audio"),
+        onToolTip: String(localized: "System audio: On"),
+        offToolTip: String(localized: "System audio: Off"),
+        identifier: "recording.systemAudio"
+    )
+    let microphoneButton = AudioToggleButton(
+        onSymbol: "mic.fill",
+        offSymbol: "mic.slash",
+        label: String(localized: "Microphone"),
+        onToolTip: String(localized: "Microphone: On"),
+        offToolTip: String(localized: "Microphone: Off"),
+        identifier: "recording.microphone"
+    )
     /// "Getting ready…", then how long the recording is so far.
     private let timeLabel = NSTextField(labelWithString: "")
     private let bytesLabel = NSTextField(labelWithString: "")
@@ -56,6 +78,7 @@ final class RecordingControlPanel: NSPanel {
         isMovableByWindowBackground = true
         appearance = NSAppearance(named: .darkAqua)
         contentView = makeContent()
+        updateAudioButtons()
         show(.adjusting(.zero))
     }
 
@@ -76,9 +99,9 @@ final class RecordingControlPanel: NSPanel {
             isRecording = true
         }
         let isAdjusting = if case .adjusting = status { true } else { false }
-        sizeLabel.isHidden = !isAdjusting
-        cancelButton.isHidden = !isAdjusting
-        recordButton.isHidden = !isAdjusting
+        for view in [sizeLabel, systemAudioButton, microphoneButton, cancelButton, recordButton] as [NSView] {
+            view.isHidden = !isAdjusting
+        }
         // The same width from "Getting ready…" on, so that Stop keeps its
         // place.
         for view in [dot, timeLabel, bytesLabel, stopButton] {
@@ -90,7 +113,12 @@ final class RecordingControlPanel: NSPanel {
 
     /// Once the user has decided, the buttons have done their part.
     func disableButtons() {
-        [cancelButton, recordButton, stopButton].forEach { $0.isEnabled = false }
+        [systemAudioButton, microphoneButton, cancelButton, recordButton, stopButton].forEach { $0.isEnabled = false }
+    }
+
+    private func updateAudioButtons() {
+        systemAudioButton.isActive = audio.systemAudio
+        microphoneButton.isActive = audio.microphone
     }
 
     /// Places the bar next to `rect` (in AppKit screen coordinates) on `screen`,
@@ -139,6 +167,8 @@ final class RecordingControlPanel: NSPanel {
         bytesLabel.textColor = .secondaryLabelColor
         bytesLabel.alignment = .right
 
+        systemAudioButton.handler = { [weak self] in self?.onToggleSystemAudio?() }
+        microphoneButton.handler = { [weak self] in self?.onToggleMicrophone?() }
         cancelButton.handler = { [weak self] in self?.onCancel?() }
         // The bar is never key, so no button of it shows as the default
         // one: Record gets the red dot of recording instead. Return reaches
@@ -148,11 +178,23 @@ final class RecordingControlPanel: NSPanel {
         Self.give(stopButton, symbol: "stop.fill", tint: nil)
         stopButton.handler = { [weak self] in self?.onStop?() }
 
-        let stack = NSStackView(views: [sizeLabel, dot, timeLabel, bytesLabel, cancelButton, recordButton, stopButton])
+        let stack = NSStackView(views: [
+            sizeLabel,
+            systemAudioButton,
+            microphoneButton,
+            dot,
+            timeLabel,
+            bytesLabel,
+            cancelButton,
+            recordButton,
+            stopButton,
+        ])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 8
-        stack.setCustomSpacing(20, after: sizeLabel)
+        stack.setCustomSpacing(14, after: sizeLabel)
+        stack.setCustomSpacing(6, after: systemAudioButton)
+        stack.setCustomSpacing(16, after: microphoneButton)
         stack.setCustomSpacing(12, after: timeLabel)
         stack.setCustomSpacing(16, after: bytesLabel)
         stack.edgeInsets = NSEdgeInsets(top: 8, left: 16, bottom: 8, right: 10)
@@ -169,6 +211,10 @@ final class RecordingControlPanel: NSPanel {
             stack.bottomAnchor.constraint(equalTo: background.bottomAnchor),
             dot.widthAnchor.constraint(equalToConstant: 8),
             dot.heightAnchor.constraint(equalToConstant: 8),
+            systemAudioButton.widthAnchor.constraint(equalToConstant: 28),
+            systemAudioButton.heightAnchor.constraint(equalTo: cancelButton.heightAnchor),
+            microphoneButton.widthAnchor.constraint(equalToConstant: 28),
+            microphoneButton.heightAnchor.constraint(equalTo: cancelButton.heightAnchor),
             sizeLabel.widthAnchor.constraint(equalToConstant: Self.width(of: ["00000 × 00000"], in: sizeLabel)),
             timeLabel.widthAnchor.constraint(
                 equalToConstant: Self.width(of: [Self.preparingText, longestTime], in: timeLabel)
@@ -198,5 +244,84 @@ final class RecordingControlPanel: NSPanel {
     private static func width(of texts: [String], in label: NSTextField) -> CGFloat {
         let attributes: [NSAttributedString.Key: Any] = [.font: label.font as Any]
         return ceil(texts.map { ($0 as NSString).size(withAttributes: attributes).width }.max() ?? 0) + 4
+    }
+
+    /// Compact icon toggle for the dark non-activating recording bar: works on
+    /// the first click and paints its active state explicitly so it stays
+    /// legible in a window that never becomes key.
+    final class AudioToggleButton: NSButton {
+        private static let activeFill = NSColor(srgbRed: 28 / 255, green: 118 / 255, blue: 207 / 255, alpha: 0.92).cgColor
+        private static let inactiveFill = NSColor.white.withAlphaComponent(0.14).cgColor
+        private static let inactiveTint = NSColor(white: 1, alpha: 0.78)
+
+        var handler: (() -> Void)?
+        var isActive: Bool = false {
+            didSet { updateAppearance() }
+        }
+
+        private let onSymbol: String
+        private let offSymbol: String
+        private let onToolTip: String
+        private let offToolTip: String
+
+        init(
+            onSymbol: String,
+            offSymbol: String,
+            label: String,
+            onToolTip: String,
+            offToolTip: String,
+            identifier: String
+        ) {
+            self.onSymbol = onSymbol
+            self.offSymbol = offSymbol
+            self.onToolTip = onToolTip
+            self.offToolTip = offToolTip
+            super.init(frame: .zero)
+            title = ""
+            isBordered = false
+            imagePosition = .imageOnly
+            setButtonType(.momentaryChange)
+            wantsLayer = true
+            layer?.cornerRadius = 6
+            layer?.cornerCurve = .continuous
+            setAccessibilityLabel(label)
+            setAccessibilityRole(.checkBox)
+            setAccessibilityIdentifier(identifier)
+            target = self
+            action = #selector(performAction)
+            updateAppearance()
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("AudioToggleButton is created in code only")
+        }
+
+        override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+
+        override var isEnabled: Bool {
+            didSet { alphaValue = isEnabled ? 1 : 0.45 }
+        }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        @objc private func performAction() {
+            handler?()
+        }
+
+        private func updateAppearance() {
+            state = isActive ? .on : .off
+            toolTip = isActive ? onToolTip : offToolTip
+            setAccessibilityValue(isActive ? 1 : 0)
+            let symbol = isActive ? onSymbol : offSymbol
+            let tint: NSColor = isActive ? .white : Self.inactiveTint
+            let configuration = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+                .applying(NSImage.SymbolConfiguration(paletteColors: [tint]))
+            let icon = NSImage(systemSymbolName: symbol, accessibilityDescription: accessibilityLabel())?
+                .withSymbolConfiguration(configuration)
+            icon?.isTemplate = false
+            image = icon
+            layer?.backgroundColor = isActive ? Self.activeFill : Self.inactiveFill
+        }
     }
 }

@@ -6,13 +6,45 @@ import Testing
 
 @MainActor
 struct RecordingControlPanelTests {
-    @Test func whileTheFrameIsAdjustedTheBarShowsItsSizeCancelAndRecord() {
+    @Test func whileTheFrameIsAdjustedTheBarShowsItsSizeAudioTogglesCancelAndRecord() {
         let bar = RecordingControlPanel()
 
         bar.show(.adjusting(CGSize(width: 1280, height: 720)))
 
         #expect(visibleTexts(in: bar.contentView) == ["1280 × 720"])
         #expect(visibleButtons(in: bar.contentView) == [String(localized: "Cancel"), String(localized: "Record")])
+        #expect(!bar.systemAudioButton.isHidden)
+        #expect(!bar.microphoneButton.isHidden)
+        #expect(!bar.systemAudioButton.isActive)
+        #expect(!bar.microphoneButton.isActive)
+    }
+
+    @Test func audioTogglesUpdateAppearanceInvokeHandlersAndHideWhileRecording() {
+        let bar = RecordingControlPanel()
+        var systemToggles = 0
+        var micToggles = 0
+        bar.onToggleSystemAudio = { systemToggles += 1 }
+        bar.onToggleMicrophone = { micToggles += 1 }
+
+        bar.show(.adjusting(CGSize(width: 800, height: 600)))
+        bar.audio = RecordingAudio(systemAudio: true, microphone: false)
+        #expect(bar.systemAudioButton.isActive)
+        #expect(!bar.microphoneButton.isActive)
+        #expect(bar.systemAudioButton.state == .on)
+        #expect(bar.microphoneButton.state == .off)
+
+        bar.systemAudioButton.performClick(nil)
+        bar.microphoneButton.performClick(nil)
+        #expect(systemToggles == 1)
+        #expect(micToggles == 1)
+
+        bar.disableButtons()
+        #expect(!bar.systemAudioButton.isEnabled)
+        #expect(!bar.microphoneButton.isEnabled)
+
+        bar.show(.recording(elapsed: 1, bytes: 100))
+        #expect(bar.systemAudioButton.isHidden)
+        #expect(bar.microphoneButton.isHidden)
     }
 
     @Test func whileRecordingTheBarShowsTheTimeAndSizeAndOnlyStop() {
@@ -282,6 +314,188 @@ struct RecordingAreaOverlayTests {
         view.keyDown(with: try #require(escape(in: window)))
         #expect(try await run.value == nil)
     }
+
+    @Test func togglingAudioOnTheBarRemembersTheChoiceAndHandlesMicrophonePermission() async throws {
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let screen = try #require(NSScreen.main)
+        let displayID = try #require(screen.displayID)
+        final class FakeAudioStore {
+            var audio = RecordingAudio.none
+            var systemUpdates: [Bool] = []
+            var microphoneUpdates: [Bool] = []
+        }
+        let store = FakeAudioStore()
+        var requests = 0
+        let session = AreaRecordingSession(
+            storage: storage.storage,
+            remembered: (displayID, CGRect(x: 200, y: 200, width: 400, height: 300)),
+            rememberArea: { _ in },
+            readAudio: { store.audio },
+            setSystemAudio: {
+                store.audio.systemAudio = $0
+                store.systemUpdates.append($0)
+            },
+            setMicrophone: {
+                store.audio.microphone = $0
+                store.microphoneUpdates.append($0)
+            },
+            microphoneAuthorizationStatus: { .notDetermined },
+            requestMicrophoneAccess: {
+                requests += 1
+                // Overlays must step aside while the macOS permission prompt is up.
+                #expect(!NSApp.windows.contains { $0 is OverlayPanel && $0.isVisible })
+                return true
+            },
+            showMicrophoneDeniedAlert: { false }
+        )
+        let run = Task { try await session.run() }
+        let view = try await waitForTheFrameOverlay()
+        let bar = try await waitForTheBar { if case .adjusting = $0 { true } else { false } }
+
+        bar.systemAudioButton.performClick(nil)
+        #expect(bar.audio == RecordingAudio(systemAudio: true, microphone: false))
+
+        bar.microphoneButton.performClick(nil)
+        for _ in 0..<100 where !bar.audio.microphone {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(requests == 1)
+        #expect(bar.audio == RecordingAudio(systemAudio: true, microphone: true))
+        #expect(store.systemUpdates == [true])
+        #expect(store.microphoneUpdates == [true])
+        // Overlays and bar come back after the permission request finishes.
+        #expect(bar.isVisible)
+        #expect(NSApp.windows.contains { $0 is OverlayPanel && $0.isVisible })
+
+        view.keyDown(with: try #require(escape(in: view.window)))
+        #expect(try await run.value == nil)
+    }
+
+    @Test func togglingMicrophoneDoesNotOverwriteAConcurrentSettingsChangeToSystemAudio() async throws {
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let screen = try #require(NSScreen.main)
+        let displayID = try #require(screen.displayID)
+        final class FakeAudioStore {
+            var audio = RecordingAudio.none
+            var systemUpdates: [Bool] = []
+            var microphoneUpdates: [Bool] = []
+        }
+        let store = FakeAudioStore()
+        let session = AreaRecordingSession(
+            storage: storage.storage,
+            remembered: (displayID, CGRect(x: 200, y: 200, width: 400, height: 300)),
+            rememberArea: { _ in },
+            readAudio: { store.audio },
+            setSystemAudio: {
+                store.audio.systemAudio = $0
+                store.systemUpdates.append($0)
+            },
+            setMicrophone: {
+                store.audio.microphone = $0
+                store.microphoneUpdates.append($0)
+            },
+            microphoneAuthorizationStatus: { .notDetermined },
+            requestMicrophoneAccess: {
+                // Settings changes system audio while the permission prompt is open.
+                store.audio.systemAudio = true
+                NotificationCenter.default.post(name: Preferences.recordingAudioDidChangeNotification, object: nil)
+                return true
+            },
+            showMicrophoneDeniedAlert: { false }
+        )
+        let run = Task { try await session.run() }
+        let view = try await waitForTheFrameOverlay()
+        let bar = try await waitForTheBar { if case .adjusting = $0 { true } else { false } }
+
+        bar.microphoneButton.performClick(nil)
+        for _ in 0..<100 where !bar.audio.microphone {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        // System audio turned on in Settings stayed on and was never overwritten.
+        #expect(store.audio == RecordingAudio(systemAudio: true, microphone: true))
+        #expect(bar.audio == RecordingAudio(systemAudio: true, microphone: true))
+        #expect(store.systemUpdates.isEmpty)
+        #expect(store.microphoneUpdates == [true])
+
+        view.keyDown(with: try #require(escape(in: view.window)))
+        #expect(try await run.value == nil)
+    }
+
+    @Test func deniedMicrophoneToggleCanRestoreSelectionOrCancelForSystemSettings() async throws {
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let screen = try #require(NSScreen.main)
+        let displayID = try #require(screen.displayID)
+
+        // Cancel on the denied alert restores the frame and keeps mic off.
+        do {
+            final class AlertDecision {
+                var openSettings = false
+            }
+            let decision = AlertDecision()
+            let session = AreaRecordingSession(
+                storage: storage.storage,
+                remembered: (displayID, CGRect(x: 200, y: 200, width: 400, height: 300)),
+                rememberArea: { _ in },
+                readAudio: { .none },
+                setSystemAudio: { _ in Issue.record("Denied mic should not save system audio") },
+                setMicrophone: { _ in Issue.record("Denied mic should not save microphone") },
+                microphoneAuthorizationStatus: { .denied },
+                showMicrophoneDeniedAlert: {
+                    #expect(!NSApp.windows.contains { $0 is OverlayPanel && $0.isVisible })
+                    return decision.openSettings
+                }
+            )
+            let run = Task { try await session.run() }
+            let view = try await waitForTheFrameOverlay()
+            let bar = try await waitForTheBar { if case .adjusting = $0 { true } else { false } }
+
+            bar.microphoneButton.performClick(nil)
+            #expect(!bar.audio.microphone)
+            #expect(bar.isVisible)
+            #expect(NSApp.windows.contains { $0 is OverlayPanel && $0.isVisible })
+
+            // Choosing "Open System Settings" ends the selection cleanly.
+            decision.openSettings = true
+            bar.microphoneButton.performClick(nil)
+            #expect(try await run.value == nil)
+            #expect(!bar.isVisible)
+            #expect(!NSApp.windows.contains { $0 is OverlayPanel && $0.isVisible })
+            _ = view
+        }
+    }
+
+    @Test func cancellingMicrophoneResolutionBeforeAreaRecordingHidesTheBarBeforePrompting() async throws {
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        let screen = try #require(NSScreen.main)
+        let displayID = try #require(screen.displayID)
+        var barWasHiddenDuringResolution = false
+        let session = AreaRecordingSession(
+            storage: storage.storage,
+            remembered: (displayID, CGRect(x: 200, y: 200, width: 400, height: 300)),
+            rememberArea: { _ in Issue.record("Cancelled recording should not remember area") },
+            readAudio: { RecordingAudio(systemAudio: false, microphone: true) },
+            setSystemAudio: { _ in },
+            setMicrophone: { _ in },
+            resolveMicrophonePermission: {
+                barWasHiddenDuringResolution = !NSApp.windows.contains { $0 is RecordingControlPanel && $0.isVisible }
+                return .cancel
+            }
+        )
+        let run = Task { try await session.run() }
+        _ = try await waitForTheFrameOverlay()
+        let bar = try await waitForTheBar { if case .adjusting = $0 { true } else { false } }
+
+        session.advance()
+        #expect(try await run.value == nil)
+        #expect(barWasHiddenDuringResolution)
+        #expect(!bar.isVisible)
+        #expect(!NSApp.windows.contains { ($0 is RecordingControlPanel || $0 is OverlayPanel) && $0.isVisible })
+    }
 }
 
 extension RecordingAreaOverlayTests {
@@ -360,7 +574,7 @@ private func visibleTexts(in view: NSView?) -> [String] {
 @MainActor
 private func visibleButtons(in view: NSView?) -> [String] {
     guard let view, !view.isHidden else { return [] }
-    let own = (view as? NSButton).map { [$0.title] } ?? []
+    let own = (view as? NSButton).flatMap { $0.title.isEmpty ? nil : [$0.title] } ?? []
     return own + view.subviews.flatMap { visibleButtons(in: $0) }
 }
 

@@ -106,6 +106,183 @@ struct RecordingPlayerTests {
         #expect(first.isClose(to: frames[10].color, within: 8), "\(first)")
     }
 
+    @Test func cuttingARecordingWithAudioKeepsOnlyTheTrimmedRangeOfSound() async throws {
+        let url = try TestVideos.temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let writer = try RecordingWriter(
+            url: url,
+            width: 64,
+            height: 48,
+            audioSources: [.system],
+            isRealTime: false
+        )
+        // Video changes colour every 0.5 s over 2 s.
+        let green = TestImages.RGBA(red: 0, green: 200, blue: 0, alpha: 255)
+        let gray = TestImages.RGBA(red: 128, green: 128, blue: 128, alpha: 255)
+        let frames: [(TestImages.RGBA, Double)] = [(.blue, 0), (.red, 0.5), (green, 1.0), (gray, 1.5)]
+        var nextFrameIndex = 0
+        // Audio has distinct channel activity in each 0.5 s segment:
+        // 0.0..0.5: loud Left only (will be cut off at start)
+        // 0.5..1.5: loud Right only (kept in trim)
+        // 1.5..2.0: loud Left only (will be cut off at end)
+        for chunk in 0..<100 {
+            let startSec = Double(chunk) * 0.02
+            while nextFrameIndex < frames.count, frames[nextFrameIndex].1 <= startSec {
+                let (color, time) = frames[nextFrameIndex]
+                #expect(try writer.append(TestVideos.frame(width: 64, height: 48, color: color), at: TestVideos.time(time)) == .appended)
+                nextFrameIndex += 1
+            }
+            let audio = try TestVideos.audioBuffer(frames: 960, at: startSec) { index, channel in
+                let t = startSec + Double(index) / 48_000
+                let tone = Float(sin(2 * .pi * 440 * t)) * 0.5
+                if startSec >= 0.5 && startSec < 1.5 {
+                    return channel == 1 ? tone : 0
+                }
+                return channel == 0 ? tone : 0
+            }
+            try writer.appendAudio(audio, from: .system)
+        }
+        _ = try await TestVideos.finish(writer, at: 2)
+
+        try await RecordingFiles.trim(url, to: CMTimeRange(
+            start: CMTime(value: 300, timescale: 600),
+            end: CMTime(value: 900, timescale: 600)
+        ))
+
+        let asset = AVURLAsset(url: url)
+        #expect(abs(try await asset.load(.duration).seconds - 1) < 0.05)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        #expect(audioTracks.count == 1)
+        let audioDuration = try await audioTracks[0].load(.timeRange).duration.seconds
+        #expect(abs(audioDuration - 1) < 0.06)
+
+        let samples = try await TestVideos.decodedAudioSamples(in: url)
+        // Right channel has the kept tone from start to end; Left channel from the cut-off
+        // segments (0..0.5 and 1.5..2.0) must not leak into the trimmed file.
+        #expect(TestVideos.rms(of: samples, channel: 1, from: 0.05, to: 0.95) > 0.25)
+        #expect(TestVideos.rms(of: samples, channel: 0, from: 0.0, to: 0.98) < 0.02)
+    }
+
+    @Test func trimmingALongStaticScreenWithContinuousAudioSucceeds() async throws {
+        let url = try TestVideos.temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let writer = try RecordingWriter(
+            url: url,
+            width: 64,
+            height: 48,
+            audioSources: [.system],
+            isRealTime: false
+        )
+        // One static video frame for the entire 20 s recording, with continuous audio.
+        #expect(try writer.append(TestVideos.frame(width: 64, height: 48, color: .blue), at: TestVideos.time(0)) == .appended)
+        try writer.finishVideo(at: TestVideos.time(20))
+        for chunk in 0..<1000 {
+            let startSec = Double(chunk) * 0.02
+            let audio = try TestVideos.audioBuffer(frames: 960, at: startSec) { index, channel in
+                let t = startSec + Double(index) / 48_000
+                let tone = Float(sin(2 * .pi * 440 * t)) * 0.4
+                if startSec >= 2.345 && startSec < 15.410 {
+                    return channel == 1 ? tone : 0
+                }
+                return channel == 0 ? tone : 0
+            }
+            try writer.appendAudio(audio, from: .system)
+        }
+        _ = try await TestVideos.finish(writer, at: 20)
+
+        let range = CMTimeRange(
+            start: CMTime(seconds: 2.345, preferredTimescale: 1000),
+            end: CMTime(seconds: 15.410, preferredTimescale: 1000)
+        )
+        try await RecordingFiles.trim(url, to: range)
+
+        let asset = AVURLAsset(url: url)
+        #expect(abs(try await asset.load(.duration).seconds - range.duration.seconds) < 0.05)
+        let audioTrack = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let audioDuration = try await audioTrack.load(.timeRange).duration.seconds
+        #expect(abs(audioDuration - range.duration.seconds) < 0.06)
+        let samples = try await TestVideos.decodedAudioSamples(in: url)
+        #expect(TestVideos.rms(of: samples, channel: 1, from: 0.1, to: 12.9) > 0.2)
+        #expect(TestVideos.rms(of: samples, channel: 0, from: 0.1, to: 12.9) < 0.02)
+    }
+
+    @Test func trimmingAStaticRecordingWith44100HzAACAudioSucceeds() async throws {
+        let url = try TestVideos.temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        // Build an MP4 with a 44.1 kHz AAC track (forces resampling during trim)
+        // and a single static video frame across 12 seconds.
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 64,
+            AVVideoHeightKey: 48,
+        ])
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: nil)
+        let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: 44_100,
+            AVNumberOfChannelsKey: 2,
+            AVEncoderBitRateKey: 128_000,
+        ])
+        writer.add(videoInput)
+        writer.add(audioInput)
+        try #require(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        let blue = TestVideos.frame(width: 64, height: 48, color: .blue)
+        try #require(adaptor.append(blue, withPresentationTime: .zero))
+        try #require(adaptor.append(blue, withPresentationTime: CMTime(value: 12, timescale: 1)))
+        videoInput.markAsFinished()
+
+        // 12 seconds at 44.1 kHz in 4,410-frame (100 ms) chunks.
+        for chunk in 0..<120 {
+            while !audioInput.isReadyForMoreMediaData {
+                try await Task.sleep(for: .milliseconds(2))
+            }
+            let startSec = Double(chunk) * 0.1
+            let buffer = try TestVideos.audioBuffer(
+                sampleRate: 44_100,
+                channels: 2,
+                frames: 4_410,
+                at: startSec,
+                rawTime: true
+            ) { index, _ in
+                let t = startSec + Double(index) / 44_100
+                return Float(sin(2 * .pi * 440 * t)) * 0.4
+            }
+            try #require(audioInput.append(buffer))
+        }
+        audioInput.markAsFinished()
+        writer.endSession(atSourceTime: CMTime(value: 12, timescale: 1))
+        await writer.finishWriting()
+        try #require(writer.status == .completed)
+
+        let range = CMTimeRange(
+            start: CMTime(value: 1, timescale: 1),
+            end: CMTime(value: 10, timescale: 1)
+        )
+        try await RecordingFiles.trim(url, to: range)
+
+        let asset = AVURLAsset(url: url)
+        #expect(abs(try await asset.load(.duration).seconds - 9) < 0.05)
+        let samples = try await TestVideos.decodedAudioSamples(in: url)
+        #expect(TestVideos.rms(of: samples, channel: 0, from: 0.2, to: 8.8) > 0.2)
+    }
+
+    @Test func trimmingASilentRecordingLeavesNoAudioTrack() async throws {
+        let url = try TestVideos.temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try await TestVideos.makeMP4(at: url, frames: [(.blue, 0), (.red, 0.5)], end: 1)
+
+        try await RecordingFiles.trim(url, to: CMTimeRange(
+            start: CMTime(value: 150, timescale: 600),
+            end: CMTime(value: 450, timescale: 600)
+        ))
+
+        let audioTracks = try await AVURLAsset(url: url).loadTracks(withMediaType: .audio)
+        #expect(audioTracks.isEmpty)
+    }
+
     @Test func aCutInTheMiddleOfAStillFrameStartsAndEndsWithIt() async throws {
         let url = try TestVideos.temporaryURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

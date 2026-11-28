@@ -10,10 +10,12 @@ struct SettingsWindowTests {
         let host = NSHostingController(rootView: SettingsView(model: SettingsModel()))
         let window = NSWindow(contentViewController: host)
         window.styleMask = [.titled, .closable]
-        window.setFrameTopLeftPoint(CGPoint(x: 20, y: 850))
+        // Room for the whole window above the bottom of the tall display,
+        // however tall Settings grows.
+        window.setFrameTopLeftPoint(CGPoint(x: 20, y: 1950))
         let initialTop = window.frame.maxY
 
-        let tallDisplay = CGRect(x: 0, y: 0, width: 900, height: 1000)
+        let tallDisplay = CGRect(x: 0, y: 0, width: 900, height: 2000)
         SettingsWindowController.fit(window, in: tallDisplay)
         let naturalFrame = window.frame
         #expect(naturalFrame.maxY == initialTop)

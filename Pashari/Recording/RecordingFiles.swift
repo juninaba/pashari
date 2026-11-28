@@ -62,42 +62,149 @@ enum RecordingFiles {
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw CaptureError.cannotTrimRecording
         }
+        let audioTrack = try await asset.loadTracks(withMediaType: .audio).first
         let size = try await track.load(.naturalSize)
         let reader = try AVAssetReader(asset: asset)
         reader.timeRange = range
         // In the video's own colours, which go into the new file as they are.
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+        let videoOutput = AVAssetReaderTrackOutput(track: track, outputSettings: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
         ])
-        output.alwaysCopiesSampleData = false
-        reader.add(output)
+        videoOutput.alwaysCopiesSampleData = false
+        reader.add(videoOutput)
+
+        let audioOutput: AVAssetReaderTrackOutput?
+        if let audioTrack {
+            let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: RecordingWriter.audioSampleRate,
+                AVNumberOfChannelsKey: RecordingWriter.audioChannelCount,
+                AVLinearPCMBitDepthKey: 32,
+                AVLinearPCMIsFloatKey: true,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+            ])
+            output.alwaysCopiesSampleData = false
+            reader.add(output)
+            audioOutput = output
+        } else {
+            audioOutput = nil
+        }
+
         guard reader.startReading() else { throw reader.error ?? CaptureError.cannotTrimRecording }
+
+        func nextVideoFrame() -> (frame: CVPixelBuffer, time: CMTime)? {
+            while let sample = videoOutput.copyNextSampleBuffer() {
+                guard let frame = sample.imageBuffer else { continue }
+                return (frame, sample.presentationTimeStamp - range.start)
+            }
+            return nil
+        }
+
+        func nextAudioBuffer() -> (buffer: CMSampleBuffer, time: CMTime)? {
+            guard let audioOutput else { return nil }
+            while let sample = audioOutput.copyNextSampleBuffer() {
+                guard CMSampleBufferGetNumSamples(sample) > 0 else { continue }
+                return (sample, sample.presentationTimeStamp - range.start)
+            }
+            return nil
+        }
+
+        // The frame that shows where the cut begins may have come earlier.
+        // It starts the new recording.
+        var opening: CVPixelBuffer?
+        var pendingVideo: (frame: CVPixelBuffer, time: CMTime)?
+        while let candidate = nextVideoFrame() {
+            if candidate.time <= .zero {
+                opening = candidate.frame
+            } else {
+                pendingVideo = candidate
+                break
+            }
+        }
+        let firstVideo: (frame: CVPixelBuffer, time: CMTime)
+        if let frame = opening {
+            firstVideo = (frame, .zero)
+        } else if let first = pendingVideo {
+            firstVideo = first
+            pendingVideo = nextVideoFrame()
+        } else {
+            reader.cancelReading()
+            throw CaptureError.cannotTrimRecording
+        }
 
         let writer = try RecordingWriter(
             url: destination,
             width: Int(size.width),
             height: Int(size.height),
+            audioSources: audioOutput == nil ? [] : [.system],
+            maximumDuration: max(.zero, range.duration - firstVideo.time),
             isRealTime: false
         )
         do {
-            // The frame that shows where the cut begins may have come
-            // earlier. It starts the new recording.
-            var opening: CVPixelBuffer?
-            while let sample = output.copyNextSampleBuffer() {
-                guard let frame = sample.imageBuffer else { continue }
-                let time = sample.presentationTimeStamp - range.start
-                if time <= .zero {
-                    opening = frame
-                    continue
-                }
-                if let frame = opening {
-                    try append(frame, at: .zero, to: writer)
-                    opening = nil
-                }
-                try append(frame, at: time, to: writer)
+            try append(firstVideo.frame, at: firstVideo.time, to: writer)
+
+            // Drive whichever track is ready for more media data, preferring
+            // the earlier timestamp when both are ready, and mark each track
+            // finished as soon as its reader runs dry so a long static screen
+            // never blocks the continuous audio track (or vice versa).
+            var videoFinished = false
+            var pendingAudio = nextAudioBuffer()
+            var audioFinished = audioOutput == nil
+            if !audioFinished, pendingAudio == nil {
+                try writer.finishAudio(at: range.duration)
+                audioFinished = true
             }
-            if let frame = opening {
-                try append(frame, at: .zero, to: writer)
+
+            func stepVideo() throws {
+                if let video = pendingVideo {
+                    try append(video.frame, at: video.time, to: writer)
+                    pendingVideo = nextVideoFrame()
+                } else {
+                    try writer.finishVideo(at: range.duration)
+                    videoFinished = true
+                }
+            }
+
+            func stepAudio() throws {
+                if writer.hasPendingAudio {
+                    try writer.drainAudio(upTo: range.duration)
+                } else if let audio = pendingAudio {
+                    try writer.appendAudio(audio.buffer, from: .system, at: audio.time, upTo: range.duration)
+                    pendingAudio = nextAudioBuffer()
+                }
+                if pendingAudio == nil, !writer.hasPendingAudio {
+                    try writer.finishAudio(at: range.duration)
+                    audioFinished = true
+                }
+            }
+
+            var stalledChecks = 0
+            while !videoFinished || !audioFinished {
+                let canWriteVideo = !videoFinished && writer.isReadyForMoreVideo
+                let canWriteAudio = !audioFinished && writer.isReadyForMoreAudio
+                if canWriteVideo && canWriteAudio {
+                    let videoTime = pendingVideo?.time ?? range.duration
+                    let audioTime = pendingAudio?.time ?? range.duration
+                    if !writer.hasPendingAudio, videoTime <= audioTime {
+                        try stepVideo()
+                    } else {
+                        try stepAudio()
+                    }
+                    stalledChecks = 0
+                } else if canWriteVideo {
+                    try stepVideo()
+                    stalledChecks = 0
+                } else if canWriteAudio {
+                    try stepAudio()
+                    stalledChecks = 0
+                } else {
+                    guard writer.isWriting, stalledChecks < 2_000 else {
+                        throw CaptureError.cannotTrimRecording
+                    }
+                    stalledChecks += 1
+                    usleep(5_000)
+                }
             }
             guard reader.status == .completed else { throw reader.error ?? CaptureError.cannotTrimRecording }
         } catch {

@@ -5,6 +5,30 @@ import Testing
 @testable import Pashari
 
 @MainActor
+struct FullscreenRecordingAudioTests {
+    @Test func cancellingMicrophonePermissionBeforeFullscreenRecordingAbortsWithoutStarting() async throws {
+        let storage = try TestStorage()
+        defer { storage.remove() }
+        var resolved = 0
+        var changes: [Bool] = []
+        let session = FullscreenRecordingSession(
+            storage: storage.storage,
+            audio: { RecordingAudio(systemAudio: true, microphone: true) },
+            resolveMicrophonePermission: {
+                resolved += 1
+                return .cancel
+            }
+        )
+        session.onRecordingChange = { changes.append($0) }
+
+        #expect(try await session.run() == nil)
+        #expect(resolved == 1)
+        #expect(changes.isEmpty)
+        #expect(!NSApp.windows.contains { $0 is RecordingControlPanel && $0.isVisible })
+    }
+}
+
+@MainActor
 @Suite(
     .enabled(if: CGPreflightScreenCaptureAccess(), "needs the Screen Recording permission"),
     .takesTurnsOnTheScreen

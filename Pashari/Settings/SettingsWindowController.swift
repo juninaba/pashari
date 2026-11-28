@@ -11,6 +11,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             self, selector: #selector(windowDidChangeScreen(_:)),
             name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
+        // The Record Area bar can turn sound on or off while Settings is open.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(recordingAudioDidChange(_:)),
+            name: Preferences.recordingAudioDidChangeNotification, object: nil
+        )
+    }
+
+    @objc private func recordingAudioDidChange(_ notification: Notification) {
+        model.reloadRecordingAudio()
     }
 
     func show() {
