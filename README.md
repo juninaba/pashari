@@ -7,7 +7,7 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
 > **Status:** early development.
 
 <p align="center">
-  <img src="docs/images/thumbnails.png" width="640" alt="Four captures piled up like instant photos in the bottom-left corner of the screen. The newest lies on top, with buttons to copy, save, annotate or close it, and a badge that counts four.">
+  <img src="docs/images/thumbnails.png" width="640" alt="Four captures piled up like instant photos in the bottom-left corner of the screen. The newest lies on top, with buttons to copy, save, annotate, pin or close it, and a badge that counts four.">
 </p>
 
 ## Features
@@ -43,7 +43,7 @@ A menu bar screenshot and screen recording app for macOS, written in Swift.
   order taken
 
 <p align="center">
-  <img src="docs/images/editor.png" width="800" alt="The annotation editor. A screenshot of a web page lies like a print on a dotted desk, with numbered badges, a blurred email address, a box, an arrow and a label drawn on it. The tools, colours and sizes run along the top, next to Undo, Redo, Copy and Save.">
+  <img src="docs/images/editor.png" width="800" alt="The annotation editor. A screenshot of a web page lies like a print on a dotted desk, with numbered badges, a blurred email address, a box, an arrow and a label drawn on it. The tools, colours and sizes run along the top, next to Undo, Redo, Pin to Screen, Copy and Save.">
 </p>
 
 Up to five thumbnails lie on the pile, as many as fit on screen when
