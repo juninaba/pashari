@@ -3,8 +3,8 @@ import CoreMedia
 import ScreenCaptureKit
 
 /// Records a display, an area, or a single window into an MP4 file: what
-/// happens there, the pointer and its clicks included, with Pashari's own
-/// panels left out, and optionally system audio and microphone input.
+/// happens there, the pointer included, with Pashari's own panels left
+/// out, and optionally system audio and microphone input.
 ///
 /// ScreenCaptureKit (and AVFoundation's microphone fallback on macOS 14) hand
 /// over samples on `queue`, a thread of their own, and `writer` is only
@@ -157,7 +157,9 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         return (audio, device)
     }
 
-    private static func makeConfiguration(
+    /// What ScreenCaptureKit hands over: frames of `width` × `height`
+    /// pixels with the pointer in them, and the sound `audio` asks for.
+    static func makeConfiguration(
         width: Int,
         height: Int,
         audio: RecordingAudio
@@ -166,17 +168,15 @@ nonisolated final class ScreenRecorder: NSObject, SCStreamOutput, SCStreamDelega
         configuration.width = width
         configuration.height = height
         configuration.captureResolution = .best
-        // The circles around clicks are only drawn into BGRA frames. The
-        // encoder turns them into video colours itself.
+        // RGB frames, which the encoder turns into video colours itself.
+        // Only these, in sRGB (below), were checked against screenshots.
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         // In the display's own colours, which the encoder would take for
         // video colours: red came out orange and green yellowish. In sRGB,
         // the encoder converts them, and the video matches a screenshot.
         configuration.colorSpaceName = CGColorSpace.sRGB
+        // The pointer, but no rings around clicks (`showMouseClicks`).
         configuration.showsCursor = true
-        if #available(macOS 15.0, *) {
-            configuration.showMouseClicks = true
-        }
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         // A few frames for the encoder to work on while new ones arrive.
         // Each frame of a large area takes tens of MB.

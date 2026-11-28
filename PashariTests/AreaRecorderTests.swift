@@ -46,6 +46,17 @@ struct AreaRecorderSizeTests {
     }
 }
 
+struct ScreenRecorderConfigurationTests {
+    @Test func recordingsShowThePointerButNoRingsAroundClicks() {
+        let configuration = ScreenRecorder.makeConfiguration(width: 600, height: 402, audio: .none)
+
+        #expect(configuration.showsCursor)
+        if #available(macOS 15.0, *) {
+            #expect(!configuration.showMouseClicks)
+        }
+    }
+}
+
 /// These record a real window, so they run only where Pashari has the
 /// Screen Recording permission.
 @MainActor
