@@ -154,8 +154,8 @@ by itself at five minutes.
   choice is remembered and applies to area, window (recording that window's
   app audio) and fullscreen recordings. Turning the microphone on asks for
   the Microphone permission.
-- The pointer is in the video, with a ring around each click (macOS 15
-  and later). Pashari's bar, frame, thumbnails and sounds stay out.
+- The pointer is in the video. Pashari's bar, frame, thumbnails and
+  sounds stay out.
 - Recordings are MP4 (H.264, with stereo AAC audio when sound is enabled)
   at the screen's full resolution, up to 4,096 pixels on the longer side.
   Larger recordings are scaled down to fit, and a window recording keeps
